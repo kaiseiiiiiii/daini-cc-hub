@@ -177,6 +177,20 @@ body{margin:0;background:var(--page-bg);}
 .board-body{font-size:13px; color:var(--text-2); line-height:1.6; margin-bottom:8px; white-space:pre-wrap; word-break:break-word;}
 .board-footer{display:flex; align-items:center; gap:6px;}
 .board-footer-text{font-size:11px; color:var(--text-4);}
+.reader-toggle{margin-left:auto; display:flex; align-items:center; gap:6px; background:transparent; border:1px solid var(--border); border-radius:99px; padding:3px 9px; font-size:11px; color:var(--text-3); cursor:pointer; font-family:inherit; white-space:nowrap;}
+.reader-toggle-open{border-color:color-mix(in srgb, var(--accent) 40%, transparent); color:var(--accent);}
+.reader-toggle-unread{background:color-mix(in srgb, var(--red) 14%, transparent); color:var(--red); border-radius:99px; padding:0 6px; font-weight:700;}
+.reader-caret{font-size:8px; color:var(--text-4);}
+.reader-panel{margin-top:10px; padding-top:10px; border-top:1px solid var(--border);}
+.reader-group{margin-bottom:10px;}
+.reader-group:last-child{margin-bottom:0;}
+.reader-label{font-size:11px; font-weight:700; color:var(--text-4); margin-bottom:6px; letter-spacing:0.04em;}
+.reader-label-unread{color:var(--red);}
+.reader-label-done{color:var(--green);}
+.reader-chips{display:flex; flex-wrap:wrap; gap:5px;}
+.reader-chip{display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:99px; padding:2px 9px 2px 3px; font-size:12px; color:var(--text-2); background:var(--surface);}
+.reader-chip-unread{border-color:color-mix(in srgb, var(--red) 35%, transparent); background:color-mix(in srgb, var(--red) 8%, var(--surface)); color:var(--text); font-weight:600;}
+.reader-chips-muted .reader-chip{opacity:0.6; font-size:11px;}
 
 .survey-head{display:flex; gap:8px; margin-bottom:10px; align-items:flex-start;}
 .survey-title{font-weight:700; font-size:14px; color:var(--text);}
@@ -345,6 +359,7 @@ var state = {
   shift:null, metrics:null, syncStatus:null,
   feedShowForm:false, feedSort:"new", feedOpenComment:null,
   boardShowForm:false,
+  boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
   surveyShowForm:false,
   kpiSel:null,
   busy:false,               // 送信中の二重送信よけ
@@ -971,9 +986,44 @@ function renderBoardForm(){
 
 function readCount(post){ return Object.keys(post.readBy || {}).length; }
 
+/** 名前チップ1つ。未読側は色を強めて目に入るようにする */
+function memberChip(m, emphasize){
+  return '<span class="reader-chip'+(emphasize?" reader-chip-unread":"")+'">' +
+    avatar(m.id,18) + '<span>'+esc(m.displayName)+'</span></span>';
+}
+
+/**
+ * 未読者を主、既読者を従として出す。
+ * 11人規模では未読側のほうが短く、そのまま声かけの対象になるため。
+ */
+function renderReaderPanel(readers, unread){
+  var html = '<div class="reader-panel">';
+  if(unread.length){
+    html += '<div class="reader-group">' +
+      '<div class="reader-label reader-label-unread">未読 '+unread.length+'名</div>' +
+      '<div class="reader-chips">' + unread.map(function(m){ return memberChip(m, true); }).join("") + '</div>' +
+    '</div>';
+  }else{
+    html += '<div class="reader-group"><div class="reader-label reader-label-done">✓ 全員が既読です</div></div>';
+  }
+  if(readers.length){
+    html += '<div class="reader-group">' +
+      '<div class="reader-label">既読 '+readers.length+'名</div>' +
+      '<div class="reader-chips reader-chips-muted">' + readers.map(function(m){ return memberChip(m, false); }).join("") + '</div>' +
+    '</div>';
+  }
+  return html + '</div>';
+}
+
 function renderBoardPost(post){
-  var isRead = !!(post.readBy && post.readBy[currentUserId()]);
+  var me = currentUserId();
+  var readBy = post.readBy || {};
+  var isRead = !!readBy[me];
   var catColor = CT[post.category]||"blue";
+  var readers = session.members.filter(function(m){ return !!readBy[m.id]; });
+  var unread  = session.members.filter(function(m){ return !readBy[m.id]; });
+  var isOpen  = state.boardOpenReaders === post.id;
+
   return '<div class="card board-card" style="border-left:3px solid var(--'+catColor+')"'+(isRead?"":' data-act="board-read" data-id="'+post.id+'"')+'>' +
     '<div class="board-meta">' +
       (post.pinned?"<span>📌</span>":"") +
@@ -983,7 +1033,15 @@ function renderBoardPost(post){
     '</div>' +
     '<div class="board-title">'+esc(post.title)+'</div>' +
     '<div class="board-body">'+esc(post.body)+'</div>' +
-    '<div class="board-footer">'+avatar(post.authorId,18)+'<span class="board-footer-text">'+esc(getM(post.authorId).displayName)+' · 既読 '+readCount(post)+'名</span></div>' +
+    '<div class="board-footer">' + avatar(post.authorId,18) +
+      '<span class="board-footer-text">'+esc(getM(post.authorId).displayName)+'</span>' +
+      '<button class="reader-toggle'+(isOpen?" reader-toggle-open":"")+'" data-act="board-readers" data-id="'+post.id+'" aria-expanded="'+(isOpen?"true":"false")+'">' +
+        '既読 '+readers.length+'名' +
+        (unread.length ? '<span class="reader-toggle-unread">未読 '+unread.length+'</span>' : '') +
+        '<span class="reader-caret">'+(isOpen?"▲":"▼")+'</span>' +
+      '</button>' +
+    '</div>' +
+    (isOpen ? renderReaderPanel(readers, unread) : "") +
   '</div>';
 }
 
@@ -1356,7 +1414,10 @@ function submitBoardPost(){
   payload.body = body;
   payload.category = document.getElementById("boardFormCat").value;
   payload.pinned = document.getElementById("boardFormPinned").checked;
+  // 書いた本人は既読扱いにしておく。そうしないと自分の投稿で
+  // 自分が未読者リストに並び、声かけ対象が水増しされる。
   payload.readBy = {};
+  payload.readBy[currentUserId()] = serverTimestamp();
   state.boardShowForm = false;
   write("投稿", function(){ return addDoc(collection(db, "boardPosts"), payload); }, true);
 }
@@ -1448,6 +1509,10 @@ function bindEvents(){
     else if(act==="board-cancel"){ state.boardShowForm = false; render(); }
     else if(act==="board-submit"){ submitBoardPost(); }
     else if(act==="board-read"){ markBoardRead(id); }
+    else if(act==="board-readers"){
+      state.boardOpenReaders = state.boardOpenReaders===id ? null : id;
+      render();
+    }
     else if(act==="survey-open-form"){ state.surveyShowForm = true; render(); }
     else if(act==="survey-cancel"){ state.surveyShowForm = false; render(); }
     else if(act==="survey-add-opt"){
