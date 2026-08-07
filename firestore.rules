@@ -86,6 +86,20 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
+    // 「みんなが書き込むマップ」で、自分のキーしか触っていないことを検証する。
+    //
+    // reactions / votes / readBy は、いずれも memberId をキーにした
+    // マップとして持つ。こうしておくと、この1行で
+    // 「他人のリアクションを消す」「他人の名前で投票する」を封じられる。
+    //
+    // 逆向き（絵文字や選択肢IDをキーにして、中の memberId 配列を検証する）は
+    // ルール言語に動的キーの取り出しもループも無いため実装できない。
+    // データの向きは、この検証が書けるかどうかで決めている。
+    function onlyMyKeyIn(field) {
+      return request.resource.data[field].diff(resource.data[field])
+               .affectedKeys().hasOnly([myMemberId()]);
+    }
+
     // 作成者IDと作成日時は、いかなる更新でも変更させない。
     // これを許すと、他人の投稿を自分のものに書き換えたり、
     // 投稿日時を偽装したりできてしまう。
@@ -197,21 +211,20 @@ service cloud.firestore {
 
 
     // ========================================================================
-    // フィード投稿（Phase 2 で実装）
+    // フィード投稿
     //   フィールド: authorId, toMemberId, type, valueTag, text,
-    //               reactions{emoji: [memberId]},
+    //               reactions{memberId: [emoji]}, commentCount,
     //               createdAt, updatedAt, edited,
     //               deleted, deletedBy, deletedAt
-    //
-    //   ※ フィールド名は Phase 2 の設計確定時に見直す可能性があります。
-    //     その際はこのルールも合わせて更新すること。
     // ========================================================================
     match /feedPosts/{postId} {
 
       allow read: if isMember();
 
       allow create: if validNewPost()
-                    && request.resource.data.edited == false;
+                    && request.resource.data.edited == false
+                    && request.resource.data.commentCount == 0
+                    && request.resource.data.reactions.size() == 0;
 
       // 更新は「何を変えようとしているか」で分岐する。
       // UI 側で編集ボタンを出し分けるだけでは、開発者ツールから
@@ -221,9 +234,18 @@ service cloud.firestore {
                     && (
                          // ① リアクションの付け外しは全メンバーに許可。
                          //    他人の投稿にスタンプを押すのは正常な操作。
-                         onlyChanged(['reactions'])
+                         //    ただし触れるのは自分のキーだけ。
+                         ( onlyChanged(['reactions']) && onlyMyKeyIn('reactions') )
 
-                         // ② 論理削除は作成者本人、または admin。
+                         // ② コメント数は非正規化した表示用の値。
+                         //    コメントを1件足した／消したときの ±1 だけ許す。
+                         //    任意の値に書き換えられると件数表示が壊れるため。
+                      || ( onlyChanged(['commentCount'])
+                           && ( request.resource.data.commentCount == resource.data.commentCount + 1
+                             || request.resource.data.commentCount == resource.data.commentCount - 1 )
+                           && request.resource.data.commentCount >= 0 )
+
+                         // ③ 論理削除は作成者本人、または admin。
                          //    削除者と削除日時を必ず同時に記録させる。
                       || ( isLogicalDelete()
                            && (isAuthor() || isAdmin())
@@ -231,7 +253,7 @@ service cloud.firestore {
                            && request.resource.data.deletedAt == request.time
                            && onlyChanged(['deleted','deletedBy','deletedAt']) )
 
-                         // ③ 本文の編集は作成者本人のみ。
+                         // ④ 本文の編集は作成者本人のみ。
                          //    編集済みフラグを必ず立てさせる（改ざん感を避けるため
                          //    画面に「編集済み」を出す。フラグを立てずに
                          //    こっそり書き換えることを許さない）。
@@ -276,7 +298,7 @@ service cloud.firestore {
 
 
     // ========================================================================
-    // 掲示板（Phase 2 で実装）
+    // 掲示板
     //   フィールド: authorId, title, body, category, pinned,
     //               readBy{memberId: 読んだ日時},
     //               createdAt, updatedAt, edited,
@@ -295,10 +317,9 @@ service cloud.firestore {
                          // ① 既読の記録は全メンバーに許可。
                          //    ただし「自分の分だけ」を足せること。
                          //    他人を勝手に既読にして未読リストから消す、
-                         //    という操作を防ぐ。
-                         ( onlyChanged(['readBy'])
-                           && request.resource.data.readBy.diff(resource.data.readBy)
-                                .affectedKeys().hasOnly([myMemberId()]) )
+                         //    という操作を防ぐ（Phase 3 の未読者表示が
+                         //    信用できなくなるため）。
+                         ( onlyChanged(['readBy']) && onlyMyKeyIn('readBy') )
 
                          // ② 論理削除は作成者本人、または admin。
                       || ( isLogicalDelete()
@@ -321,11 +342,15 @@ service cloud.firestore {
 
 
     // ========================================================================
-    // アンケート（Phase 2 で実装）
-    //   フィールド: authorId, title, options[], multi, deadline, closed,
-    //               votes{optionId: [memberId]},
+    // アンケート
+    //   フィールド: authorId, title, multi, deadline, closed,
+    //               options[{id, label}],
+    //               votes{memberId: [optionId]},
     //               createdAt, updatedAt, edited,
     //               deleted, deletedBy, deletedAt
+    //
+    //   選択肢を id と label に分けているのは、label を直しても
+    //   投票が失われないようにするため（Phase 4 の編集機能で必要）。
     //
     //   ※ 「誰がどの選択肢を選んだか」は画面に出さない方針だが、
     //     集計のため votes はメンバーから読める。
@@ -333,7 +358,7 @@ service cloud.firestore {
     //     「画面に出さないだけ」という合意のもとでの設計である点に注意。
     //     完全な秘匿が必要になった場合は、votes をサブコレクション化し
     //     read を本人のみに絞ったうえで、集計値を別ドキュメントに
-    //     サーバー側で書き出す構成に変更すること。
+    //     サーバー側で書き出す構成に変更すること（Cloud Functions が要る）。
     // ========================================================================
     match /surveys/{surveyId} {
 
@@ -341,13 +366,17 @@ service cloud.firestore {
 
       allow create: if validNewPost()
                     && request.resource.data.edited == false
-                    && request.resource.data.closed == false;
+                    && request.resource.data.closed == false
+                    && request.resource.data.votes.size() == 0;
 
       allow update: if isMember()
                     && immutableOrigin()
                     && (
-                         // ① 投票は全メンバーに許可。
-                         ( onlyChanged(['votes']) && resource.data.closed == false )
+                         // ① 投票は全メンバーに許可。ただし自分のキーだけ。
+                         //    締切済みの設問には投票させない。
+                         ( onlyChanged(['votes'])
+                           && onlyMyKeyIn('votes')
+                           && resource.data.closed == false )
 
                          // ② 論理削除は作成者本人、または admin。
                       || ( isLogicalDelete()

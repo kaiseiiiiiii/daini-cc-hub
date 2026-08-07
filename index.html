@@ -236,6 +236,14 @@ body{margin:0;background:var(--page-bg);}
 .rank-pct-label{font-size:11px; color:var(--text-4);}
 
 .notice{margin:10px 16px 0; padding:8px 12px; background:color-mix(in srgb, var(--amber) 12%, transparent); border:1px solid color-mix(in srgb, var(--amber) 30%, transparent); border-radius:8px; font-size:11px; color:var(--amber-c); line-height:1.5;}
+.notice-error{background:color-mix(in srgb, var(--red) 12%, transparent); border-color:color-mix(in srgb, var(--red) 32%, transparent); color:var(--red); display:flex; align-items:flex-start; gap:8px; font-size:12px;}
+.notice-close{margin-left:auto; background:transparent; border:none; color:inherit; font-size:16px; line-height:1; cursor:pointer; padding:0 2px; font-family:inherit;}
+
+.legacy-card{border-color:color-mix(in srgb, var(--amber) 40%, transparent); background:color-mix(in srgb, var(--amber) 8%, var(--surface));}
+.legacy-title{font-weight:700; font-size:13px; color:var(--amber-c); margin-bottom:6px;}
+.legacy-body{font-size:12px; color:var(--text-3); line-height:1.7; margin-bottom:10px;}
+
+.pending-mark{color:var(--text-4); font-size:10px; border:1px solid var(--border); border-radius:99px; padding:0 5px; margin-left:4px;}
 </style>
 </head>
 <body>
@@ -253,7 +261,8 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, collection, getDocs, query, orderBy
+  getFirestore, doc, getDoc, collection, getDocs, query, orderBy, limit,
+  onSnapshot, addDoc, updateDoc, serverTimestamp, increment, deleteField
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 // ── 静的な定義（実データ・個人情報は一切含めない） ──────────────
@@ -302,7 +311,8 @@ var db = null;
 // ── ユーティリティ ────────────────────────────────────────────
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
 function tAgo(ts){ var d=Date.now()-ts; if(d<60000) return "たった今"; if(d<3600000) return Math.floor(d/60000)+"分前"; if(d<86400000) return Math.floor(d/3600000)+"時間前"; return Math.floor(d/86400000)+"日前"; }
-function reactCount(post){ var t=0; for(var k in post.reactions) t += post.reactions[k].length; return t; }
+// reactions は {memberId: [emoji]}。押された総数を数える（並び替え用）
+function reactCount(post){ var t=0, r=post.reactions||{}; for(var k in r) t += (r[k]||[]).length; return t; }
 function badge(text,colorVar){ return '<span class="badge" style="--bc:var(--'+colorVar+')">'+esc(text)+'</span>'; }
 function todayDateLabel(){ var d=new Date(); return (d.getMonth()+1)+"/"+d.getDate(); }
 function currentMonthId(){ var d=new Date(); return d.getFullYear()+"_"+(d.getMonth()+1); }
@@ -325,31 +335,150 @@ function avatar(id,size){
   return '<div class="avatar '+teamClass(m.team)+'" style="width:'+size+'px;height:'+size+'px;font-size:'+Math.round(size*0.38)+'px">'+esc(m.initial)+'</div>';
 }
 
-// ── ローカル状態（Phase 2 で Firestore へ移行） ──────────────
+// ── アプリ状態 ────────────────────────────────────────────────
+// 投稿・掲示板・アンケートは Firestore が唯一の保存先。
+// onSnapshot が流し込むので、ここは「サーバーの写し」として扱う。
 var state = {
   tab:"feed",
   feed:[], board:[], surveys:[],
+  comments:[],              // 開いている投稿のコメント（サブコレクション）
   shift:null, metrics:null, syncStatus:null,
   feedShowForm:false, feedSort:"new", feedOpenComment:null,
   boardShowForm:false,
   surveyShowForm:false,
   kpiSel:null,
+  busy:false,               // 送信中の二重送信よけ
+  notice:"",                // 書き込み失敗などの通知
+  legacy:null,              // localStorage に残っていた旧データ
 };
 
-function persist(key){ try{ localStorage.setItem("cc2:"+key, JSON.stringify(state[key])); }catch(e){} }
-function loadLocalData(){
-  // Phase 1 時点では投稿系のみローカル保存のまま（Phase 2 で Firestore へ移行）。
-  // 初期サンプルデータは廃止した（実在のメンバー名を含む文面だったため）。
-  try{
-    var f = localStorage.getItem("cc2:feed");
-    var b = localStorage.getItem("cc2:board");
-    var s = localStorage.getItem("cc2:surveys");
-    state.feed = f ? JSON.parse(f) : [];
-    state.board = b ? JSON.parse(b) : [];
-    state.surveys = s ? JSON.parse(s) : [];
-  }catch(e){
-    state.feed = []; state.board = []; state.surveys = [];
-  }
+// ══════════════════════════════════════════════════════════════════
+//  Firestore ドキュメントの読み替え
+// ══════════════════════════════════════════════════════════════════
+/**
+ * serverTimestamp() はサーバー確定までローカルでは null になる。
+ * そのままだと投稿直後に時刻が消え、並び順も崩れるため、
+ * "estimate" でローカル時刻を推定値として埋めてもらう。
+ */
+function mapDoc(d){
+  var v = d.data({ serverTimestamps: "estimate" });
+  var o = { id: d.id, pending: d.metadata.hasPendingWrites };
+  for(var k in v) o[k] = v[k];
+  o.createdAtMs = v.createdAt && v.createdAt.toMillis ? v.createdAt.toMillis() : Date.now();
+  return o;
+}
+function byNewest(a,b){ return b.createdAtMs - a.createdAtMs; }
+function notDeleted(d){ return d.deleted !== true; }
+
+// ══════════════════════════════════════════════════════════════════
+//  リアルタイム購読
+//
+//  ログイン中は3本を張りっぱなしにする。
+//  onSnapshot はアタッチ時に全件、以降は差分だけを読む。
+//  タブ切り替えのたびに解除・再アタッチすると毎回全件読み直しになり、
+//  かえって読み取り課金が増える。掲示板の未読バッジも、他タブを
+//  見ている間の更新を拾えなくなる。
+//
+//  解除はこの配列だけを見ればよいようにして、漏れを構造的に防ぐ。
+// ══════════════════════════════════════════════════════════════════
+var unsubscribers = [];
+var commentUnsub = null;
+
+function detachAll(){
+  unsubscribers.forEach(function(u){ try{ u(); }catch(e){} });
+  unsubscribers = [];
+  detachComments();
+}
+function detachComments(){
+  if(commentUnsub){ try{ commentUnsub(); }catch(e){} commentUnsub = null; }
+  state.comments = [];
+}
+
+function subscribe(colName, orderField, onData){
+  var q = query(collection(db, colName), orderBy(orderField, "desc"), limit(200));
+  unsubscribers.push(onSnapshot(q,
+    function(snap){
+      // orderBy はサーバー側の順序。未確定の serverTimestamp は null 扱いで
+      // 末尾に回ってしまうため、推定値で並べ直す。
+      onData(snap.docs.map(mapDoc).filter(notDeleted).sort(byNewest));
+      render();
+    },
+    function(err){
+      state.notice = colName + " の購読に失敗しました（" + err.code + "）";
+      render();
+    }
+  ));
+}
+
+function attachAll(){
+  detachAll();   // 二重アタッチ防止
+  subscribe("feedPosts",  "createdAt", function(rows){ state.feed = rows; });
+  subscribe("boardPosts", "createdAt", function(rows){ state.board = rows; });
+  subscribe("surveys",    "createdAt", function(rows){ state.surveys = rows; });
+}
+
+function attachComments(postId){
+  detachComments();
+  if(!postId) return;
+  var q = query(collection(db, "feedPosts", postId, "comments"), orderBy("createdAt", "asc"), limit(200));
+  commentUnsub = onSnapshot(q,
+    function(snap){
+      state.comments = snap.docs.map(mapDoc).filter(notDeleted)
+        .sort(function(a,b){ return a.createdAtMs - b.createdAtMs; });
+      render();
+    },
+    function(err){ state.notice = "コメントの購読に失敗しました（" + err.code + "）"; render(); }
+  );
+}
+
+window.addEventListener("beforeunload", detachAll);
+
+// ══════════════════════════════════════════════════════════════════
+//  旧データ（localStorage）の退避と削除
+//
+//  移行はしない。旧アプリは「投稿者を選ぶプルダウン」で誰にでも
+//  なりすませたため、記録されている作成者が実際の書き手と一致しない。
+//  セキュリティルールは authorId == 自分 を強制するので、
+//  他人名義の投稿はそもそも作成できない（これは正しい動作）。
+//  中身を確認できるようダウンロードだけ用意して、あとは消す。
+// ══════════════════════════════════════════════════════════════════
+var LEGACY_KEYS = ["cc2:feed", "cc2:board", "cc2:surveys"];
+
+function loadLegacy(){
+  var found = null;
+  LEGACY_KEYS.forEach(function(k){
+    try{
+      var raw = localStorage.getItem(k);
+      if(!raw) return;
+      var parsed = JSON.parse(raw);
+      if(!parsed || !parsed.length) return;
+      found = found || {};
+      found[k] = parsed;
+    }catch(e){}
+  });
+  state.legacy = found;
+}
+function legacyCount(){
+  if(!state.legacy) return 0;
+  var n = 0;
+  for(var k in state.legacy) n += state.legacy[k].length;
+  return n;
+}
+function downloadLegacy(){
+  var blob = new Blob([JSON.stringify(state.legacy, null, 2)], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "daini-cc-hub-legacy-backup.json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+function discardLegacy(){
+  LEGACY_KEYS.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+  state.legacy = null;
+  render();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -416,10 +545,12 @@ async function doSignOut(){
 
 async function onAuthChanged(user){
   if(!user){
+    detachAll();
     session.authUser = null;
     session.member = null;
     session.members = [];
     session.teams = [];
+    state.feed = []; state.board = []; state.surveys = [];
     // 「利用権限がありません」を表示した直後はサインアウトが走るが、
     // その通知でログイン画面に戻してしまうとメッセージが読めないため、
     // denied のときだけは状態を維持する。
@@ -455,9 +586,10 @@ async function onAuthChanged(user){
     };
     await loadMasters();
     await loadSyncedData();
-    loadLocalData();
+    loadLegacy();
     session.status = "ready";
     render();
+    attachAll();
   }catch(e){
     if(e && e.code === "permission-denied"){
       await denyAccess(user.email || "");
@@ -470,6 +602,7 @@ async function onAuthChanged(user){
 }
 
 async function denyAccess(email){
+  detachAll();
   session.deniedEmail = email;
   session.member = null;
   session.status = "denied";
@@ -626,7 +759,10 @@ function renderHeader(){
 function renderNav(){
   var me = currentUserId();
   var unread = 0;
-  for(var i=0;i<state.board.length;i++) if(state.board[i].readBy.indexOf(me)<0) unread++;
+  for(var i=0;i<state.board.length;i++){
+    var rb = state.board[i].readBy || {};
+    if(!rb[me]) unread++;
+  }
   var TABS = [{id:"feed",icon:"📡",l:"フィード"},{id:"board",icon:"📋",l:"掲示板"},{id:"survey",icon:"📊",l:"アンケート"},{id:"shift",icon:"🕐",l:"シフト"},{id:"kpi",icon:"📈",l:"実績"}];
   return '<div class="nav">' + TABS.map(function(t){
     return '<button class="nav-btn'+(state.tab===t.id?" active":"")+'" data-act="tab" data-id="'+t.id+'">' +
@@ -680,8 +816,8 @@ function memberOptionsGrouped(excludeSelf){
 function renderFeed(){
   var sorted = state.feed.slice().sort(function(a,b){
     if(state.feedSort==="react") return reactCount(b)-reactCount(a);
-    if(state.feedSort==="comment") return b.comments.length-a.comments.length;
-    return b.ts-a.ts;
+    if(state.feedSort==="comment") return (b.commentCount||0)-(a.commentCount||0);
+    return b.createdAtMs-a.createdAtMs;
   });
   var sortDefs = [["new","✨ 新着"],["react","🔥 スタンプ"],["comment","💬 コメント"]];
   var sortHtml = sortDefs.map(function(sd){
@@ -698,9 +834,25 @@ function renderFeed(){
     ? sorted.map(renderFeedPost).join("")
     : emptyState("📡","まだ投稿がありません","最初の投稿をしてみましょう");
   return '<div class="tab-pad">' +
+    renderLegacyCard() +
     '<div class="sortbar">'+sortHtml+'</div>' +
     formHtml +
     body +
+  '</div>';
+}
+
+/** 旧 localStorage データの退避カード（該当がある人にだけ出る） */
+function renderLegacyCard(){
+  if(!state.legacy) return "";
+  return '<div class="card legacy-card">' +
+    '<div class="legacy-title">⚠️ 移行できない旧データが '+legacyCount()+' 件あります</div>' +
+    '<div class="legacy-body">認証を入れる前のテスト投稿が、このブラウザに残っています。' +
+      '当時は投稿者を自由に選べたため作成者が実際の書き手と一致せず、そのままでは移行できません。' +
+      '必要ならダウンロードしてから削除してください。</div>' +
+    '<div class="form-row">' +
+      '<button class="btn-ghost" data-act="legacy-download">JSONでダウンロード</button>' +
+      '<button class="btn-primary" data-act="legacy-discard">削除する</button>' +
+    '</div>' +
   '</div>';
 }
 
@@ -724,43 +876,59 @@ function renderFeedForm(){
   '</div>';
 }
 
+/** reactions は {memberId: [emoji]} なので、絵文字ごとの人数はここで数える */
+function reactionsByEmoji(post){
+  var byEmoji = {};
+  var r = post.reactions || {};
+  for(var memberId in r){
+    (r[memberId] || []).forEach(function(e){
+      (byEmoji[e] = byEmoji[e] || []).push(memberId);
+    });
+  }
+  return byEmoji;
+}
+
 function renderFeedPost(post){
   var me = currentUserId();
-  var from = getM(post.from);
-  var to = post.to ? getM(post.to) : null;
-  var myR = []; for(var e in post.reactions) if(post.reactions[e].indexOf(me)>=0) myR.push(e);
+  var from = getM(post.authorId);
+  var to = post.toMemberId ? getM(post.toMemberId) : null;
+  var byEmoji = reactionsByEmoji(post);
+  var mine = (post.reactions && post.reactions[me]) || [];
   var isOpen = state.feedOpenComment===post.id;
+
   var reactHtml = REACTIONS.map(function(emoji){
-    var cnt = (post.reactions[emoji]||[]).length;
-    var mine = myR.indexOf(emoji)>=0;
-    return '<button class="react-btn'+(mine?" react-mine":"")+'" data-act="react" data-id="'+post.id+'" data-emoji="'+emoji+'">'+emoji+(cnt>0?'<span class="react-count">'+cnt+'</span>':'')+'</button>';
+    var cnt = (byEmoji[emoji]||[]).length;
+    var isMine = mine.indexOf(emoji)>=0;
+    return '<button class="react-btn'+(isMine?" react-mine":"")+'" data-act="react" data-id="'+post.id+'" data-emoji="'+emoji+'">'+emoji+(cnt>0?'<span class="react-count">'+cnt+'</span>':'')+'</button>';
   }).join("");
+
   var commentsHtml = "";
   if(isOpen){
     commentsHtml = '<div class="comments">' +
-      post.comments.map(function(c){
-        return '<div class="comment-row">'+avatar(c.from,22)+'<div class="comment-bubble"><span class="comment-name">'+esc(getM(c.from).displayName)+' </span><span class="comment-text">'+esc(c.text)+'</span></div></div>';
+      state.comments.map(function(c){
+        return '<div class="comment-row">'+avatar(c.authorId,22)+'<div class="comment-bubble"><span class="comment-name">'+esc(getM(c.authorId).displayName)+' </span><span class="comment-text">'+esc(c.text)+'</span></div></div>';
       }).join("") +
       '<div class="comment-input-row">' + avatar(me,22) +
         '<input class="input comment-input" placeholder="コメントを入力... (Enter で送信)" data-act="comment-input" data-id="'+post.id+'">' +
       '</div>' +
     '</div>';
   }
+
   return '<div class="card post-card">' +
-    '<div class="post-head">' + avatar(post.from,38) +
+    '<div class="post-head">' + avatar(post.authorId,38) +
       '<div class="post-head-info">' +
         '<div class="post-head-line">' +
           '<span class="post-name">'+esc(from.displayName)+'</span>' +
           (to ? '<span class="post-arrow">→</span><span class="post-to">'+esc(to.displayName)+'</span>' : '') +
           badge(post.type, CT[post.type]||"blue") +
-          (post.val ? badge(post.val,"purple") : "") +
+          (post.valueTag ? badge(post.valueTag,"purple") : "") +
         '</div>' +
-        '<div class="post-time">'+tAgo(post.ts)+'</div>' +
+        '<div class="post-time">'+tAgo(post.createdAtMs)+(post.pending?' <span class="pending-mark">送信中</span>':'')+'</div>' +
       '</div>' +
     '</div>' +
     '<div class="post-text">'+esc(post.text)+'</div>' +
     '<div class="post-actions">' + reactHtml +
-      '<button class="comment-toggle-btn" data-act="comment-toggle" data-id="'+post.id+'">💬 '+post.comments.length+'</button>' +
+      '<button class="comment-toggle-btn" data-act="comment-toggle" data-id="'+post.id+'">💬 '+(post.commentCount||0)+'</button>' +
     '</div>' +
     commentsHtml +
   '</div>';
@@ -773,7 +941,7 @@ function renderBoard(){
   var sorted = state.board.slice().sort(function(a,b){
     if(a.pinned && !b.pinned) return -1;
     if(!a.pinned && b.pinned) return 1;
-    return b.ts-a.ts;
+    return b.createdAtMs-a.createdAtMs;
   });
   var formHtml = state.boardShowForm ? renderBoardForm() : "";
   var body = sorted.length
@@ -801,19 +969,21 @@ function renderBoardForm(){
   '</div>';
 }
 
+function readCount(post){ return Object.keys(post.readBy || {}).length; }
+
 function renderBoardPost(post){
-  var isRead = post.readBy.indexOf(currentUserId())>=0;
-  var catColor = CT[post.cat]||"blue";
+  var isRead = !!(post.readBy && post.readBy[currentUserId()]);
+  var catColor = CT[post.category]||"blue";
   return '<div class="card board-card" style="border-left:3px solid var(--'+catColor+')"'+(isRead?"":' data-act="board-read" data-id="'+post.id+'"')+'>' +
     '<div class="board-meta">' +
       (post.pinned?"<span>📌</span>":"") +
-      badge(post.cat, catColor) +
+      badge(post.category, catColor) +
       (!isRead?badge("NEW","red"):"") +
-      '<span class="board-time">'+tAgo(post.ts)+'</span>' +
+      '<span class="board-time">'+tAgo(post.createdAtMs)+(post.pending?' · 送信中':'')+'</span>' +
     '</div>' +
     '<div class="board-title">'+esc(post.title)+'</div>' +
     '<div class="board-body">'+esc(post.body)+'</div>' +
-    '<div class="board-footer">'+avatar(post.from,18)+'<span class="board-footer-text">'+esc(getM(post.from).displayName)+' · 既読 '+post.readBy.length+'名</span></div>' +
+    '<div class="board-footer">'+avatar(post.authorId,18)+'<span class="board-footer-text">'+esc(getM(post.authorId).displayName)+' · 既読 '+readCount(post)+'名</span></div>' +
   '</div>';
 }
 
@@ -850,31 +1020,51 @@ function renderSurveyForm(){
   '</div>';
 }
 
+/**
+ * votes は {memberId: [optionId]} なので、選択肢ごとの票数はここで数える。
+ * 「誰がどれに入れたか」は画面には一切出さない（設計上の約束）。
+ */
+function voteCounts(sv){
+  var counts = {}, total = 0;
+  var v = sv.votes || {};
+  (sv.options || []).forEach(function(o){ counts[o.id] = 0; });
+  for(var memberId in v){
+    (v[memberId] || []).forEach(function(optId){
+      if(counts[optId] === undefined) counts[optId] = 0;
+      counts[optId]++; total++;
+    });
+  }
+  return { counts: counts, total: total };
+}
+
 function renderSurveyCard(sv){
   var me = currentUserId();
-  var total = 0; for(var o in sv.votes) total += sv.votes[o].length;
-  var myV = []; for(var o2 in sv.votes) if(sv.votes[o2].indexOf(me)>=0) myV.push(o2);
-  var optsHtml = sv.opts.map(function(opt){
-    var cnt = (sv.votes[opt]||[]).length;
-    var pct = total>0 ? Math.round(cnt/total*100) : 0;
-    var voted = myV.indexOf(opt)>=0;
-    return '<div class="survey-opt-row"'+(sv.closed?"":' data-act="vote" data-id="'+sv.id+'" data-opt="'+esc(opt)+'"')+'>' +
+  var c = voteCounts(sv);
+  var myV = (sv.votes && sv.votes[me]) || [];
+  var answered = Object.keys(sv.votes || {}).length;
+
+  var optsHtml = (sv.options || []).map(function(opt){
+    var cnt = c.counts[opt.id] || 0;
+    var pct = c.total>0 ? Math.round(cnt/c.total*100) : 0;
+    var voted = myV.indexOf(opt.id)>=0;
+    return '<div class="survey-opt-row"'+(sv.closed?"":' data-act="vote" data-id="'+sv.id+'" data-opt="'+esc(opt.id)+'"')+'>' +
       '<div class="survey-opt-line">' +
-        '<span class="survey-opt-label'+(voted?" voted":"")+'">'+(voted?"✓ ":"")+esc(opt)+'</span>' +
+        '<span class="survey-opt-label'+(voted?" voted":"")+'">'+(voted?"✓ ":"")+esc(opt.label)+'</span>' +
         '<span class="survey-opt-count">'+cnt+'票 ('+pct+'%)</span>' +
       '</div>' +
       '<div class="bar-bg"><div class="bar-fill" style="width:'+pct+'%;background:'+(voted?"var(--accent)":"var(--text-4)")+'"></div></div>' +
     '</div>';
   }).join("");
+
   return '<div class="card">' +
-    '<div class="survey-head">' + avatar(sv.from,28) +
+    '<div class="survey-head">' + avatar(sv.authorId,28) +
       '<div>' +
         '<div class="survey-title">'+esc(sv.title)+'</div>' +
-        '<div class="survey-meta">'+esc(getM(sv.from).displayName)+' · '+(sv.multi?"複数選択可":"単一選択")+(sv.deadline?' · 期限: '+sv.deadline:"")+'</div>' +
+        '<div class="survey-meta">'+esc(getM(sv.authorId).displayName)+' · '+(sv.multi?"複数選択可":"単一選択")+(sv.deadline?' · 期限: '+esc(sv.deadline):"")+'</div>' +
       '</div>' +
     '</div>' +
     optsHtml +
-    '<div class="survey-total">合計 '+total+'票'+(sv.closed?'<span style="color:var(--red);margin-left:8px">終了</span>':'')+'</div>' +
+    '<div class="survey-total">合計 '+c.total+'票 · 回答 '+answered+'名'+(sv.closed?'<span style="color:var(--red);margin-left:8px">終了</span>':'')+'</div>' +
   '</div>';
 }
 
@@ -1065,89 +1255,152 @@ function render(){
     state.tab==="survey" ? renderSurvey() :
     state.tab==="shift"  ? renderShift() :
     renderKpi();
-  app.innerHTML = renderHeader() + '<div class="content" id="content">'+body+'</div>' + renderNav();
+  var noticeHtml = state.notice
+    ? '<div class="notice notice-error">'+esc(state.notice)+
+      '<button class="notice-close" data-act="notice-close" aria-label="閉じる">×</button></div>'
+    : '';
+  app.innerHTML = renderHeader() + noticeHtml +
+    '<div class="content" id="content">'+body+'</div>' + renderNav();
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  ACTIONS
 // ══════════════════════════════════════════════════════════════════
+/**
+ * 楽観的更新は自前で持たない。
+ * Firestore SDK のレイテンシ補償が、書き込んだ瞬間にローカルキャッシュを
+ * 更新して onSnapshot を発火させ、サーバー確定後にもう一度発火して整合を取る。
+ * 失敗すれば自動でロールバックされ、ここの catch に来る。
+ * 二重管理を避けるため、画面の状態は常に onSnapshot 由来のものだけを使う。
+ */
+async function write(label, fn, exclusive){
+  // exclusive はフォーム送信用の二重送信よけ。
+  // リアクションや投票は連打されうるので、ここでは弾かない
+  // （弾くと押したのに反映されない、という分かりにくい挙動になる）。
+  if(exclusive && state.busy) return;
+  if(exclusive) state.busy = true;
+  state.notice = "";
+  try{
+    await fn();
+  }catch(e){
+    var code = (e && e.code) ? e.code : String(e);
+    state.notice = label + "に失敗しました（" + code + "）" +
+      (code === "permission-denied" ? " — 権限がないか、ログインが切れています" : "");
+  }finally{
+    state.busy = false;
+    render();
+  }
+}
+
+/** 投稿・コメントに共通で載せるフィールド（Phase 4 の編集・削除で使う） */
+function baseFields(){
+  return {
+    authorId: currentUserId(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    edited: false,
+    deleted: false,
+    deletedBy: null,
+    deletedAt: null
+  };
+}
+
 function submitFeedPost(){
   var text = document.getElementById("feedFormText").value.trim();
   if(!text) return;
   var type = document.getElementById("feedFormType").value;
   var to = document.getElementById("feedFormTo").value;
   var val = document.getElementById("feedFormVal").value;
-  state.feed = [{ id:"f"+Date.now(), from:currentUserId(), to:to||null, type:type, val:val||null, text:text, ts:Date.now(), reactions:{}, comments:[] }].concat(state.feed);
+  var payload = baseFields();
+  payload.toMemberId = to || null;
+  payload.type = type;
+  payload.valueTag = val || null;
+  payload.text = text;
+  payload.reactions = {};
+  payload.commentCount = 0;
   state.feedShowForm = false;
-  persist("feed"); render();
+  write("投稿", function(){ return addDoc(collection(db, "feedPosts"), payload); }, true);
 }
-function toggleReaction(id,emoji){
+
+function toggleReaction(id, emoji){
   var me = currentUserId();
-  state.feed = state.feed.map(function(p){
-    if(p.id!==id) return p;
-    var r = {}; for(var k in p.reactions) r[k]=p.reactions[k].slice();
-    if(!r[emoji]) r[emoji]=[];
-    var i = r[emoji].indexOf(me);
-    if(i>=0) r[emoji] = r[emoji].filter(function(u){return u!==me;});
-    else r[emoji] = r[emoji].concat([me]);
-    var np = {}; for(var kk in p) np[kk]=p[kk]; np.reactions = r; return np;
-  });
-  persist("feed"); render();
+  var post = state.feed.filter(function(p){ return p.id===id; })[0];
+  if(!post) return;
+  var mine = (post.reactions && post.reactions[me]) || [];
+  var next = mine.indexOf(emoji)>=0
+    ? mine.filter(function(x){ return x!==emoji; })
+    : mine.concat([emoji]);
+  // 自分のキーだけを指定して更新する。ルール側も
+  // 「reactions の変更キーが自分だけ」であることを検証している。
+  var patch = {};
+  patch["reactions." + me] = next.length ? next : deleteField();
+  write("リアクション", function(){ return updateDoc(doc(db, "feedPosts", id), patch); });
 }
-function submitComment(id,text){
-  var me = currentUserId();
-  state.feed = state.feed.map(function(p){
-    if(p.id!==id) return p;
-    var np = {}; for(var kk in p) np[kk]=p[kk];
-    np.comments = p.comments.concat([{ from:me, text:text, ts:Date.now() }]);
-    return np;
+
+function submitComment(postId, text){
+  var payload = baseFields();
+  payload.text = text;
+  write("コメント", async function(){
+    await addDoc(collection(db, "feedPosts", postId, "comments"), payload);
+    // 一覧に「💬 N」を出すための非正規化値。ルールで ±1 しか許していない。
+    await updateDoc(doc(db, "feedPosts", postId), { commentCount: increment(1) });
   });
-  persist("feed"); render();
 }
+
 function submitBoardPost(){
   var title = document.getElementById("boardFormTitle").value.trim();
   var body = document.getElementById("boardFormBody").value.trim();
   if(!title || !body) return;
-  var cat = document.getElementById("boardFormCat").value;
-  var pinned = document.getElementById("boardFormPinned").checked;
-  state.board = [{ id:"b"+Date.now(), from:currentUserId(), title:title, body:body, cat:cat, pinned:pinned, ts:Date.now(), readBy:[currentUserId()] }].concat(state.board);
+  var payload = baseFields();
+  payload.title = title;
+  payload.body = body;
+  payload.category = document.getElementById("boardFormCat").value;
+  payload.pinned = document.getElementById("boardFormPinned").checked;
+  payload.readBy = {};
   state.boardShowForm = false;
-  persist("board"); render();
+  write("投稿", function(){ return addDoc(collection(db, "boardPosts"), payload); }, true);
 }
+
 function markBoardRead(id){
   var me = currentUserId();
-  state.board = state.board.map(function(p){
-    if(p.id!==id || p.readBy.indexOf(me)>=0) return p;
-    var np = {}; for(var kk in p) np[kk]=p[kk];
-    np.readBy = p.readBy.concat([me]);
-    return np;
-  });
-  persist("board"); render();
+  var post = state.board.filter(function(p){ return p.id===id; })[0];
+  if(!post || (post.readBy && post.readBy[me])) return;
+  var patch = {};
+  patch["readBy." + me] = serverTimestamp();
+  write("既読の記録", function(){ return updateDoc(doc(db, "boardPosts", id), patch); });
 }
+
 function submitSurvey(){
   var title = document.getElementById("surveyFormTitle").value.trim();
-  var opts = Array.prototype.map.call(document.querySelectorAll(".survey-opt"), function(i){ return i.value.trim(); }).filter(Boolean);
-  if(!title || opts.length<2) return;
-  var votes = {}; opts.forEach(function(o){ votes[o]=[]; });
-  var multi = document.getElementById("surveyFormMulti").checked;
-  var deadline = document.getElementById("surveyFormDeadline").value;
-  state.surveys = [{ id:"s"+Date.now(), from:currentUserId(), title:title, opts:opts, votes:votes, multi:multi, deadline:deadline, ts:Date.now(), closed:false }].concat(state.surveys);
+  var labels = Array.prototype.map.call(document.querySelectorAll(".survey-opt"), function(i){ return i.value.trim(); }).filter(Boolean);
+  if(!title || labels.length<2) return;
+  // 選択肢は id と label に分ける。label を直しても投票が失われないようにするため。
+  var options = labels.map(function(label, i){ return { id: "o" + (i+1), label: label }; });
+  var payload = baseFields();
+  payload.title = title;
+  payload.options = options;
+  payload.multi = document.getElementById("surveyFormMulti").checked;
+  payload.deadline = document.getElementById("surveyFormDeadline").value || null;
+  payload.closed = false;
+  payload.votes = {};
   state.surveyShowForm = false;
-  persist("surveys"); render();
+  write("アンケートの作成", function(){ return addDoc(collection(db, "surveys"), payload); }, true);
 }
-function toggleVote(id,opt){
+
+function toggleVote(id, optId){
   var me = currentUserId();
-  state.surveys = state.surveys.map(function(s){
-    if(s.id!==id || s.closed) return s;
-    var v = {}; for(var k in s.votes) v[k]=s.votes[k].slice();
-    if(!s.multi) Object.keys(v).forEach(function(o){ v[o] = v[o].filter(function(u){return u!==me;}); });
-    if(!v[opt]) v[opt]=[];
-    var i = v[opt].indexOf(me);
-    if(i>=0) v[opt] = v[opt].filter(function(u){return u!==me;});
-    else v[opt] = v[opt].concat([me]);
-    var ns = {}; for(var kk in s) ns[kk]=s[kk]; ns.votes = v; return ns;
-  });
-  persist("surveys"); render();
+  var sv = state.surveys.filter(function(s){ return s.id===id; })[0];
+  if(!sv || sv.closed) return;
+  var mine = (sv.votes && sv.votes[me]) || [];
+  var next;
+  if(mine.indexOf(optId)>=0){
+    next = mine.filter(function(x){ return x!==optId; });
+  }else{
+    next = sv.multi ? mine.concat([optId]) : [optId];
+  }
+  var patch = {};
+  patch["votes." + me] = next.length ? next : deleteField();
+  write("投票", function(){ return updateDoc(doc(db, "surveys", id), patch); });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1168,13 +1421,29 @@ function bindEvents(){
     // ここから先はログイン済みのときだけ
     if(session.status !== "ready") return;
 
-    if(act==="tab"){ state.tab = id; state.feedShowForm=false; state.boardShowForm=false; state.surveyShowForm=false; render(); }
+    if(act==="tab"){
+      state.tab = id;
+      state.feedShowForm=false; state.boardShowForm=false; state.surveyShowForm=false;
+      // タブを離れたらコメントの購読だけ落とす。
+      // 一覧の3本はログイン中つなぎっぱなし（張り直すと全件読み直しになるため）。
+      state.feedOpenComment = null;
+      detachComments();
+      render();
+    }
     else if(act==="feed-sort"){ state.feedSort = id; render(); }
     else if(act==="feed-open-form"){ state.feedShowForm = true; render(); }
     else if(act==="feed-cancel"){ state.feedShowForm = false; render(); }
     else if(act==="feed-submit"){ submitFeedPost(); }
     else if(act==="react"){ toggleReaction(id, el.getAttribute("data-emoji")); }
-    else if(act==="comment-toggle"){ state.feedOpenComment = state.feedOpenComment===id ? null : id; render(); }
+    else if(act==="comment-toggle"){
+      // コメントは投稿ごとのサブコレクション。開いている1件だけ購読する。
+      state.feedOpenComment = state.feedOpenComment===id ? null : id;
+      attachComments(state.feedOpenComment);
+      render();
+    }
+    else if(act==="legacy-download"){ downloadLegacy(); }
+    else if(act==="legacy-discard"){ discardLegacy(); }
+    else if(act==="notice-close"){ state.notice = ""; render(); }
     else if(act==="board-open-form"){ state.boardShowForm = true; render(); }
     else if(act==="board-cancel"){ state.boardShowForm = false; render(); }
     else if(act==="board-submit"){ submitBoardPost(); }
@@ -1212,6 +1481,7 @@ function bindEvents(){
     if(e.key==="Enter"){
       var text = el.value.trim();
       if(!text) return;
+      el.value = "";   // 送信は非同期。先に空にして二重送信を防ぐ
       submitComment(el.getAttribute("data-id"), text);
     }
   });
