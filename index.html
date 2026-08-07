@@ -204,6 +204,10 @@ body{margin:0;background:var(--page-bg);}
 .bar-fill{height:100%; border-radius:99px;}
 @media (prefers-reduced-motion:no-preference){ .bar-fill{transition:width 0.3s;} }
 .survey-total{margin-top:8px; text-align:right; font-size:12px; color:var(--text-4);}
+.survey-foot{margin-top:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.survey-total-text{font-size:12px; color:var(--text-4);}
+.survey-closed{color:var(--red); margin-left:8px; font-weight:700;}
+.survey-privacy{margin-top:8px; font-size:10px; color:var(--text-4); line-height:1.6;}
 
 .team-block{margin-bottom:14px;}
 .team-block-title{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em; position:sticky; left:0; background:var(--bg); display:inline-block; padding:6px 0 2px;}
@@ -361,6 +365,7 @@ var state = {
   boardShowForm:false,
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
   surveyShowForm:false,
+  surveyOpenStatus:null,    // 回答状況パネルを開いているアンケートのID
   kpiSel:null,
   busy:false,               // 送信中の二重送信よけ
   notice:"",                // 書き込み失敗などの通知
@@ -993,23 +998,24 @@ function memberChip(m, emphasize){
 }
 
 /**
- * 未読者を主、既読者を従として出す。
- * 11人規模では未読側のほうが短く、そのまま声かけの対象になるため。
+ * 「まだの人」を主、「済んだ人」を従として出す共通パネル。
+ * この規模ではまだの人のほうが短く、そのまま声かけの対象になるため、
+ * 常にそちらを上に置いて色を強める。
  */
-function renderReaderPanel(readers, unread){
+function renderPeoplePanel(cfg){
   var html = '<div class="reader-panel">';
-  if(unread.length){
+  if(cfg.pending.length){
     html += '<div class="reader-group">' +
-      '<div class="reader-label reader-label-unread">未読 '+unread.length+'名</div>' +
-      '<div class="reader-chips">' + unread.map(function(m){ return memberChip(m, true); }).join("") + '</div>' +
+      '<div class="reader-label reader-label-unread">'+esc(cfg.pendingLabel)+' '+cfg.pending.length+'名</div>' +
+      '<div class="reader-chips">' + cfg.pending.map(function(m){ return memberChip(m, true); }).join("") + '</div>' +
     '</div>';
   }else{
-    html += '<div class="reader-group"><div class="reader-label reader-label-done">✓ 全員が既読です</div></div>';
+    html += '<div class="reader-group"><div class="reader-label reader-label-done">✓ '+esc(cfg.allDoneText)+'</div></div>';
   }
-  if(readers.length){
+  if(cfg.done.length){
     html += '<div class="reader-group">' +
-      '<div class="reader-label">既読 '+readers.length+'名</div>' +
-      '<div class="reader-chips reader-chips-muted">' + readers.map(function(m){ return memberChip(m, false); }).join("") + '</div>' +
+      '<div class="reader-label">'+esc(cfg.doneLabel)+' '+cfg.done.length+'名</div>' +
+      '<div class="reader-chips reader-chips-muted">' + cfg.done.map(function(m){ return memberChip(m, false); }).join("") + '</div>' +
     '</div>';
   }
   return html + '</div>';
@@ -1041,7 +1047,11 @@ function renderBoardPost(post){
         '<span class="reader-caret">'+(isOpen?"▲":"▼")+'</span>' +
       '</button>' +
     '</div>' +
-    (isOpen ? renderReaderPanel(readers, unread) : "") +
+    (isOpen ? renderPeoplePanel({
+      pendingLabel:"未読", pending:unread,
+      doneLabel:"既読",   done:readers,
+      allDoneText:"全員が既読です"
+    }) : "") +
   '</div>';
 }
 
@@ -1099,7 +1109,6 @@ function renderSurveyCard(sv){
   var me = currentUserId();
   var c = voteCounts(sv);
   var myV = (sv.votes && sv.votes[me]) || [];
-  var answered = Object.keys(sv.votes || {}).length;
 
   var optsHtml = (sv.options || []).map(function(opt){
     var cnt = c.counts[opt.id] || 0;
@@ -1114,6 +1123,11 @@ function renderSurveyCard(sv){
     '</div>';
   }).join("");
 
+  // 回答状況。誰が何に入れたかは出さず、「回答したかどうか」だけを見る。
+  var done    = session.members.filter(function(m){ return !!(sv.votes && sv.votes[m.id]); });
+  var pending = session.members.filter(function(m){ return !(sv.votes && sv.votes[m.id]); });
+  var isOpen  = state.surveyOpenStatus === sv.id;
+
   return '<div class="card">' +
     '<div class="survey-head">' + avatar(sv.authorId,28) +
       '<div>' +
@@ -1122,7 +1136,20 @@ function renderSurveyCard(sv){
       '</div>' +
     '</div>' +
     optsHtml +
-    '<div class="survey-total">合計 '+c.total+'票 · 回答 '+answered+'名'+(sv.closed?'<span style="color:var(--red);margin-left:8px">終了</span>':'')+'</div>' +
+    '<div class="survey-foot">' +
+      '<span class="survey-total-text">合計 '+c.total+'票'+(sv.closed?'<span class="survey-closed">終了</span>':'')+'</span>' +
+      '<button class="reader-toggle'+(isOpen?" reader-toggle-open":"")+'" data-act="survey-status" data-id="'+sv.id+'" aria-expanded="'+(isOpen?"true":"false")+'">' +
+        '回答 '+done.length+'名' +
+        (pending.length ? '<span class="reader-toggle-unread">未回答 '+pending.length+'</span>' : '') +
+        '<span class="reader-caret">'+(isOpen?"▲":"▼")+'</span>' +
+      '</button>' +
+    '</div>' +
+    (isOpen ? renderPeoplePanel({
+      pendingLabel:"未回答", pending:pending,
+      doneLabel:"回答済み", done:done,
+      allDoneText:"全員が回答済みです"
+    }) : "") +
+    (isOpen ? '<div class="survey-privacy">※ 誰がどの選択肢を選んだかは表示しません</div>' : "") +
   '</div>';
 }
 
@@ -1523,6 +1550,10 @@ function bindEvents(){
       container.appendChild(inp);
     }
     else if(act==="survey-submit"){ submitSurvey(); }
+    else if(act==="survey-status"){
+      state.surveyOpenStatus = state.surveyOpenStatus===id ? null : id;
+      render();
+    }
     else if(act==="vote"){ toggleVote(id, el.getAttribute("data-opt")); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
