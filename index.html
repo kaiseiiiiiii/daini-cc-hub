@@ -157,7 +157,10 @@ body{margin:0;background:var(--page-bg);}
 .post-to{font-weight:600; font-size:13px; color:var(--accent);}
 .post-time{color:var(--text-4); font-size:11px; margin-top:2px;}
 .post-text{font-size:14px; color:var(--text-2); line-height:1.6; margin-bottom:10px; padding-left:48px; white-space:pre-wrap; word-break:break-word;}
-.post-actions{display:flex; gap:5px; flex-wrap:wrap; padding-left:48px;}
+.post-actions{display:flex; gap:5px; flex-wrap:wrap; padding-left:48px; position:relative;}
+.react-peek{position:absolute; bottom:calc(100% + 6px); left:48px; max-width:calc(100% - 48px); z-index:20;
+  background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow);
+  padding:7px 10px; font-size:11px; color:var(--text-2); line-height:1.7; word-break:break-word;}
 .react-btn{background:transparent; border:1px solid var(--border); border-radius:99px; padding:3px 9px; font-size:13px; color:var(--text-3); cursor:pointer; display:flex; align-items:center; gap:3px; font-family:inherit;}
 .react-btn.react-mine{background:color-mix(in srgb, var(--accent) 12%, transparent); border-color:color-mix(in srgb, var(--accent) 40%, transparent); color:var(--accent);}
 .react-count{font-size:11px;}
@@ -917,9 +920,18 @@ function renderFeedPost(post){
   var isOpen = state.feedOpenComment===post.id;
 
   var reactHtml = REACTIONS.map(function(emoji){
-    var cnt = (byEmoji[emoji]||[]).length;
+    var who = (byEmoji[emoji]||[]);
+    var cnt = who.length;
     var isMine = mine.indexOf(emoji)>=0;
-    return '<button class="react-btn'+(isMine?" react-mine":"")+'" data-act="react" data-id="'+post.id+'" data-emoji="'+emoji+'">'+emoji+(cnt>0?'<span class="react-count">'+cnt+'</span>':'')+'</button>';
+    // 押した人の名前は属性に持たせておき、ホバー／長押し時に
+    // DOM を直接書き換えて出す（後述のとおり render() は呼ばない）
+    var names = who.map(function(mid){ return getM(mid).displayName; }).join("、");
+    return '<button class="react-btn'+(isMine?" react-mine":"")+'"' +
+      ' data-act="react" data-id="'+post.id+'" data-emoji="'+emoji+'"' +
+      ' data-people="'+esc(names)+'"' +
+      ' aria-label="'+emoji+' '+cnt+'人'+(names?'：'+esc(names):'')+'">' +
+      emoji + (cnt>0?'<span class="react-count">'+cnt+'</span>':'') +
+    '</button>';
   }).join("");
 
   var commentsHtml = "";
@@ -949,6 +961,7 @@ function renderFeedPost(post){
     '<div class="post-text">'+esc(post.text)+'</div>' +
     '<div class="post-actions">' + reactHtml +
       '<button class="comment-toggle-btn" data-act="comment-toggle" data-id="'+post.id+'">💬 '+(post.commentCount||0)+'</button>' +
+      '<div class="react-peek" hidden></div>' +
     '</div>' +
     commentsHtml +
   '</div>';
@@ -1494,8 +1507,67 @@ function toggleVote(id, optId){
 // ══════════════════════════════════════════════════════════════════
 //  EVENTS
 // ══════════════════════════════════════════════════════════════════
+// ── リアクション者の表示 ─────────────────────────────────────
+// PC はホバー、スマホは長押しで、押した人の名前を出す。
+//
+// ここだけは render() を呼ばずに DOM を直接書き換える。
+// 画面全体を innerHTML で作り直す作りなので、hover で再描画すると
+// カーソル下の要素が消えて mouseout → 再描画 → mouseover …
+// と無限に往復してしまうため。
+var peekTimer = null;
+var suppressReactClick = false;
+
+function peekBoxOf(btn){
+  var row = btn.closest(".post-actions");
+  return row ? row.querySelector(".react-peek") : null;
+}
+function showPeek(btn){
+  hidePeek();                       // 直前の表示を必ず消してから出す
+  var people = btn.getAttribute("data-people");
+  if(!people) return;               // まだ誰も押していない絵文字なら何も出さない
+  var box = peekBoxOf(btn);
+  if(!box) return;
+  box.textContent = btn.getAttribute("data-emoji") + "  " + people;
+  box.hidden = false;
+}
+function hidePeek(){
+  var boxes = document.querySelectorAll(".react-peek");
+  Array.prototype.forEach.call(boxes, function(b){ b.hidden = true; });
+}
+
 function bindEvents(){
   var app = document.getElementById("app");
+
+  // ---- PC: ホバー ----
+  app.addEventListener("mouseover", function(e){
+    if(!e.target.closest) return;
+    var btn = e.target.closest(".react-btn");
+    if(btn) showPeek(btn); else hidePeek();
+  });
+  app.addEventListener("mouseleave", hidePeek);
+
+  // ---- スマホ: 長押し ----
+  app.addEventListener("touchstart", function(e){
+    if(!e.target.closest) return;
+    // 新しい操作が始まったので、前回の長押しの痕跡を必ず消す。
+    // ここでリセットしないと、長押しのあと別の場所を触ったときに
+    // 打ち消しフラグが残り、次のリアクションが1回無視される。
+    clearTimeout(peekTimer);
+    suppressReactClick = false;
+    hidePeek();
+    var btn = e.target.closest(".react-btn");
+    if(!btn) return;
+    peekTimer = setTimeout(function(){
+      // 長押しと判定。このあと発火する click は打ち消す
+      // （名前を見ようとしただけでリアクションが付くのを防ぐ）
+      suppressReactClick = true;
+      showPeek(btn);
+    }, 450);
+  }, { passive:true });
+
+  ["touchend","touchmove","touchcancel"].forEach(function(ev){
+    app.addEventListener(ev, function(){ clearTimeout(peekTimer); }, { passive:true });
+  });
 
   app.addEventListener("click", function(e){
     var el = e.target.closest("[data-act]");
@@ -1522,7 +1594,10 @@ function bindEvents(){
     else if(act==="feed-open-form"){ state.feedShowForm = true; render(); }
     else if(act==="feed-cancel"){ state.feedShowForm = false; render(); }
     else if(act==="feed-submit"){ submitFeedPost(); }
-    else if(act==="react"){ toggleReaction(id, el.getAttribute("data-emoji")); }
+    else if(act==="react"){
+      if(suppressReactClick){ suppressReactClick = false; return; }  // 長押し直後
+      toggleReaction(id, el.getAttribute("data-emoji"));
+    }
     else if(act==="comment-toggle"){
       // コメントは投稿ごとのサブコレクション。開いている1件だけ購読する。
       state.feedOpenComment = state.feedOpenComment===id ? null : id;
