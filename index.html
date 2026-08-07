@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第二CC Hub</title>
+<style>
+:root{
+  --accent:#3B82F6; --accent-fg:#ffffff;
+  --bg:#EEF1F6; --page-bg:#EEF1F6; --surface:#ffffff; --border:#E5E7EB;
+  --text:#111827; --text-2:#4B5563; --text-3:#6B7280; --text-4:#9CA3AF;
+  --input-bg:#F9FAFB; --shadow:0 4px 24px rgba(15,23,42,0.10);
+  --mgmt-bg:#FEF3C7; --mgmt-c:#92400E;
+  --teamA-bg:#DBEAFE; --teamA-c:#1E40AF;
+  --teamB-bg:#EDE9FE; --teamB-c:#4C1D95;
+  --green:#10B981; --green-bg:#D1FAE5; --green-c:#065F46;
+  --amber:#F59E0B; --amber-bg:#FEF3C7; --amber-c:#78350F;
+  --gray-dot:#9CA3AF; --gray-bg:#F3F4F6; --gray-c:#6B7280;
+  --blue:#3B82F6; --purple:#8B5CF6; --red:#EF4444;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0A0E17; --page-bg:#0A0E17; --surface:#141A28; --border:#252E42;
+    --text:#E7EAF0; --text-2:#B7C0D1; --text-3:#8A97AE; --text-4:#5E6B85;
+    --input-bg:#0F1420; --shadow:0 4px 28px rgba(0,0,0,0.5);
+    --mgmt-bg:#3A2E10; --mgmt-c:#FBBF24;
+    --teamA-bg:#132241; --teamA-c:#93C5FD;
+    --teamB-bg:#241B3D; --teamB-c:#C4B5FD;
+    --green-bg:#0E2A21; --green-c:#34D399;
+    --amber-bg:#2E2410; --amber-c:#FBBF24;
+    --gray-bg:#1B2233; --gray-c:#9AA6BC;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0A0E17; --page-bg:#0A0E17; --surface:#141A28; --border:#252E42;
+  --text:#E7EAF0; --text-2:#B7C0D1; --text-3:#8A97AE; --text-4:#5E6B85;
+  --input-bg:#0F1420; --shadow:0 4px 28px rgba(0,0,0,0.5);
+  --mgmt-bg:#3A2E10; --mgmt-c:#FBBF24;
+  --teamA-bg:#132241; --teamA-c:#93C5FD;
+  --teamB-bg:#241B3D; --teamB-c:#C4B5FD;
+  --green-bg:#0E2A21; --green-c:#34D399;
+  --amber-bg:#2E2410; --amber-c:#FBBF24;
+  --gray-bg:#1B2233; --gray-c:#9AA6BC;
+}
+:root[data-theme="light"]{
+  --bg:#EEF1F6; --page-bg:#EEF1F6; --surface:#ffffff; --border:#E5E7EB;
+  --text:#111827; --text-2:#4B5563; --text-3:#6B7280; --text-4:#9CA3AF;
+  --input-bg:#F9FAFB; --shadow:0 4px 24px rgba(15,23,42,0.10);
+  --mgmt-bg:#FEF3C7; --mgmt-c:#92400E;
+  --teamA-bg:#DBEAFE; --teamA-c:#1E40AF;
+  --teamB-bg:#EDE9FE; --teamB-c:#4C1D95;
+  --green-bg:#D1FAE5; --green-c:#065F46;
+  --amber-bg:#FEF3C7; --amber-c:#78350F;
+  --gray-bg:#F3F4F6; --gray-c:#6B7280;
+}
+
+*{box-sizing:border-box;}
+body{margin:0;background:var(--page-bg);}
+.shell-outer{
+  display:flex; justify-content:center; align-items:stretch;
+  min-height:100vh; background:var(--page-bg);
+  font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  color:var(--text);
+}
+.app{
+  width:100%; max-width:640px; display:flex; flex-direction:column;
+  height:100vh; background:var(--bg); overflow:hidden;
+}
+@media (min-width:641px){
+  .shell-outer{padding:24px 16px;}
+  .app{height:calc(100vh - 48px); max-height:900px; border-radius:16px; box-shadow:var(--shadow); border:1px solid var(--border);}
+}
+
+.header{padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0;}
+.header-info{flex:1; min-width:0;}
+.header-title{font-weight:700; font-size:16px; color:var(--text);}
+.header-online{font-size:12px; color:var(--green); font-weight:600; margin-top:2px;}
+.header-me{display:flex; align-items:center; gap:8px; flex-shrink:0;}
+.header-me-text{min-width:0; text-align:right;}
+.header-me-name{font-size:13px; font-weight:700; color:var(--text); white-space:nowrap;}
+.header-me-role{font-size:10px; color:var(--amber-c); background:var(--amber-bg); border-radius:99px; padding:0 6px; display:inline-block; margin-top:1px;}
+.signout-btn{background:transparent; border:1px solid var(--border); border-radius:8px; padding:5px 8px; font-size:11px; color:var(--text-3); cursor:pointer; font-family:inherit; white-space:nowrap;}
+
+.content{flex:1; overflow-y:auto;}
+.tab-pad{padding:12px 16px 24px;}
+.loading{display:flex; justify-content:center; align-items:center; height:100%; color:var(--text-4); font-size:14px;}
+
+/* ── 認証まわりの画面 ───────────────────────────── */
+.auth-wrap{flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:24px; text-align:center; gap:14px;}
+.auth-logo{font-size:34px;}
+.auth-title{font-size:19px; font-weight:700; color:var(--text);}
+.auth-desc{font-size:13px; color:var(--text-3); line-height:1.7; max-width:340px;}
+.google-btn{display:inline-flex; align-items:center; justify-content:center; gap:10px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:12px 20px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; box-shadow:var(--shadow); min-width:260px;}
+.google-btn:disabled{opacity:0.6; cursor:default;}
+.google-mark{width:18px; height:18px; flex-shrink:0;}
+.auth-note{font-size:11px; color:var(--text-4); line-height:1.7; max-width:340px;}
+.auth-alert{background:color-mix(in srgb, var(--red) 12%, transparent); border:1px solid color-mix(in srgb, var(--red) 32%, transparent); color:var(--red); border-radius:10px; padding:12px 14px; font-size:13px; line-height:1.7; max-width:380px; text-align:left;}
+.auth-alert-title{font-weight:700; margin-bottom:4px;}
+.auth-mail{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; word-break:break-all;}
+.auth-setup{background:var(--amber-bg); border:1px solid color-mix(in srgb, var(--amber) 40%, transparent); color:var(--amber-c); border-radius:10px; padding:14px; font-size:12px; line-height:1.8; max-width:420px; text-align:left;}
+.auth-setup code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; background:color-mix(in srgb, var(--amber) 18%, transparent); border-radius:4px; padding:1px 4px;}
+
+.nav{display:flex; background:var(--surface); border-top:1px solid var(--border); flex-shrink:0;}
+.nav-btn{flex:1; padding:8px 4px; background:transparent; border:none; color:var(--text-4); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; position:relative; font-family:inherit;}
+.nav-btn.active{color:var(--accent);}
+.nav-icon{font-size:18px;}
+.nav-label{font-size:11px;}
+.nav-btn.active .nav-label{font-weight:700;}
+.nav-badge{position:absolute; top:6px; right:16%; background:var(--red); color:#fff; border-radius:99px; font-size:11px; padding:1px 5px; font-weight:700;}
+.nav-btn.active::after{content:""; position:absolute; bottom:0; left:20%; right:20%; height:2px; background:var(--accent); border-radius:99px;}
+
+.card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:10px;}
+.input{background:var(--input-bg); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; color:var(--text); outline:none; width:100%; font-family:inherit;}
+.input:focus-visible, .chip:focus-visible, button:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+.textarea{resize:vertical;}
+.form-card{margin-bottom:12px;}
+.form-col{display:flex; flex-direction:column; gap:8px;}
+.form-col-tight{display:flex; flex-direction:column; gap:8px;}
+.form-row{display:flex; gap:8px;}
+.form-row-center{align-items:center;}
+.input-strong{font-weight:600;}
+.checkbox-label{display:flex; align-items:center; gap:4px; font-size:12px; color:var(--text-3); cursor:pointer;}
+.checkbox-label.nowrap{white-space:nowrap;}
+.btn-primary{flex:1; background:var(--accent); color:var(--accent-fg); border:none; border-radius:8px; padding:9px; font-weight:700; font-size:13px; cursor:pointer; font-family:inherit;}
+.btn-primary.full{width:100%;}
+.btn-ghost{padding:9px 14px; background:transparent; border:1px solid var(--border); border-radius:8px; color:var(--text-3); font-size:13px; cursor:pointer; font-family:inherit;}
+.btn-dash{background:transparent; border:1px dashed var(--border); border-radius:8px; padding:6px; color:var(--text-4); font-size:12px; cursor:pointer; font-family:inherit;}
+.dashed-trigger{width:100%; padding:10px; background:var(--input-bg); border:1px dashed var(--border); border-radius:12px; margin-bottom:12px; color:var(--text-3); font-weight:600; cursor:pointer; font-family:inherit; font-size:13px;}
+
+.empty{padding:28px 16px; text-align:center; color:var(--text-4); font-size:13px; line-height:1.9;}
+.empty-icon{font-size:28px; display:block; margin-bottom:6px;}
+.empty-sub{font-size:11px; color:var(--text-4); margin-top:6px;}
+
+.sortbar{display:flex; gap:6px; margin-bottom:12px;}
+.chip{padding:4px 12px; border-radius:99px; font-size:12px; font-weight:600; background:transparent; color:var(--text-3); border:1px solid var(--border); cursor:pointer; white-space:nowrap; font-family:inherit;}
+.chip-active{background:var(--accent); color:#fff; border-color:var(--accent);}
+.kpi-filter{display:flex; gap:6px; overflow-x:auto; margin-bottom:14px; padding-bottom:2px;}
+
+.composer-trigger{width:100%; display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--input-bg); border:1px solid var(--border); border-radius:12px; cursor:pointer; margin-bottom:12px; text-align:left; font-family:inherit;}
+.composer-placeholder{color:var(--text-4); font-size:13px;}
+.composer-cta{margin-left:auto; color:var(--accent); font-size:12px; font-weight:600; white-space:nowrap;}
+
+.avatar{border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:600; flex-shrink:0; border:1px solid rgba(0,0,0,0.06);}
+.team-mgmt{background:var(--mgmt-bg); color:var(--mgmt-c);}
+.team-a{background:var(--teamA-bg); color:var(--teamA-c);}
+.team-b{background:var(--teamB-bg); color:var(--teamB-c);}
+.team-none{background:var(--gray-bg); color:var(--gray-c);}
+
+.badge{background:color-mix(in srgb, var(--bc) 16%, transparent); color:var(--bc); border:1px solid color-mix(in srgb, var(--bc) 32%, transparent); border-radius:99px; padding:2px 8px; font-size:11px; font-weight:600; white-space:nowrap;}
+
+.post-card{}
+.post-head{display:flex; gap:10px; margin-bottom:8px;}
+.post-head-info{flex:1; min-width:0;}
+.post-head-line{display:flex; flex-wrap:wrap; align-items:center; gap:6px;}
+.post-name{font-weight:700; font-size:14px;}
+.post-arrow{color:var(--text-4); font-size:12px;}
+.post-to{font-weight:600; font-size:13px; color:var(--accent);}
+.post-time{color:var(--text-4); font-size:11px; margin-top:2px;}
+.post-text{font-size:14px; color:var(--text-2); line-height:1.6; margin-bottom:10px; padding-left:48px; white-space:pre-wrap; word-break:break-word;}
+.post-actions{display:flex; gap:5px; flex-wrap:wrap; padding-left:48px;}
+.react-btn{background:transparent; border:1px solid var(--border); border-radius:99px; padding:3px 9px; font-size:13px; color:var(--text-3); cursor:pointer; display:flex; align-items:center; gap:3px; font-family:inherit;}
+.react-btn.react-mine{background:color-mix(in srgb, var(--accent) 12%, transparent); border-color:color-mix(in srgb, var(--accent) 40%, transparent); color:var(--accent);}
+.react-count{font-size:11px;}
+.comment-toggle-btn{background:transparent; border:1px solid var(--border); border-radius:99px; padding:3px 9px; font-size:12px; color:var(--text-4); margin-left:auto; cursor:pointer; font-family:inherit;}
+.comments{margin-top:10px; padding-left:48px;}
+.comment-row{display:flex; gap:8px; margin-bottom:6px;}
+.comment-bubble{background:var(--input-bg); border-radius:8px; padding:5px 9px; font-size:12px;}
+.comment-name{font-weight:700;}
+.comment-text{color:var(--text-2);}
+.comment-input-row{display:flex; gap:8px; margin-top:6px; align-items:center;}
+.comment-input{font-size:12px; padding:5px 9px;}
+
+.board-card{cursor:default;}
+.board-meta{display:flex; align-items:center; gap:6px; margin-bottom:6px;}
+.board-time{margin-left:auto; color:var(--text-4); font-size:11px;}
+.board-title{font-weight:700; font-size:15px; color:var(--text); margin-bottom:6px;}
+.board-body{font-size:13px; color:var(--text-2); line-height:1.6; margin-bottom:8px; white-space:pre-wrap; word-break:break-word;}
+.board-footer{display:flex; align-items:center; gap:6px;}
+.board-footer-text{font-size:11px; color:var(--text-4);}
+
+.survey-head{display:flex; gap:8px; margin-bottom:10px; align-items:flex-start;}
+.survey-title{font-weight:700; font-size:14px; color:var(--text);}
+.survey-meta{font-size:11px; color:var(--text-4);}
+.survey-opt-row{margin-bottom:8px; cursor:pointer;}
+.survey-opt-line{display:flex; justify-content:space-between; margin-bottom:3px;}
+.survey-opt-label{font-size:13px; color:var(--text-2);}
+.survey-opt-label.voted{color:var(--accent); font-weight:700;}
+.survey-opt-count{font-size:12px; color:var(--text-4);}
+.bar-bg{height:6px; background:var(--input-bg); border-radius:99px; overflow:hidden;}
+.bar-fill{height:100%; border-radius:99px;}
+@media (prefers-reduced-motion:no-preference){ .bar-fill{transition:width 0.3s;} }
+.survey-total{margin-top:8px; text-align:right; font-size:12px; color:var(--text-4);}
+
+.team-block{margin-bottom:14px;}
+.team-block-title{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em; position:sticky; left:0; background:var(--bg); display:inline-block; padding:6px 0 2px;}
+
+.shift-note{font-size:12px; color:var(--text-4); margin-bottom:10px;}
+.shift-scroll{overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface);}
+.shift-row{display:flex; border-bottom:1px solid var(--border);}
+.shift-row:last-child{border-bottom:none;}
+.shift-header-row{background:var(--input-bg); position:sticky; top:0; z-index:2;}
+.shift-name-cell{position:sticky; left:0; z-index:1; background:var(--surface); width:92px; flex-shrink:0; display:flex; align-items:center; gap:6px; padding:6px 8px; font-size:12px; font-weight:600; color:var(--text); border-right:1px solid var(--border); overflow:hidden; white-space:nowrap;}
+.shift-header-row .shift-name-cell{background:var(--input-bg); font-weight:700; color:var(--text-3);}
+.shift-name-head{justify-content:center;}
+.shift-days{display:flex;}
+.shift-cell{width:28px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; padding:7px 0; color:var(--text-3); border-right:1px solid var(--border);}
+.shift-date-head{flex-direction:column; font-size:10px; line-height:1.3; font-weight:700; color:var(--text-4); gap:1px;}
+.shift-today{background:color-mix(in srgb, var(--accent) 12%, transparent);}
+.shift-early{color:var(--blue); font-weight:700;}
+.shift-late{color:var(--purple); font-weight:700;}
+.shift-other{color:var(--amber); font-weight:600; font-size:9px;}
+.shift-off{color:var(--border);}
+.shift-legend{display:flex; gap:16px; margin-top:10px; font-size:11px; color:var(--text-4);}
+.legend-item{display:flex; align-items:center; gap:5px;}
+.legend-dot{display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:var(--input-bg); font-size:10px; font-weight:700;}
+
+.kpi-grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-bottom:14px;}
+.kpi-card{padding:10px 12px; margin-bottom:0;}
+.kpi-label{font-size:11px; color:var(--text-4); margin-bottom:4px;}
+.kpi-value-row{display:flex; align-items:baseline; gap:3px; margin-bottom:6px;}
+.kpi-value{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;}
+.kpi-unit{font-size:11px; color:var(--text-4);}
+.kpi-target{margin-left:auto; font-size:11px; color:var(--text-4); white-space:nowrap;}
+.kpi-bar-bg{height:4px; background:var(--input-bg); border-radius:99px;}
+.kpi-bar{height:100%; border-radius:99px;}
+.section-label{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em;}
+.rank-card{padding:10px 12px; cursor:pointer;}
+.rank-row{display:flex; align-items:center; gap:10px;}
+.rank-num{width:22px; text-align:center; font-weight:700; font-size:14px; font-variant-numeric:tabular-nums;}
+.rank-info{flex:1;}
+.rank-name{font-weight:600; font-size:13px; color:var(--text);}
+.rank-bar-bg{height:4px; background:var(--input-bg); border-radius:99px; margin-top:4px;}
+.rank-bar{height:100%; border-radius:99px;}
+.rank-pct-col{text-align:right;}
+.rank-pct{font-weight:700; font-size:15px; font-variant-numeric:tabular-nums;}
+.rank-pct-label{font-size:11px; color:var(--text-4);}
+
+.notice{margin:10px 16px 0; padding:8px 12px; background:color-mix(in srgb, var(--amber) 12%, transparent); border:1px solid color-mix(in srgb, var(--amber) 30%, transparent); border-radius:8px; font-size:11px; color:var(--amber-c); line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div class="shell-outer">
+  <div class="app" id="app"></div>
+</div>
+
+<script type="module">
+"use strict";
+
+import { FIREBASE_CONFIG, SIGN_IN_HINT_DOMAIN } from "./firebase-config.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, collection, getDocs, query, orderBy
+} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+// ── 静的な定義（実データ・個人情報は一切含めない） ──────────────
+// メンバー・チームのマスタは Firestore から取得する。
+// 公開リポジトリに社員のメールアドレスや氏名を置かないため。
+var REACTIONS = ["👍","🔥","💎","🎉","💪"];
+var POST_TYPES = ["Thanks","お知らせ","雑談","質問","報告"];
+var VALUES = ["🤝 チームワーク","💰 商売を楽しむ","🔥 MVVを体現","💎 主体性","✨ 凡事徹底"];
+var KPI_DEF = {
+  call_rate:{ l:"通話率", t:45, u:"%", g:"high" },
+  ancillary_rate:{ l:"付帯率", t:25, u:"%", g:"low" },
+  wait_rate:{ l:"待機率", t:10, u:"%", g:"low" },
+  work_rate:{ l:"作業率", t:10, u:"%", g:"low" },
+  avg_call:{ l:"平均通話", t:4, u:"分", g:"target" },
+  dispatch_rate:{ l:"手配率", t:35, u:"%", g:"high" },
+};
+var CT = { Thanks:"green", お知らせ:"blue", 雑談:"purple", 質問:"amber", 報告:"blue", 重要:"red", 連絡:"blue" };
+var TEAM_COLOR_CLASS = { mgmt:"team-mgmt", a:"team-a", b:"team-b" };
+
+// ══════════════════════════════════════════════════════════════════
+//  セッション — 現在のユーザーはここだけが持つ
+//  以降の機能はすべて currentUser() / currentUserId() / isAdmin() を参照する。
+//  ここ以外に「今どのメンバーとして操作しているか」の情報源を作らないこと。
+// ══════════════════════════════════════════════════════════════════
+var session = {
+  status: "loading",   // config | loading | signedOut | denied | error | ready
+  authUser: null,      // Firebase Auth のユーザー
+  member: null,        // メンバーマスタ上の自分
+  members: [],         // メンバー一覧（表示名の解決用）
+  teams: [],           // チーム一覧
+  deniedEmail: "",
+  errorMessage: "",
+  signingIn: false
+};
+
+/** 現在のメンバー（未ログイン・許可リスト外なら null） */
+function currentUser(){ return session.member; }
+/** 現在のメンバーID（例: "kaneko"）。未ログインなら null */
+function currentUserId(){ return session.member ? session.member.id : null; }
+/** 管理者権限を持つか（Phase 4 の削除権限で使用） */
+function isAdmin(){ return !!session.member && session.member.role === "admin"; }
+
+var auth = null;
+var db = null;
+
+// ── ユーティリティ ────────────────────────────────────────────
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+function tAgo(ts){ var d=Date.now()-ts; if(d<60000) return "たった今"; if(d<3600000) return Math.floor(d/60000)+"分前"; if(d<86400000) return Math.floor(d/3600000)+"時間前"; return Math.floor(d/86400000)+"日前"; }
+function reactCount(post){ var t=0; for(var k in post.reactions) t += post.reactions[k].length; return t; }
+function badge(text,colorVar){ return '<span class="badge" style="--bc:var(--'+colorVar+')">'+esc(text)+'</span>'; }
+function todayDateLabel(){ var d=new Date(); return (d.getMonth()+1)+"/"+d.getDate(); }
+function currentMonthId(){ var d=new Date(); return d.getFullYear()+"_"+(d.getMonth()+1); }
+
+function getM(id){
+  for(var i=0;i<session.members.length;i++) if(session.members[i].id===id) return session.members[i];
+  return { id:id, displayName:"?", initial:"?", team:null };
+}
+function getTeam(teamId){
+  for(var i=0;i<session.teams.length;i++) if(session.teams[i].id===teamId) return session.teams[i];
+  return null;
+}
+function teamClass(teamId){
+  var t = getTeam(teamId);
+  return (t && TEAM_COLOR_CLASS[t.colorKey]) || "team-none";
+}
+function avatar(id,size){
+  size = size || 36;
+  var m = getM(id);
+  return '<div class="avatar '+teamClass(m.team)+'" style="width:'+size+'px;height:'+size+'px;font-size:'+Math.round(size*0.38)+'px">'+esc(m.initial)+'</div>';
+}
+
+// ── ローカル状態（Phase 2 で Firestore へ移行） ──────────────
+var state = {
+  tab:"feed",
+  feed:[], board:[], surveys:[],
+  shift:null, metrics:null, syncStatus:null,
+  feedShowForm:false, feedSort:"new", feedOpenComment:null,
+  boardShowForm:false,
+  surveyShowForm:false,
+  kpiSel:null,
+};
+
+function persist(key){ try{ localStorage.setItem("cc2:"+key, JSON.stringify(state[key])); }catch(e){} }
+function loadLocalData(){
+  // Phase 1 時点では投稿系のみローカル保存のまま（Phase 2 で Firestore へ移行）。
+  // 初期サンプルデータは廃止した（実在のメンバー名を含む文面だったため）。
+  try{
+    var f = localStorage.getItem("cc2:feed");
+    var b = localStorage.getItem("cc2:board");
+    var s = localStorage.getItem("cc2:surveys");
+    state.feed = f ? JSON.parse(f) : [];
+    state.board = b ? JSON.parse(b) : [];
+    state.surveys = s ? JSON.parse(s) : [];
+  }catch(e){
+    state.feed = []; state.board = []; state.surveys = [];
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  認証
+// ══════════════════════════════════════════════════════════════════
+function configLooksUnset(){
+  return !FIREBASE_CONFIG
+      || !FIREBASE_CONFIG.apiKey
+      || String(FIREBASE_CONFIG.apiKey).indexOf("PASTE_") === 0;
+}
+
+function boot(){
+  bindEvents();
+  if(configLooksUnset()){
+    session.status = "config";
+    render();
+    return;
+  }
+  var fbApp = initializeApp(FIREBASE_CONFIG);
+  auth = getAuth(fbApp);
+  db = getFirestore(fbApp);
+  auth.useDeviceLanguage();
+  onAuthStateChanged(auth, onAuthChanged);
+  render();
+}
+
+async function doSignIn(){
+  if(session.signingIn || !auth) return;
+  session.signingIn = true;
+  session.deniedEmail = "";
+  session.errorMessage = "";
+  if(session.status === "denied") session.status = "signedOut";
+  render();
+  try{
+    var provider = new GoogleAuthProvider();
+    // 毎回アカウント選択を出す。共用PCで前の人のアカウントに
+    // そのまま入ってしまうのを防ぐため。
+    var params = { prompt: "select_account" };
+    if(SIGN_IN_HINT_DOMAIN) params.hd = SIGN_IN_HINT_DOMAIN;
+    provider.setCustomParameters(params);
+    await signInWithPopup(auth, provider);
+  }catch(e){
+    var code = e && e.code ? e.code : "";
+    if(code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request"){
+      // ユーザーが自分で閉じただけなので何も出さない
+    }else if(code === "auth/popup-blocked"){
+      session.errorMessage = "ポップアップがブロックされました。ブラウザの設定でこのサイトのポップアップを許可してください。";
+    }else{
+      session.errorMessage = "ログインに失敗しました（" + (code || "unknown") + "）";
+    }
+    render();
+  }finally{
+    session.signingIn = false;
+    render();
+  }
+}
+
+async function doSignOut(){
+  if(!auth) return;
+  session.deniedEmail = "";
+  session.errorMessage = "";
+  await signOut(auth);
+}
+
+async function onAuthChanged(user){
+  if(!user){
+    session.authUser = null;
+    session.member = null;
+    session.members = [];
+    session.teams = [];
+    // 「利用権限がありません」を表示した直後はサインアウトが走るが、
+    // その通知でログイン画面に戻してしまうとメッセージが読めないため、
+    // denied のときだけは状態を維持する。
+    if(session.status !== "denied") session.status = "signedOut";
+    render();
+    return;
+  }
+
+  session.authUser = user;
+  session.status = "loading";
+  render();
+
+  var email = String(user.email || "").toLowerCase();
+  try{
+    // 許可リストの突き合わせ。
+    // セキュリティルール上、ここで読めるのは「自分宛の1件」だけ。
+    var snap = await getDoc(doc(db, "members", email));
+    if(!snap.exists() || snap.data().active !== true){
+      await denyAccess(user.email || "");
+      return;
+    }
+    var m = snap.data();
+    session.member = {
+      id: m.memberId,
+      email: email,
+      displayName: m.displayName || m.fullName || "?",
+      fullName: m.fullName || "",
+      initial: m.initial || String(m.displayName || "?").charAt(0),
+      team: m.team || null,
+      jobTitle: m.jobTitle || "",
+      role: m.role === "admin" ? "admin" : "member",
+      order: m.order || 0
+    };
+    await loadMasters();
+    await loadSyncedData();
+    loadLocalData();
+    session.status = "ready";
+    render();
+  }catch(e){
+    if(e && e.code === "permission-denied"){
+      await denyAccess(user.email || "");
+      return;
+    }
+    session.errorMessage = (e && e.message) ? e.message : String(e);
+    session.status = "error";
+    render();
+  }
+}
+
+async function denyAccess(email){
+  session.deniedEmail = email;
+  session.member = null;
+  session.status = "denied";
+  render();
+  try{ await signOut(auth); }catch(e){}
+  render();
+}
+
+async function loadMasters(){
+  var tsnap = await getDocs(query(collection(db, "teams"), orderBy("order")));
+  session.teams = tsnap.docs.map(function(d){
+    var v = d.data();
+    return { id:d.id, label:v.label || d.id, order:v.order || 0, colorKey:v.colorKey || "none" };
+  });
+
+  var msnap = await getDocs(query(collection(db, "members"), orderBy("order")));
+  session.members = msnap.docs.map(function(d){
+    var v = d.data();
+    return {
+      id: v.memberId,
+      displayName: v.displayName || v.fullName || "?",
+      fullName: v.fullName || "",
+      initial: v.initial || String(v.displayName || "?").charAt(0),
+      team: v.team || null,
+      jobTitle: v.jobTitle || "",
+      role: v.role === "admin" ? "admin" : "member",
+      order: v.order || 0,
+      active: v.active !== false
+    };
+  }).filter(function(m){ return m.active; });
+}
+
+// シフト・実績はスプレッドシートから GAS が書き込む（Phase 5）。
+// Phase 1 時点ではまだ空なので、読めなくても落ちないようにしておく。
+async function loadSyncedData(){
+  try{
+    var sh = await getDoc(doc(db, "shifts", currentMonthId()));
+    state.shift = sh.exists() ? sh.data() : null;
+  }catch(e){ state.shift = null; }
+  try{
+    var mt = await getDoc(doc(db, "metrics", "latest"));
+    state.metrics = mt.exists() ? mt.data() : null;
+  }catch(e){ state.metrics = null; }
+  try{
+    var ss = await getDoc(doc(db, "syncStatus", "spreadsheet"));
+    state.syncStatus = ss.exists() ? ss.data() : null;
+  }catch(e){ state.syncStatus = null; }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RENDER: 認証まわりの画面
+// ══════════════════════════════════════════════════════════════════
+var GOOGLE_MARK =
+  '<svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true">' +
+  '<path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.6 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.3 17.7 9.5 24 9.5z"/>' +
+  '<path fill="#4285F4" d="M46.9 24.5c0-1.6-.1-3.2-.4-4.7H24v9h12.9c-.6 3-2.3 5.6-4.9 7.3l7.6 5.9c4.4-4.1 7.3-10.2 7.3-17.5z"/>' +
+  '<path fill="#FBBC05" d="M10.5 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.3 0 20 0 24s1 7.7 2.6 10.8l7.9-6.2z"/>' +
+  '<path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.5l-7.6-5.9c-2.1 1.4-4.8 2.3-7.7 2.3-6.3 0-11.6-3.8-13.5-9.3l-7.9 6.2C6.5 42.6 14.6 48 24 48z"/>' +
+  '</svg>';
+
+function renderSplash(msg){
+  return '<div class="auth-wrap"><div class="loading">'+esc(msg)+'</div></div>';
+}
+
+function renderConfigNotice(){
+  return '<div class="auth-wrap">' +
+    '<div class="auth-logo">🔧</div>' +
+    '<div class="auth-title">セットアップが未完了です</div>' +
+    '<div class="auth-setup">' +
+      '<code>firebase-config.js</code> に Firebase の設定値がまだ入っていません。<br><br>' +
+      'Firebase コンソール → プロジェクトの設定 → マイアプリ → ウェブアプリ に表示される ' +
+      '<code>firebaseConfig</code> を貼り付けてください。<br><br>' +
+      '手順は <code>README.md</code> を参照してください。' +
+    '</div>' +
+  '</div>';
+}
+
+function renderLogin(){
+  var err = session.errorMessage
+    ? '<div class="auth-alert"><div class="auth-alert-title">ログインできませんでした</div>'+esc(session.errorMessage)+'</div>'
+    : '';
+  return '<div class="auth-wrap">' +
+    '<div class="auth-logo">🚀</div>' +
+    '<div class="auth-title">第二CC Hub</div>' +
+    '<div class="auth-desc">会社のGoogleアカウントでログインしてください。</div>' +
+    err +
+    '<button class="google-btn" data-act="signin"'+(session.signingIn?' disabled':'')+'>' +
+      GOOGLE_MARK + '<span>'+(session.signingIn?'ログイン中...':'Googleでログイン')+'</span>' +
+    '</button>' +
+    '<div class="auth-note">このアプリは第二CCのメンバー専用です。<br>登録されていないアカウントではご利用いただけません。</div>' +
+  '</div>';
+}
+
+function renderDenied(){
+  return '<div class="auth-wrap">' +
+    '<div class="auth-logo">🔒</div>' +
+    '<div class="auth-title">利用権限がありません</div>' +
+    '<div class="auth-alert">' +
+      '<div class="auth-alert-title">このアカウントは登録されていません</div>' +
+      (session.deniedEmail ? '<div class="auth-mail">'+esc(session.deniedEmail)+'</div>' : '') +
+    '</div>' +
+    '<div class="auth-desc">会社のGoogleアカウントでログインし直してください。<br>' +
+      '会社のアカウントでもこの表示が出る場合は、センター長またはチーフにご連絡ください。</div>' +
+    '<button class="google-btn" data-act="signin"'+(session.signingIn?' disabled':'')+'>' +
+      GOOGLE_MARK + '<span>別のアカウントでログイン</span>' +
+    '</button>' +
+  '</div>';
+}
+
+function renderErrorScreen(){
+  return '<div class="auth-wrap">' +
+    '<div class="auth-logo">⚠️</div>' +
+    '<div class="auth-title">読み込みに失敗しました</div>' +
+    '<div class="auth-alert">'+esc(session.errorMessage)+'</div>' +
+    '<button class="btn-ghost" data-act="signout">サインアウトしてやり直す</button>' +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RENDER: HEADER / NAV
+// ══════════════════════════════════════════════════════════════════
+function todayScheduledCount(){
+  if(!state.shift || !state.shift.dates || !state.shift.rows) return null;
+  var idx = state.shift.dates.indexOf(todayDateLabel());
+  if(idx < 0) return null;
+  var n = 0;
+  session.members.forEach(function(m){
+    var row = state.shift.rows[m.id];
+    if(row && row[idx]) n++;
+  });
+  return n;
+}
+
+function renderHeader(){
+  var me = currentUser();
+  var scheduled = todayScheduledCount();
+  return '' +
+    '<div class="header">' +
+      '<div class="header-info">' +
+        '<div class="header-title">🚀 第二CC Hub</div>' +
+        (scheduled !== null ? '<div class="header-online">● 本日 '+scheduled+'名 シフト予定</div>' : '') +
+      '</div>' +
+      '<div class="header-me">' +
+        avatar(me.id, 28) +
+        '<div class="header-me-text">' +
+          '<div class="header-me-name">'+esc(me.displayName)+'</div>' +
+          (isAdmin() ? '<div class="header-me-role">管理者</div>' : '') +
+        '</div>' +
+        '<button class="signout-btn" data-act="signout">サインアウト</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function renderNav(){
+  var me = currentUserId();
+  var unread = 0;
+  for(var i=0;i<state.board.length;i++) if(state.board[i].readBy.indexOf(me)<0) unread++;
+  var TABS = [{id:"feed",icon:"📡",l:"フィード"},{id:"board",icon:"📋",l:"掲示板"},{id:"survey",icon:"📊",l:"アンケート"},{id:"shift",icon:"🕐",l:"シフト"},{id:"kpi",icon:"📈",l:"実績"}];
+  return '<div class="nav">' + TABS.map(function(t){
+    return '<button class="nav-btn'+(state.tab===t.id?" active":"")+'" data-act="tab" data-id="'+t.id+'">' +
+      '<span class="nav-icon">'+t.icon+'</span>' +
+      '<span class="nav-label">'+esc(t.l)+'</span>' +
+      (t.id==="board"&&unread>0 ? '<span class="nav-badge">'+unread+'</span>' : '') +
+    '</button>';
+  }).join("") + '</div>';
+}
+
+function emptyState(icon, text, sub){
+  return '<div class="empty"><span class="empty-icon">'+icon+'</span>'+esc(text)+
+    (sub ? '<div class="empty-sub">'+esc(sub)+'</div>' : '')+'</div>';
+}
+
+/**
+ * 所属チーム順にグルーピングしたメンバーの <option> 群。
+ * 既存の「投稿者を選ぶプルダウン」は認証の導入で廃止したが、
+ * チーム順グルーピングはフィードの宛先選択で流用する。
+ */
+function memberOptionsGrouped(excludeSelf){
+  var meId = currentUserId();
+  var used = {};
+  var html = "";
+  session.teams.forEach(function(t){
+    var ms = session.members.filter(function(m){
+      return m.team === t.id && !(excludeSelf && m.id === meId);
+    });
+    if(!ms.length) return;
+    html += '<optgroup label="'+esc(t.label)+'">';
+    ms.forEach(function(m){
+      used[m.id] = true;
+      html += '<option value="'+esc(m.id)+'">'+esc(m.displayName)+'</option>';
+    });
+    html += '</optgroup>';
+  });
+  var rest = session.members.filter(function(m){
+    return !used[m.id] && !(excludeSelf && m.id === meId);
+  });
+  if(rest.length){
+    html += '<optgroup label="その他">';
+    rest.forEach(function(m){ html += '<option value="'+esc(m.id)+'">'+esc(m.displayName)+'</option>'; });
+    html += '</optgroup>';
+  }
+  return html;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RENDER: FEED
+// ══════════════════════════════════════════════════════════════════
+function renderFeed(){
+  var sorted = state.feed.slice().sort(function(a,b){
+    if(state.feedSort==="react") return reactCount(b)-reactCount(a);
+    if(state.feedSort==="comment") return b.comments.length-a.comments.length;
+    return b.ts-a.ts;
+  });
+  var sortDefs = [["new","✨ 新着"],["react","🔥 スタンプ"],["comment","💬 コメント"]];
+  var sortHtml = sortDefs.map(function(sd){
+    return '<button class="chip'+(state.feedSort===sd[0]?" chip-active":"")+'" data-act="feed-sort" data-id="'+sd[0]+'">'+sd[1]+'</button>';
+  }).join("");
+  var formHtml = state.feedShowForm ? renderFeedForm() : (
+    '<button class="composer-trigger" data-act="feed-open-form">' +
+      avatar(currentUserId(),28) +
+      '<span class="composer-placeholder">感謝や報告を投稿する...</span>' +
+      '<span class="composer-cta">+投稿</span>' +
+    '</button>'
+  );
+  var body = sorted.length
+    ? sorted.map(renderFeedPost).join("")
+    : emptyState("📡","まだ投稿がありません","最初の投稿をしてみましょう");
+  return '<div class="tab-pad">' +
+    '<div class="sortbar">'+sortHtml+'</div>' +
+    formHtml +
+    body +
+  '</div>';
+}
+
+function renderFeedForm(){
+  var toOpts = '<option value="">全体へ</option>' + memberOptionsGrouped(true);
+  var typeOpts = POST_TYPES.map(function(t){ return '<option'+(t==="Thanks"?" selected":"")+'>'+t+'</option>'; }).join("");
+  var valOpts = '<option value="">バリュー選択（任意）</option>' + VALUES.map(function(v){ return '<option>'+v+'</option>'; }).join("");
+  return '<div class="card form-card">' +
+    '<div class="form-col">' +
+      '<div class="form-row">' +
+        '<select id="feedFormType" class="input" data-act="feed-type-change">'+typeOpts+'</select>' +
+        '<select id="feedFormTo" class="input">'+toOpts+'</select>' +
+      '</div>' +
+      '<select id="feedFormVal" class="input">'+valOpts+'</select>' +
+      '<textarea id="feedFormText" class="input textarea" placeholder="内容を入力..." rows="3"></textarea>' +
+      '<div class="form-row">' +
+        '<button class="btn-primary" data-act="feed-submit">投稿する</button>' +
+        '<button class="btn-ghost" data-act="feed-cancel">キャンセル</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderFeedPost(post){
+  var me = currentUserId();
+  var from = getM(post.from);
+  var to = post.to ? getM(post.to) : null;
+  var myR = []; for(var e in post.reactions) if(post.reactions[e].indexOf(me)>=0) myR.push(e);
+  var isOpen = state.feedOpenComment===post.id;
+  var reactHtml = REACTIONS.map(function(emoji){
+    var cnt = (post.reactions[emoji]||[]).length;
+    var mine = myR.indexOf(emoji)>=0;
+    return '<button class="react-btn'+(mine?" react-mine":"")+'" data-act="react" data-id="'+post.id+'" data-emoji="'+emoji+'">'+emoji+(cnt>0?'<span class="react-count">'+cnt+'</span>':'')+'</button>';
+  }).join("");
+  var commentsHtml = "";
+  if(isOpen){
+    commentsHtml = '<div class="comments">' +
+      post.comments.map(function(c){
+        return '<div class="comment-row">'+avatar(c.from,22)+'<div class="comment-bubble"><span class="comment-name">'+esc(getM(c.from).displayName)+' </span><span class="comment-text">'+esc(c.text)+'</span></div></div>';
+      }).join("") +
+      '<div class="comment-input-row">' + avatar(me,22) +
+        '<input class="input comment-input" placeholder="コメントを入力... (Enter で送信)" data-act="comment-input" data-id="'+post.id+'">' +
+      '</div>' +
+    '</div>';
+  }
+  return '<div class="card post-card">' +
+    '<div class="post-head">' + avatar(post.from,38) +
+      '<div class="post-head-info">' +
+        '<div class="post-head-line">' +
+          '<span class="post-name">'+esc(from.displayName)+'</span>' +
+          (to ? '<span class="post-arrow">→</span><span class="post-to">'+esc(to.displayName)+'</span>' : '') +
+          badge(post.type, CT[post.type]||"blue") +
+          (post.val ? badge(post.val,"purple") : "") +
+        '</div>' +
+        '<div class="post-time">'+tAgo(post.ts)+'</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="post-text">'+esc(post.text)+'</div>' +
+    '<div class="post-actions">' + reactHtml +
+      '<button class="comment-toggle-btn" data-act="comment-toggle" data-id="'+post.id+'">💬 '+post.comments.length+'</button>' +
+    '</div>' +
+    commentsHtml +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RENDER: BOARD
+// ══════════════════════════════════════════════════════════════════
+function renderBoard(){
+  var sorted = state.board.slice().sort(function(a,b){
+    if(a.pinned && !b.pinned) return -1;
+    if(!a.pinned && b.pinned) return 1;
+    return b.ts-a.ts;
+  });
+  var formHtml = state.boardShowForm ? renderBoardForm() : "";
+  var body = sorted.length
+    ? sorted.map(renderBoardPost).join("")
+    : emptyState("📋","まだ共有事項がありません");
+  return '<div class="tab-pad">' +
+    '<button class="dashed-trigger" data-act="'+(state.boardShowForm?"board-cancel":"board-open-form")+'">'+(state.boardShowForm?"× 閉じる":"+ 掲示板に投稿する")+'</button>' +
+    formHtml +
+    body +
+  '</div>';
+}
+
+function renderBoardForm(){
+  var catOpts = ["重要","連絡","お知らせ"].map(function(c){ return "<option>"+c+"</option>"; }).join("");
+  return '<div class="card form-card">' +
+    '<div class="form-col">' +
+      '<input id="boardFormTitle" class="input input-strong" placeholder="タイトル">' +
+      '<div class="form-row form-row-center">' +
+        '<select id="boardFormCat" class="input" style="flex:1">'+catOpts+'</select>' +
+        '<label class="checkbox-label nowrap"><input type="checkbox" id="boardFormPinned"> 📌 固定</label>' +
+      '</div>' +
+      '<textarea id="boardFormBody" class="input textarea" placeholder="内容..." rows="3"></textarea>' +
+      '<button class="btn-primary full" data-act="board-submit">投稿する</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderBoardPost(post){
+  var isRead = post.readBy.indexOf(currentUserId())>=0;
+  var catColor = CT[post.cat]||"blue";
+  return '<div class="card board-card" style="border-left:3px solid var(--'+catColor+')"'+(isRead?"":' data-act="board-read" data-id="'+post.id+'"')+'>' +
+    '<div class="board-meta">' +
+      (post.pinned?"<span>📌</span>":"") +
+      badge(post.cat, catColor) +
+      (!isRead?badge("NEW","red"):"") +
+      '<span class="board-time">'+tAgo(post.ts)+'</span>' +
+    '</div>' +
+    '<div class="board-title">'+esc(post.title)+'</div>' +
+    '<div class="board-body">'+esc(post.body)+'</div>' +
+    '<div class="board-footer">'+avatar(post.from,18)+'<span class="board-footer-text">'+esc(getM(post.from).displayName)+' · 既読 '+post.readBy.length+'名</span></div>' +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RENDER: SURVEY
+// ══════════════════════════════════════════════════════════════════
+function renderSurvey(){
+  var formHtml = state.surveyShowForm ? renderSurveyForm() : "";
+  var body = state.surveys.length
+    ? state.surveys.map(renderSurveyCard).join("")
+    : emptyState("📊","まだアンケートがありません");
+  return '<div class="tab-pad">' +
+    '<button class="dashed-trigger" data-act="'+(state.surveyShowForm?"survey-cancel":"survey-open-form")+'">'+(state.surveyShowForm?"× 閉じる":"+ アンケートを作成する")+'</button>' +
+    formHtml +
+    body +
+  '</div>';
+}
+
+function renderSurveyForm(){
+  return '<div class="card form-card">' +
+    '<div class="form-col">' +
+      '<input id="surveyFormTitle" class="input" placeholder="質問内容">' +
+      '<div id="surveyOptsContainer" class="form-col-tight">' +
+        '<input class="input survey-opt" placeholder="選択肢 1">' +
+        '<input class="input survey-opt" placeholder="選択肢 2">' +
+      '</div>' +
+      '<button class="btn-dash" data-act="survey-add-opt">+ 選択肢を追加</button>' +
+      '<div class="form-row form-row-center">' +
+        '<label class="checkbox-label nowrap"><input type="checkbox" id="surveyFormMulti"> 複数選択可</label>' +
+        '<input type="date" id="surveyFormDeadline" class="input" style="flex:1">' +
+      '</div>' +
+      '<button class="btn-primary" data-act="survey-submit">作成する</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderSurveyCard(sv){
+  var me = currentUserId();
+  var total = 0; for(var o in sv.votes) total += sv.votes[o].length;
+  var myV = []; for(var o2 in sv.votes) if(sv.votes[o2].indexOf(me)>=0) myV.push(o2);
+  var optsHtml = sv.opts.map(function(opt){
+    var cnt = (sv.votes[opt]||[]).length;
+    var pct = total>0 ? Math.round(cnt/total*100) : 0;
+    var voted = myV.indexOf(opt)>=0;
+    return '<div class="survey-opt-row"'+(sv.closed?"":' data-act="vote" data-id="'+sv.id+'" data-opt="'+esc(opt)+'"')+'>' +
+      '<div class="survey-opt-line">' +
+        '<span class="survey-opt-label'+(voted?" voted":"")+'">'+(voted?"✓ ":"")+esc(opt)+'</span>' +
+        '<span class="survey-opt-count">'+cnt+'票 ('+pct+'%)</span>' +
+      '</div>' +
+      '<div class="bar-bg"><div class="bar-fill" style="width:'+pct+'%;background:'+(voted?"var(--accent)":"var(--text-4)")+'"></div></div>' +
+    '</div>';
+  }).join("");
+  return '<div class="card">' +
+    '<div class="survey-head">' + avatar(sv.from,28) +
+      '<div>' +
+        '<div class="survey-title">'+esc(sv.title)+'</div>' +
+        '<div class="survey-meta">'+esc(getM(sv.from).displayName)+' · '+(sv.multi?"複数選択可":"単一選択")+(sv.deadline?' · 期限: '+sv.deadline:"")+'</div>' +
+      '</div>' +
+    '</div>' +
+    optsHtml +
+    '<div class="survey-total">合計 '+total+'票'+(sv.closed?'<span style="color:var(--red);margin-left:8px">終了</span>':'')+'</div>' +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RENDER: SHIFT
+//  データは Firestore の shifts/{YYYY_M}（Phase 5 で GAS が書き込む）。
+// ══════════════════════════════════════════════════════════════════
+function shiftCellClass(val){
+  if(val==="早番") return "shift-early";
+  if(val==="遅番") return "shift-late";
+  if(val) return "shift-other";
+  return "shift-off";
+}
+function shiftCellLabel(val){
+  if(val==="早番") return "早";
+  if(val==="遅番") return "遅";
+  if(val) return val;
+  return "–";
+}
+function syncedAtLabel(){
+  if(state.syncStatus && state.syncStatus.lastSyncedAtLabel) return state.syncStatus.lastSyncedAtLabel;
+  return null;
+}
+function renderShift(){
+  var sh = state.shift;
+  if(!sh || !sh.dates || !sh.dates.length){
+    return '<div class="tab-pad">' +
+      emptyState("🕐","シフトはまだ同期されていません",
+        "スプレッドシートからの自動同期（Phase 5）を設定すると表示されます") +
+    '</div>';
+  }
+  var todayIdx = sh.dates.indexOf(todayDateLabel());
+  var dateHeaderCells = sh.dates.map(function(d,i){
+    return '<div class="shift-cell shift-date-head'+(i===todayIdx?" shift-today":"")+'">'+esc(String(d).split("/")[1])+'<br>'+esc((sh.weekdays||[])[i]||"")+'</div>';
+  }).join("");
+
+  function shiftRowsFor(members){
+    return members.map(function(m){
+      var data = (sh.rows && sh.rows[m.id]) || [];
+      var cells = sh.dates.map(function(d,i){
+        var val = data[i] || "";
+        return '<div class="shift-cell '+shiftCellClass(val)+(i===todayIdx?" shift-today":"")+'">'+esc(shiftCellLabel(val))+'</div>';
+      }).join("");
+      return '<div class="shift-row">' +
+        '<div class="shift-name-cell">'+avatar(m.id,24)+'<span>'+esc(m.displayName)+'</span></div>' +
+        '<div class="shift-days">'+cells+'</div>' +
+      '</div>';
+    }).join("");
+  }
+
+  var placed = {};
+  var teamsHtml = session.teams.map(function(team){
+    var ms = session.members.filter(function(m){ return m.team===team.id; });
+    ms.forEach(function(m){ placed[m.id] = true; });
+    if(!ms.length) return "";
+    return '<div class="team-block-title">'+esc(team.label)+'</div>' + shiftRowsFor(ms);
+  }).join("");
+
+  // チーム未設定のメンバーが表から抜け落ちないようにする。
+  // 「載っていない人がいる」ことに気づけないのが一番まずいため。
+  var orphans = session.members.filter(function(m){ return !placed[m.id]; });
+  if(orphans.length){
+    teamsHtml += '<div class="team-block-title">その他</div>' + shiftRowsFor(orphans);
+  }
+
+  var synced = syncedAtLabel();
+  return '<div class="tab-pad">' +
+    '<div class="shift-note">📅 今月の早番／遅番予定表'+(synced?' ・ 最終更新 '+esc(synced):'')+'</div>' +
+    '<div class="shift-scroll">' +
+      '<div class="shift-row shift-header-row">' +
+        '<div class="shift-name-cell shift-name-head">メンバー</div>' +
+        '<div class="shift-days">'+dateHeaderCells+'</div>' +
+      '</div>' +
+      teamsHtml +
+    '</div>' +
+    '<div class="shift-legend">' +
+      '<span class="legend-item"><span class="legend-dot shift-early">早</span>早番</span>' +
+      '<span class="legend-item"><span class="legend-dot shift-late">遅</span>遅番</span>' +
+      '<span class="legend-item"><span class="legend-dot shift-off">–</span>休み</span>' +
+    '</div>' +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RENDER: KPI（Phase 7 で「目標進捗」に置き換え予定）
+//  データは Firestore の metrics/latest（Phase 5 で GAS が書き込む）。
+// ══════════════════════════════════════════════════════════════════
+function kSt(key,val){
+  var t = KPI_DEF[key];
+  if(t.g==="high") return val>=t.t ? "success" : (val>=t.t*0.9 ? "warn" : "bad");
+  if(t.g==="low") return val<=t.t ? "success" : (val<=t.t*1.1 ? "warn" : "bad");
+  return Math.abs(val-t.t)<=0.5 ? "success" : (Math.abs(val-t.t)<=1 ? "warn" : "bad");
+}
+function renderKpi(){
+  var byMember = (state.metrics && state.metrics.byMember) || null;
+  if(!byMember){
+    return '<div class="tab-pad">' +
+      emptyState("📈","実績はまだ同期されていません",
+        "スプレッドシートからの自動同期（Phase 5）を設定すると表示されます") +
+    '</div>';
+  }
+
+  // 集計対象は「同期データに実績が入っているメンバー」。
+  // role は権限区分（member/admin）であって職位ではないため、
+  // 集計対象の判定には使わない。
+  var agents = session.members.filter(function(m){ return !!byMember[m.id]; });
+  var avg = {};
+  Object.keys(KPI_DEF).forEach(function(k){
+    var vals = []; agents.forEach(function(m){ if(byMember[m.id] && byMember[m.id][k]!=null) vals.push(byMember[m.id][k]); });
+    avg[k] = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length*10)/10 : 0;
+  });
+  var ranks = agents.map(function(m){
+    var sc=0, tot=0;
+    Object.keys(KPI_DEF).forEach(function(k){
+      if(byMember[m.id][k]==null) return;
+      var st = kSt(k, byMember[m.id][k]);
+      sc += st==="success"?3:(st==="warn"?1:0); tot += 3;
+    });
+    return { m:m, pct: tot ? Math.round(sc/tot*100) : 0 };
+  }).sort(function(a,b){ return b.pct-a.pct; });
+
+  var disp = state.kpiSel ? byMember[state.kpiSel] : avg;
+  var filterHtml = '<button class="chip'+(!state.kpiSel?" chip-active":"")+'" data-act="kpi-clear">全体</button>' +
+    agents.map(function(m){ return '<button class="chip'+(state.kpiSel===m.id?" chip-active":"")+'" data-act="kpi-toggle" data-id="'+m.id+'">'+esc(m.displayName)+'</button>'; }).join("");
+
+  if(state.kpiSel && !byMember[state.kpiSel]){
+    return '<div class="tab-pad">' +
+      '<div class="kpi-filter">'+filterHtml+'</div>' +
+      '<div class="notice">'+esc(getM(state.kpiSel).displayName)+'さんは本日の生産性データがまだありません。</div>' +
+    '</div>';
+  }
+
+  var gridHtml = Object.keys(KPI_DEF).map(function(key){
+    var cfg = KPI_DEF[key]; var val = disp ? disp[key] : null;
+    if(val==null) return "";
+    var st = kSt(key,val); var colorVar = st==="success"?"green":(st==="warn"?"amber":"red");
+    var pct = cfg.g==="low" ? Math.min(100, Math.round(cfg.t/val*100)) : Math.min(100, Math.round(val/cfg.t*100));
+    return '<div class="card kpi-card">' +
+      '<div class="kpi-label">'+cfg.l+'</div>' +
+      '<div class="kpi-value-row"><span class="kpi-value" style="color:var(--'+colorVar+')">'+val+'</span><span class="kpi-unit">'+cfg.u+'</span><span class="kpi-target">目標'+cfg.t+'</span></div>' +
+      '<div class="kpi-bar-bg"><div class="kpi-bar" style="width:'+pct+'%;background:var(--'+colorVar+')"></div></div>' +
+    '</div>';
+  }).join("");
+
+  var rankHtml = "";
+  if(!state.kpiSel){
+    rankHtml = '<div><div class="section-label">メンバーランキング</div>' +
+      ranks.map(function(r,i){
+        var color = r.pct>=70?"var(--green)":(r.pct>=40?"var(--amber)":"var(--red)");
+        var numColor = i===0?"var(--amber)":(i<3?"var(--text-3)":"var(--border)");
+        return '<div class="card rank-card" data-act="kpi-select" data-id="'+r.m.id+'">' +
+          '<div class="rank-row">' +
+            '<div class="rank-num" style="color:'+numColor+'">'+(i+1)+'</div>' +
+            avatar(r.m.id,34) +
+            '<div class="rank-info"><div class="rank-name">'+esc(r.m.displayName)+'</div><div class="rank-bar-bg"><div class="rank-bar" style="width:'+r.pct+'%;background:'+color+'"></div></div></div>' +
+            '<div class="rank-pct-col"><div class="rank-pct" style="color:'+color+'">'+r.pct+'%</div><div class="rank-pct-label">KPI達成</div></div>' +
+          '</div>' +
+        '</div>';
+      }).join("") +
+    '</div>';
+  }
+
+  var synced = syncedAtLabel();
+  return '<div class="tab-pad">' +
+    '<div class="shift-note">📊 生産性データより'+(synced?' ・ 最終更新 '+esc(synced):'')+'</div>' +
+    '<div class="kpi-filter">'+filterHtml+'</div>' +
+    '<div class="kpi-grid">'+gridHtml+'</div>' +
+    rankHtml +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MAIN RENDER
+// ══════════════════════════════════════════════════════════════════
+function render(){
+  var app = document.getElementById("app");
+
+  // ログインしていない／許可されていない間は、アプリの中身を一切描画しない。
+  if(session.status === "config")    { app.innerHTML = renderConfigNotice(); return; }
+  if(session.status === "loading")   { app.innerHTML = renderSplash("読み込み中..."); return; }
+  if(session.status === "signedOut") { app.innerHTML = renderLogin(); return; }
+  if(session.status === "denied")    { app.innerHTML = renderDenied(); return; }
+  if(session.status === "error")     { app.innerHTML = renderErrorScreen(); return; }
+
+  var body =
+    state.tab==="feed"   ? renderFeed() :
+    state.tab==="board"  ? renderBoard() :
+    state.tab==="survey" ? renderSurvey() :
+    state.tab==="shift"  ? renderShift() :
+    renderKpi();
+  app.innerHTML = renderHeader() + '<div class="content" id="content">'+body+'</div>' + renderNav();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  ACTIONS
+// ══════════════════════════════════════════════════════════════════
+function submitFeedPost(){
+  var text = document.getElementById("feedFormText").value.trim();
+  if(!text) return;
+  var type = document.getElementById("feedFormType").value;
+  var to = document.getElementById("feedFormTo").value;
+  var val = document.getElementById("feedFormVal").value;
+  state.feed = [{ id:"f"+Date.now(), from:currentUserId(), to:to||null, type:type, val:val||null, text:text, ts:Date.now(), reactions:{}, comments:[] }].concat(state.feed);
+  state.feedShowForm = false;
+  persist("feed"); render();
+}
+function toggleReaction(id,emoji){
+  var me = currentUserId();
+  state.feed = state.feed.map(function(p){
+    if(p.id!==id) return p;
+    var r = {}; for(var k in p.reactions) r[k]=p.reactions[k].slice();
+    if(!r[emoji]) r[emoji]=[];
+    var i = r[emoji].indexOf(me);
+    if(i>=0) r[emoji] = r[emoji].filter(function(u){return u!==me;});
+    else r[emoji] = r[emoji].concat([me]);
+    var np = {}; for(var kk in p) np[kk]=p[kk]; np.reactions = r; return np;
+  });
+  persist("feed"); render();
+}
+function submitComment(id,text){
+  var me = currentUserId();
+  state.feed = state.feed.map(function(p){
+    if(p.id!==id) return p;
+    var np = {}; for(var kk in p) np[kk]=p[kk];
+    np.comments = p.comments.concat([{ from:me, text:text, ts:Date.now() }]);
+    return np;
+  });
+  persist("feed"); render();
+}
+function submitBoardPost(){
+  var title = document.getElementById("boardFormTitle").value.trim();
+  var body = document.getElementById("boardFormBody").value.trim();
+  if(!title || !body) return;
+  var cat = document.getElementById("boardFormCat").value;
+  var pinned = document.getElementById("boardFormPinned").checked;
+  state.board = [{ id:"b"+Date.now(), from:currentUserId(), title:title, body:body, cat:cat, pinned:pinned, ts:Date.now(), readBy:[currentUserId()] }].concat(state.board);
+  state.boardShowForm = false;
+  persist("board"); render();
+}
+function markBoardRead(id){
+  var me = currentUserId();
+  state.board = state.board.map(function(p){
+    if(p.id!==id || p.readBy.indexOf(me)>=0) return p;
+    var np = {}; for(var kk in p) np[kk]=p[kk];
+    np.readBy = p.readBy.concat([me]);
+    return np;
+  });
+  persist("board"); render();
+}
+function submitSurvey(){
+  var title = document.getElementById("surveyFormTitle").value.trim();
+  var opts = Array.prototype.map.call(document.querySelectorAll(".survey-opt"), function(i){ return i.value.trim(); }).filter(Boolean);
+  if(!title || opts.length<2) return;
+  var votes = {}; opts.forEach(function(o){ votes[o]=[]; });
+  var multi = document.getElementById("surveyFormMulti").checked;
+  var deadline = document.getElementById("surveyFormDeadline").value;
+  state.surveys = [{ id:"s"+Date.now(), from:currentUserId(), title:title, opts:opts, votes:votes, multi:multi, deadline:deadline, ts:Date.now(), closed:false }].concat(state.surveys);
+  state.surveyShowForm = false;
+  persist("surveys"); render();
+}
+function toggleVote(id,opt){
+  var me = currentUserId();
+  state.surveys = state.surveys.map(function(s){
+    if(s.id!==id || s.closed) return s;
+    var v = {}; for(var k in s.votes) v[k]=s.votes[k].slice();
+    if(!s.multi) Object.keys(v).forEach(function(o){ v[o] = v[o].filter(function(u){return u!==me;}); });
+    if(!v[opt]) v[opt]=[];
+    var i = v[opt].indexOf(me);
+    if(i>=0) v[opt] = v[opt].filter(function(u){return u!==me;});
+    else v[opt] = v[opt].concat([me]);
+    var ns = {}; for(var kk in s) ns[kk]=s[kk]; ns.votes = v; return ns;
+  });
+  persist("surveys"); render();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  EVENTS
+// ══════════════════════════════════════════════════════════════════
+function bindEvents(){
+  var app = document.getElementById("app");
+
+  app.addEventListener("click", function(e){
+    var el = e.target.closest("[data-act]");
+    if(!el) return;
+    var act = el.getAttribute("data-act"), id = el.getAttribute("data-id");
+
+    // 認証系はログイン前でも動く必要がある
+    if(act==="signin"){ doSignIn(); return; }
+    if(act==="signout"){ doSignOut(); return; }
+
+    // ここから先はログイン済みのときだけ
+    if(session.status !== "ready") return;
+
+    if(act==="tab"){ state.tab = id; state.feedShowForm=false; state.boardShowForm=false; state.surveyShowForm=false; render(); }
+    else if(act==="feed-sort"){ state.feedSort = id; render(); }
+    else if(act==="feed-open-form"){ state.feedShowForm = true; render(); }
+    else if(act==="feed-cancel"){ state.feedShowForm = false; render(); }
+    else if(act==="feed-submit"){ submitFeedPost(); }
+    else if(act==="react"){ toggleReaction(id, el.getAttribute("data-emoji")); }
+    else if(act==="comment-toggle"){ state.feedOpenComment = state.feedOpenComment===id ? null : id; render(); }
+    else if(act==="board-open-form"){ state.boardShowForm = true; render(); }
+    else if(act==="board-cancel"){ state.boardShowForm = false; render(); }
+    else if(act==="board-submit"){ submitBoardPost(); }
+    else if(act==="board-read"){ markBoardRead(id); }
+    else if(act==="survey-open-form"){ state.surveyShowForm = true; render(); }
+    else if(act==="survey-cancel"){ state.surveyShowForm = false; render(); }
+    else if(act==="survey-add-opt"){
+      var container = document.getElementById("surveyOptsContainer");
+      var n = container.querySelectorAll(".survey-opt").length + 1;
+      var inp = document.createElement("input");
+      inp.className = "input survey-opt"; inp.placeholder = "選択肢 " + n;
+      container.appendChild(inp);
+    }
+    else if(act==="survey-submit"){ submitSurvey(); }
+    else if(act==="vote"){ toggleVote(id, el.getAttribute("data-opt")); }
+    else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
+    else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
+    else if(act==="kpi-select"){ state.kpiSel = id; render(); }
+  });
+
+  app.addEventListener("change", function(e){
+    if(session.status !== "ready") return;
+    var el = e.target.closest("[data-act]");
+    if(!el) return;
+    if(el.getAttribute("data-act")==="feed-type-change"){
+      var valSel = document.getElementById("feedFormVal");
+      if(valSel) valSel.style.display = el.value==="Thanks" ? "block" : "none";
+    }
+  });
+
+  app.addEventListener("keydown", function(e){
+    if(session.status !== "ready") return;
+    var el = e.target.closest('[data-act="comment-input"]');
+    if(!el) return;
+    if(e.key==="Enter"){
+      var text = el.value.trim();
+      if(!text) return;
+      submitComment(el.getAttribute("data-id"), text);
+    }
+  });
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,162 @@
+# 第二CC Hub
+
+第二CC（インサイドセールス）のメンバー向け社内共有ウェブアプリ。
+フィード・掲示板・アンケート・シフト・実績を1画面にまとめています。
+
+- 公開URL: https://kaiseiiiiiii.github.io/daini-cc-hub/
+- ホスティング: GitHub Pages（`main` ブランチ直下を配信）
+- ビルド工程なし。`index.html` を編集して push すれば反映されます。
+
+---
+
+## ⚠️ このリポジトリは公開されています
+
+**誰でもソースを読めます。** 以下は絶対にコミットしないでください。
+
+- 実績数値・売上金額・個人の成績
+- メンバーの氏名、メールアドレス一覧
+- 個人のシフト（勤務予定）
+- Firebase サービスアカウント鍵（JSON）などの認証情報
+
+これらはすべて **Firestore 上のデータ**として持ちます。
+コード・コメント・README・コミットメッセージ・テストデータのいずれにも書きません。
+ダミーデータが必要な場合は、明らかに架空と分かる値を使ってください。
+
+---
+
+## apiKey について（重要）
+
+`firebase-config.js` には `apiKey` が平文で入っており、リポジトリにもコミットされています。
+**これは漏洩ではありません。**
+
+Firebase のウェブ向け設定値（`apiKey` / `authDomain` / `projectId` など）は、
+ブラウザに配信された時点で必ず利用者から見える値であり、
+**公開されることを前提に設計されています**。Google の公式ドキュメントでも
+「これらは秘密情報ではない」と明記されています。
+
+`apiKey` は「どの Firebase プロジェクトに話しかけるか」を示す識別子にすぎず、
+**これだけではデータは1件も読めません。**
+
+実際にデータを守っているのは次の2つです。
+
+1. **Firebase Authentication** — Googleアカウントでのログインを必須にする
+2. **`firestore.rules`（セキュリティルール）** — ログイン済みかつメンバーマスタに
+   登録されたメールアドレスの場合のみ読み書きを許す
+
+つまり、このリポジトリを見た第三者が `apiKey` をコピーしても、
+許可リストに載っていない限りデータには一切アクセスできません。
+
+逆に言えば、**`firestore.rules` が唯一の防御線**です。ここを緩めると即座に情報が漏れます。
+ルールを変更する際は必ずレビューしてください。
+
+> 一方、**サービスアカウント鍵（JSON）は本物の秘密鍵**です。
+> こちらは絶対にコミットしないでください（Phase 5 で GAS のスクリプトプロパティに格納します）。
+
+---
+
+## アカウント管理
+
+**このセクションには個人のメールアドレスを書かないでください。** 役割名で記載します。
+
+| 役割 | アカウント | 主担当 | 副担当（必須） |
+|---|---|---|---|
+| GitHub リポジトリ / Pages | `kaiseiiiiiii` | （記入） | （記入） |
+| Firebase プロジェクト オーナー | `kaiseiiiiiii` の Google アカウント | （記入） | （記入） |
+| スプレッドシート原本（シフト） | 会社アカウント | （記入） | — |
+| スプレッドシート原本（生産性・手配粗利額） | 会社アカウント | （記入） | — |
+| 同期用スプレッドシート + GAS | 会社アカウント | （記入） | （記入） |
+
+> **副担当を必ず1名置いてください。** 担当者1名だけに紐づくと、
+> 異動・退職時にチームがアプリを維持できなくなります。
+> Firebase コンソールでもう1名を「オーナー」権限で、
+> GitHub リポジトリにも共同管理者を1名追加してください。
+
+---
+
+## セットアップ
+
+### 1. Firebase 側（コンソールでの作業）
+
+1. Firebase プロジェクトを作成する
+2. **Authentication** → Sign-in method → **Google** を有効化
+3. Authentication → Settings → **承認済みドメイン**に `kaiseiiiiiii.github.io` を追加
+4. **Firestore Database** を作成する
+   - **必ず「本番環境モード」で作成してください。**
+     テストモードは30日間すべて公開状態になります。
+5. プロジェクトの設定 → マイアプリ → **ウェブアプリを登録**し、
+   表示される `firebaseConfig` を控える
+
+### 2. 設定値を貼り付ける
+
+`firebase-config.js` の `FIREBASE_CONFIG` に、上で控えた値を貼り付けます。
+未設定のままアプリを開くと「セットアップが未完了です」という画面が出ます。
+
+会社ドメインのアカウントを優先表示させたい場合は `SIGN_IN_HINT_DOMAIN` に
+ドメインを入れてください（任意。認証の制限ではなく、ログイン画面の利便性向上のみ）。
+
+### 3. セキュリティルールを適用する
+
+`firestore.rules` の内容を Firebase コンソールの
+**Firestore Database → ルール** に貼り付けて「公開」します。
+
+（Firebase CLI を使う場合は `firebase deploy --only firestore:rules`）
+
+**ルールを適用する前にデータを入れないでください。** 本番モードで作成していれば
+初期状態は全拒否なので、先にルールを入れてからデータを投入するのが安全です。
+
+### 4. メンバーマスタ（許可リスト）を登録する
+
+**このアプリの許可リストは Firestore 上のデータです。ソースコードには含めません。**
+
+登録手順とドキュメントの形は [`docs/firestore-setup.md`](docs/firestore-setup.md) を参照してください。
+
+### 5. 動作確認
+
+- 許可リストに登録したアカウントでログイン → アプリが表示される
+- 登録していないアカウントでログイン → 「利用権限がありません」と表示され、自動でサインアウトされる
+
+---
+
+## Firestore データモデル
+
+| コレクション | ドキュメントID | 書き込み | 用途 |
+|---|---|---|---|
+| `members` | 小文字のメールアドレス | 不可（コンソールのみ） | 許可リスト兼メンバーマスタ |
+| `teams` | チームID | 不可（コンソールのみ） | チーム名・表示順・配色 |
+| `shifts` | `YYYY_M`（例 `2026_8`） | GAS のみ | 月別シフト表 |
+| `goals` | 未定 | GAS のみ | 目標値 |
+| `metrics` | `latest` ほか | GAS のみ | 実績・生産性KPI |
+| `syncStatus` | `spreadsheet` | GAS のみ | 最終同期時刻・同期結果 |
+| `feedPosts` | 自動ID | メンバー | フィード投稿（Phase 2） |
+| `feedPosts/{id}/comments` | 自動ID | メンバー | コメント（Phase 2） |
+| `boardPosts` | 自動ID | メンバー | 掲示板（Phase 2） |
+| `surveys` | 自動ID | メンバー | アンケート（Phase 2） |
+
+フィールドの詳細は `firestore.rules` のコメントを参照してください。
+
+---
+
+## ローカルでの確認方法
+
+ES モジュールを使っているため、`index.html` をファイルとして直接開くと動きません
+（ブラウザが `file://` からのモジュール読み込みをブロックするため）。
+簡易サーバー経由で開いてください。
+
+PowerShell だけで済ませる場合の例:
+
+```bash
+powershell -NoProfile -Command "$l=New-Object System.Net.HttpListener;$l.Prefixes.Add('http://localhost:8787/');$l.Start();while($l.IsListening){$c=$l.GetContext();$p=$c.Request.Url.LocalPath;if($p -eq '/'){$p='/index.html'};$f=Join-Path (Get-Location) ($p.TrimStart('/'));if(Test-Path $f -PathType Leaf){$b=[IO.File]::ReadAllBytes($f);$c.Response.ContentType=if($f -like '*.js'){'text/javascript; charset=utf-8'}else{'text/html; charset=utf-8'};$c.Response.OutputStream.Write($b,0,$b.Length)}else{$c.Response.StatusCode=404};$c.Response.Close()}"
+```
+
+その後 http://localhost:8787/ を開きます。
+
+なお、Googleログインを実際に試すには、Firebase の**承認済みドメイン**に
+`localhost` が含まれている必要があります（既定で含まれています）。
+
+---
+
+## ブラウザ対応
+
+- スマートフォンからの閲覧を前提にしたレイアウト（最大幅 640px）
+- ライト／ダークテーマ両対応（OS設定に追従）
+- ES モジュールと `Element.closest()` を使用しているため、IE11 では動作しません

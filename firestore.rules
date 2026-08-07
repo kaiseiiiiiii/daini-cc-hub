@@ -1,0 +1,384 @@
+rules_version = '2';
+
+// ============================================================================
+// 第二CC Hub — Firestore セキュリティルール
+// ----------------------------------------------------------------------------
+// このアプリのソースコードは公開リポジトリに置かれており、誰でも読めます。
+// URL・プロジェクトID・コレクション名・クエリの組み立て方は、すべて
+// 攻撃者に既知であるという前提で書いています。
+//
+// つまり「画面に出していないから見えない」は防御になりません。
+// 実データを守っているのは、このファイルだけです。
+//
+// 基本方針:
+//   1. 未認証は一切読み書きできない
+//   2. 認証済みでも、メンバーマスタ（許可リスト）に載っていなければ何も読めない
+//   3. マスタ系（メンバー・チーム）はクライアントから書き換え不可
+//   4. スプレッドシート同期データ（シフト・目標・実績）もクライアントから書き換え不可
+//   5. 投稿の編集は作成者本人のみ、削除は本人または admin のみ
+//   6. 物理削除は全面禁止（論理削除のみ。誰が消したかを追えるようにするため）
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ========================================================================
+    // 共通ヘルパー
+    // ========================================================================
+
+    // ログイン済みか。
+    // email_verified も見ているのは、メールアドレスを許可リストの
+    // 突き合わせキーに使っているため。未検証のアドレスを名乗られると
+    // 許可リストの意味がなくなる。
+    // （Googleログインは常に検証済みだが、将来ほかの認証方法を
+    //   追加したときに穴が開かないよう明示しておく）
+    function signedIn() {
+      return request.auth != null
+          && request.auth.token.email != null
+          && request.auth.token.email_verified == true;
+    }
+
+    // 許可リストの突き合わせキー。
+    // 大文字小文字の違いで許可リストをすり抜けられないよう、必ず小文字化する。
+    // （メンバーマスタのドキュメントIDも小文字で登録すること）
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function memberPath() {
+      return /databases/$(database)/documents/members/$(myEmail());
+    }
+
+    // 許可リストに載っている有効なメンバーか。
+    // ここが全コレクションの入口。これが false なら実データは1件も読めない。
+    // active フラグを見ているのは、退職・異動時にドキュメントを消さずに
+    // 無効化できるようにするため（過去の投稿の表示名を残すため）。
+    function isMember() {
+      return signedIn()
+          && exists(memberPath())
+          && get(memberPath()).data.active == true;
+    }
+
+    function me() {
+      return get(memberPath()).data;
+    }
+
+    // 投稿に記録される作成者ID（例: "kaneko"）。
+    // クライアントから送られてきた値ではなく、必ずマスタ側の値を使う。
+    // そうしないと「他人になりすまして投稿する」を防げない。
+    function myMemberId() {
+      return me().memberId;
+    }
+
+    function isAdmin() {
+      return isMember() && me().role == 'admin';
+    }
+
+    // 既存ドキュメントの作成者が自分か。
+    function isAuthor() {
+      return isMember() && resource.data.authorId == myMemberId();
+    }
+
+    // 今回の更新で変更されたフィールドが、許可した集合の中に収まっているか。
+    // 「リアクションを押すだけ」のつもりの更新で、本文や作成者IDまで
+    // 書き換えられるのを防ぐために使う。
+    function onlyChanged(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // 作成者IDと作成日時は、いかなる更新でも変更させない。
+    // これを許すと、他人の投稿を自分のものに書き換えたり、
+    // 投稿日時を偽装したりできてしまう。
+    function immutableOrigin() {
+      return request.resource.data.authorId == resource.data.authorId
+          && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    // 論理削除（deleted: false → true）に該当する更新か。
+    function isLogicalDelete() {
+      return resource.data.deleted == false
+          && request.resource.data.deleted == true;
+    }
+
+    // 論理削除の取り消し（復活）に該当する更新か。
+    function isUndelete() {
+      return resource.data.deleted == true
+          && request.resource.data.deleted == false;
+    }
+
+    // 新規作成時に必ず満たしていてほしい共通条件。
+    // 作成者IDをマスタ由来の値に固定し、削除済みフラグを立てた状態での
+    // 作成（＝作成と同時に削除済みにして監査を濁す）を禁じる。
+    function validNewPost() {
+      return isMember()
+          && request.resource.data.authorId == myMemberId()
+          && request.resource.data.deleted == false
+          && request.resource.data.createdAt == request.time;
+    }
+
+
+    // ========================================================================
+    // メンバーマスタ（許可リスト）
+    //   ドキュメントID = 小文字のメールアドレス
+    //   フィールド: memberId, fullName, displayName, initial,
+    //               team, jobTitle, role('member'|'admin'), order, active
+    // ========================================================================
+    match /members/{email} {
+
+      // 【自分の1件だけ】は、メンバー判定より前に読めなければならない。
+      // 「メンバーかどうかを判定するにはメンバーマスタを読む必要があるが、
+      //   メンバーマスタを読むにはメンバーである必要がある」という
+      //   鶏と卵を解くための例外。自分宛の1件に限定している。
+      //
+      // これにより、許可リスト外のGoogleアカウントでログインされても、
+      // 読めるのは「存在しないドキュメント」だけで、
+      // 他人のメールアドレス・氏名・権限は一切漏れない。
+      allow get: if signedIn() && email == myEmail();
+
+      // 一覧取得は正規メンバーのみ。
+      // 投稿者の表示名やアバターを解決するためにアプリが全件読む。
+      // ここを緩めると、社員のメールアドレス一覧がまるごと流出する。
+      allow list: if isMember();
+
+      // 許可リストの書き換えは、アプリ全体の乗っ取りと同義。
+      // （自分を admin に昇格させる、他人を追加する、など）
+      // クライアントからは絶対に触らせない。
+      // 追加・変更は Firebase コンソール、または管理者権限を持つ
+      // サーバー（Admin SDK）からのみ行う。
+      allow create, update, delete: if false;
+    }
+
+
+    // ========================================================================
+    // チームマスタ
+    //   ドキュメントID = チームID（例: "mgmt", "team_a", "team_b"）
+    //   フィールド: label, order, colorKey
+    // ========================================================================
+    match /teams/{teamId} {
+      // チーム名には社員の姓が含まれるため、メンバー限定で読ませる。
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+
+    // ========================================================================
+    // スプレッドシート同期データ（Phase 5 で GAS から書き込む）
+    //   shifts     … 月別シフト表
+    //   goals      … 目標値
+    //   metrics    … 実績・生産性KPI
+    //   syncStatus … 最終同期時刻・同期結果
+    //
+    // 【重要】ここに入るのは個人の成績と勤務予定、つまり本アプリで
+    //         もっとも機微なデータ。クライアントからの書き込みを
+    //         全面禁止し、書き込み経路を GAS のサービスアカウント
+    //         1本に絞ることで、改ざん経路そのものを無くしている。
+    //         （サービスアカウントは Admin 権限で動くため、
+    //           このルールの評価対象外になる）
+    // ========================================================================
+    match /shifts/{docId=**} {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+    match /goals/{docId=**} {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+    match /metrics/{docId=**} {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+    match /syncStatus/{docId=**} {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+
+    // ========================================================================
+    // フィード投稿（Phase 2 で実装）
+    //   フィールド: authorId, toMemberId, type, valueTag, text,
+    //               reactions{emoji: [memberId]},
+    //               createdAt, updatedAt, edited,
+    //               deleted, deletedBy, deletedAt
+    //
+    //   ※ フィールド名は Phase 2 の設計確定時に見直す可能性があります。
+    //     その際はこのルールも合わせて更新すること。
+    // ========================================================================
+    match /feedPosts/{postId} {
+
+      allow read: if isMember();
+
+      allow create: if validNewPost()
+                    && request.resource.data.edited == false;
+
+      // 更新は「何を変えようとしているか」で分岐する。
+      // UI 側で編集ボタンを出し分けるだけでは、開発者ツールから
+      // 直接 update を投げられると防げないため、ここで担保する。
+      allow update: if isMember()
+                    && immutableOrigin()
+                    && (
+                         // ① リアクションの付け外しは全メンバーに許可。
+                         //    他人の投稿にスタンプを押すのは正常な操作。
+                         onlyChanged(['reactions'])
+
+                         // ② 論理削除は作成者本人、または admin。
+                         //    削除者と削除日時を必ず同時に記録させる。
+                      || ( isLogicalDelete()
+                           && (isAuthor() || isAdmin())
+                           && request.resource.data.deletedBy == myMemberId()
+                           && request.resource.data.deletedAt == request.time
+                           && onlyChanged(['deleted','deletedBy','deletedAt']) )
+
+                         // ③ 本文の編集は作成者本人のみ。
+                         //    編集済みフラグを必ず立てさせる（改ざん感を避けるため
+                         //    画面に「編集済み」を出す。フラグを立てずに
+                         //    こっそり書き換えることを許さない）。
+                      || ( isAuthor()
+                           && !isLogicalDelete()
+                           && !isUndelete()
+                           && request.resource.data.edited == true
+                           && onlyChanged(['text','type','valueTag','toMemberId',
+                                           'edited','updatedAt']) )
+                       );
+
+      // 物理削除は禁止。論理削除のみ。
+      // 「あの投稿誰が消した？」を後から追えるようにするため、
+      // データそのものは必ず残す。
+      allow delete: if false;
+
+      // ----- コメント -----
+      match /comments/{commentId} {
+        allow read: if isMember();
+
+        allow create: if validNewPost()
+                      && request.resource.data.edited == false;
+
+        allow update: if isMember()
+                      && immutableOrigin()
+                      && (
+                           ( isLogicalDelete()
+                             && (isAuthor() || isAdmin())
+                             && request.resource.data.deletedBy == myMemberId()
+                             && request.resource.data.deletedAt == request.time
+                             && onlyChanged(['deleted','deletedBy','deletedAt']) )
+                        || ( isAuthor()
+                             && !isLogicalDelete()
+                             && !isUndelete()
+                             && request.resource.data.edited == true
+                             && onlyChanged(['text','edited','updatedAt']) )
+                         );
+
+        allow delete: if false;
+      }
+    }
+
+
+    // ========================================================================
+    // 掲示板（Phase 2 で実装）
+    //   フィールド: authorId, title, body, category, pinned,
+    //               readBy{memberId: 読んだ日時},
+    //               createdAt, updatedAt, edited,
+    //               deleted, deletedBy, deletedAt
+    // ========================================================================
+    match /boardPosts/{postId} {
+
+      allow read: if isMember();
+
+      allow create: if validNewPost()
+                    && request.resource.data.edited == false;
+
+      allow update: if isMember()
+                    && immutableOrigin()
+                    && (
+                         // ① 既読の記録は全メンバーに許可。
+                         //    ただし「自分の分だけ」を足せること。
+                         //    他人を勝手に既読にして未読リストから消す、
+                         //    という操作を防ぐ。
+                         ( onlyChanged(['readBy'])
+                           && request.resource.data.readBy.diff(resource.data.readBy)
+                                .affectedKeys().hasOnly([myMemberId()]) )
+
+                         // ② 論理削除は作成者本人、または admin。
+                      || ( isLogicalDelete()
+                           && (isAuthor() || isAdmin())
+                           && request.resource.data.deletedBy == myMemberId()
+                           && request.resource.data.deletedAt == request.time
+                           && onlyChanged(['deleted','deletedBy','deletedAt']) )
+
+                         // ③ 本文の編集は作成者本人のみ。
+                      || ( isAuthor()
+                           && !isLogicalDelete()
+                           && !isUndelete()
+                           && request.resource.data.edited == true
+                           && onlyChanged(['title','body','category','pinned',
+                                           'edited','updatedAt']) )
+                       );
+
+      allow delete: if false;
+    }
+
+
+    // ========================================================================
+    // アンケート（Phase 2 で実装）
+    //   フィールド: authorId, title, options[], multi, deadline, closed,
+    //               votes{optionId: [memberId]},
+    //               createdAt, updatedAt, edited,
+    //               deleted, deletedBy, deletedAt
+    //
+    //   ※ 「誰がどの選択肢を選んだか」は画面に出さない方針だが、
+    //     集計のため votes はメンバーから読める。
+    //     つまり開発者ツールを開けば投票内容は見える。
+    //     「画面に出さないだけ」という合意のもとでの設計である点に注意。
+    //     完全な秘匿が必要になった場合は、votes をサブコレクション化し
+    //     read を本人のみに絞ったうえで、集計値を別ドキュメントに
+    //     サーバー側で書き出す構成に変更すること。
+    // ========================================================================
+    match /surveys/{surveyId} {
+
+      allow read: if isMember();
+
+      allow create: if validNewPost()
+                    && request.resource.data.edited == false
+                    && request.resource.data.closed == false;
+
+      allow update: if isMember()
+                    && immutableOrigin()
+                    && (
+                         // ① 投票は全メンバーに許可。
+                         ( onlyChanged(['votes']) && resource.data.closed == false )
+
+                         // ② 論理削除は作成者本人、または admin。
+                      || ( isLogicalDelete()
+                           && (isAuthor() || isAdmin())
+                           && request.resource.data.deletedBy == myMemberId()
+                           && request.resource.data.deletedAt == request.time
+                           && onlyChanged(['deleted','deletedBy','deletedAt']) )
+
+                         // ③ 設問の編集・締切操作は作成者本人のみ。
+                      || ( isAuthor()
+                           && !isLogicalDelete()
+                           && !isUndelete()
+                           && request.resource.data.edited == true
+                           && onlyChanged(['title','options','multi','deadline',
+                                           'closed','edited','updatedAt']) )
+                       );
+
+      allow delete: if false;
+    }
+
+
+    // ========================================================================
+    // 明示的に定義していないコレクションは、すべて拒否。
+    //
+    // Firestore のルールは「どれか1つでも allow に当たれば許可」なので、
+    // この記述が上のルールを打ち消すことはない。
+    // 将来うっかり新しいコレクションを使い始めたときに、
+    // ルールを書き忘れたまま公開されるのを防ぐための最終防壁。
+    // ========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
