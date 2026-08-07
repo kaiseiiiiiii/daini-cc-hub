@@ -265,6 +265,35 @@ body{margin:0;background:var(--page-bg);}
 .legacy-body{font-size:12px; color:var(--text-3); line-height:1.7; margin-bottom:10px;}
 
 .pending-mark{color:var(--text-4); font-size:10px; border:1px solid var(--border); border-radius:99px; padding:0 5px; margin-left:4px;}
+.edited-mark{color:var(--text-4); font-size:10px; margin-left:6px;}
+
+.post-tools{display:flex; gap:4px; flex-shrink:0; align-items:flex-start;}
+.tool-btn{background:transparent; border:1px solid var(--border); border-radius:6px; padding:2px 7px; font-size:11px; color:var(--text-3); cursor:pointer; font-family:inherit; white-space:nowrap;}
+.tool-danger{color:var(--red); border-color:color-mix(in srgb, var(--red) 30%, transparent);}
+.board-card .post-tools, .survey-head .post-tools{margin-left:auto;}
+.board-card .post-tools{justify-content:flex-end; margin-bottom:8px;}
+.comment-row .post-tools{margin-left:auto; align-self:center;}
+.comment-edit-row{display:flex; gap:6px; align-items:center; margin-bottom:6px;}
+.survey-head-info{flex:1; min-width:0;}
+
+.edit-card{border-color:color-mix(in srgb, var(--accent) 40%, transparent);}
+.edit-head{font-size:12px; font-weight:700; color:var(--accent); margin-bottom:8px;}
+.edit-note{font-size:11px; color:var(--text-4); line-height:1.6;}
+
+.btn-danger{padding:9px 14px; background:var(--red); color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;}
+.modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:20px; z-index:100;}
+.modal{background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow); padding:18px; max-width:340px; width:100%;}
+.modal-title{font-size:15px; font-weight:700; color:var(--text); margin-bottom:8px;}
+.modal-text{font-size:13px; color:var(--text-2); line-height:1.8; margin-bottom:16px; white-space:pre-wrap;}
+.modal-actions{display:flex; gap:8px; justify-content:flex-end;}
+
+.trash-toggle{width:100%; margin-top:14px; padding:8px; background:transparent; border:1px dashed var(--border); border-radius:8px; color:var(--text-4); font-size:11px; cursor:pointer; font-family:inherit;}
+.trash-toggle-open{margin-top:0; margin-bottom:8px;}
+.trash-box{margin-top:14px; padding:10px; border:1px dashed var(--border); border-radius:10px;}
+.trash-row{padding:7px 0; border-top:1px solid var(--border);}
+.trash-row:first-of-type{border-top:none;}
+.trash-text{font-size:12px; color:var(--text-3); text-decoration:line-through; word-break:break-word;}
+.trash-meta{font-size:10px; color:var(--text-4); margin-top:3px;}
 </style>
 </head>
 <body>
@@ -373,6 +402,10 @@ var state = {
   busy:false,               // 送信中の二重送信よけ
   notice:"",                // 書き込み失敗などの通知
   legacy:null,              // localStorage に残っていた旧データ
+  editing:null,             // { kind, id, postId? } 編集中の対象
+  confirm:null,             // { title, body, okLabel, onOk } 確認ダイアログ
+  trash:{ feed:[], board:[], surveys:[] },   // 削除済み（admin が確認用に見る）
+  showTrash:false,
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -388,10 +421,19 @@ function mapDoc(d){
   var o = { id: d.id, pending: d.metadata.hasPendingWrites };
   for(var k in v) o[k] = v[k];
   o.createdAtMs = v.createdAt && v.createdAt.toMillis ? v.createdAt.toMillis() : Date.now();
+  o.deletedAtMs = v.deletedAt && v.deletedAt.toMillis ? v.deletedAt.toMillis() : null;
   return o;
 }
 function byNewest(a,b){ return b.createdAtMs - a.createdAtMs; }
 function notDeleted(d){ return d.deleted !== true; }
+function isDeleted(d){ return d.deleted === true; }
+
+// ── 権限判定 ──────────────────────────────────────────────
+// ここは画面の出し分けのためだけのもの。
+// 実際の可否は firestore.rules 側で同じ条件を独立に検証している。
+// 開発者ツールから直接 update を投げられても、そちらで止まる。
+function canEdit(d){   return !!d && d.authorId === currentUserId() && !d.deleted; }
+function canDelete(d){ return !!d && !d.deleted && (d.authorId === currentUserId() || isAdmin()); }
 
 // ══════════════════════════════════════════════════════════════════
 //  リアルタイム購読
@@ -423,7 +465,9 @@ function subscribe(colName, orderField, onData){
     function(snap){
       // orderBy はサーバー側の順序。未確定の serverTimestamp は null 扱いで
       // 末尾に回ってしまうため、推定値で並べ直す。
-      onData(snap.docs.map(mapDoc).filter(notDeleted).sort(byNewest));
+      var all = snap.docs.map(mapDoc).sort(byNewest);
+      onData(all.filter(notDeleted), all.filter(isDeleted));
+      reconcileOpenState();
       render();
     },
     function(err){
@@ -435,9 +479,51 @@ function subscribe(colName, orderField, onData){
 
 function attachAll(){
   detachAll();   // 二重アタッチ防止
-  subscribe("feedPosts",  "createdAt", function(rows){ state.feed = rows; });
-  subscribe("boardPosts", "createdAt", function(rows){ state.board = rows; });
-  subscribe("surveys",    "createdAt", function(rows){ state.surveys = rows; });
+  subscribe("feedPosts",  "createdAt", function(live, gone){ state.feed = live;    state.trash.feed = gone; });
+  subscribe("boardPosts", "createdAt", function(live, gone){ state.board = live;   state.trash.board = gone; });
+  subscribe("surveys",    "createdAt", function(live, gone){ state.surveys = live; state.trash.surveys = gone; });
+}
+
+/**
+ * 別の人が削除した投稿を、こちらが開いていた／編集していた場合の後始末。
+ * リアルタイム同期なので、操作中に対象が消えることが普通に起きる。
+ * 消えたまま参照を持ち続けると、空のパネルが residual に残ったり
+ * 保存時に理由の分からないエラーになる。
+ */
+function has(list, id){
+  for(var i=0;i<list.length;i++) if(list[i].id===id) return true;
+  return false;
+}
+function reconcileOpenState(){
+  var lost = "";
+
+  if(state.editing){
+    var e = state.editing;
+    if(e.kind==="feed"   && !has(state.feed, e.id))      lost = "編集していた投稿は削除されました";
+    if(e.kind==="board"  && !has(state.board, e.id))     lost = "編集していた掲示板の投稿は削除されました";
+    if(e.kind==="survey" && !has(state.surveys, e.id))   lost = "編集していたアンケートは削除されました";
+    if(e.kind==="comment"&& !has(state.feed, e.postId))  lost = "コメント先の投稿は削除されました";
+    if(lost) state.editing = null;
+  }
+
+  if(state.feedOpenComment && !has(state.feed, state.feedOpenComment)){
+    state.feedOpenComment = null;
+    detachComments();
+  }
+  if(state.boardOpenReaders && !has(state.board, state.boardOpenReaders)) state.boardOpenReaders = null;
+  if(state.surveyOpenStatus && !has(state.surveys, state.surveyOpenStatus)) state.surveyOpenStatus = null;
+
+  if(state.confirm && state.confirm.targetId){
+    var pool = state.confirm.kind==="feed" ? state.feed
+             : state.confirm.kind==="board" ? state.board
+             : state.confirm.kind==="survey" ? state.surveys : null;
+    if(pool && !has(pool, state.confirm.targetId)){
+      state.confirm = null;
+      lost = lost || "対象の投稿は、ほかの人がすでに削除しました";
+    }
+  }
+
+  if(lost) state.notice = lost;
 }
 
 function attachComments(postId){
@@ -448,6 +534,11 @@ function attachComments(postId){
     function(snap){
       state.comments = snap.docs.map(mapDoc).filter(notDeleted)
         .sort(function(a,b){ return a.createdAtMs - b.createdAtMs; });
+      // 編集中のコメントが他の人に消された場合
+      if(state.editing && state.editing.kind==="comment" && !has(state.comments, state.editing.id)){
+        state.editing = null;
+        state.notice = "編集していたコメントは削除されました";
+      }
       render();
     },
     function(err){ state.notice = "コメントの購読に失敗しました（" + err.code + "）"; render(); }
@@ -796,6 +887,57 @@ function renderNav(){
   }).join("") + '</div>';
 }
 
+/**
+ * 削除の確認ダイアログ。
+ * リアルタイム同期なので、押した瞬間に全員の画面から消える。
+ * 取り消せない操作の前に一拍置く。
+ */
+function renderConfirmDialog(){
+  var c = state.confirm;
+  if(!c) return "";
+  return '<div class="modal-backdrop" data-act="confirm-cancel">' +
+    '<div class="modal" data-act="modal-body" role="dialog" aria-modal="true">' +
+      '<div class="modal-title">'+esc(c.title)+'</div>' +
+      '<div class="modal-text">'+esc(c.body)+'</div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn-ghost" data-act="confirm-cancel">キャンセル</button>' +
+        '<button class="btn-danger" data-act="confirm-ok">'+esc(c.okLabel)+'</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+/**
+ * 削除済みの一覧（管理者のみ）。
+ * 「あの投稿、誰が消した？」に答えられるようにするための窓口。
+ * これが無いと、記録はしていても Firestore コンソールを開くしか
+ * 確認手段がなくなる。
+ */
+function renderTrash(kind){
+  if(!isAdmin()) return "";
+  var rows = state.trash[kind] || [];
+  if(!rows.length) return "";
+  var label = { feed:"投稿", board:"共有事項", surveys:"アンケート" }[kind];
+  if(!state.showTrash){
+    return '<button class="trash-toggle" data-act="trash-toggle">🗑 削除済みの'+label+' '+rows.length+'件を表示</button>';
+  }
+  return '<div class="trash-box">' +
+    '<button class="trash-toggle trash-toggle-open" data-act="trash-toggle">🗑 削除済みの'+label+' '+rows.length+'件を隠す</button>' +
+    rows.map(function(d){
+      var who = getM(d.deletedBy || "").displayName;
+      var title = kind==="board" ? d.title : (kind==="surveys" ? d.title : d.text);
+      return '<div class="trash-row">' +
+        '<div class="trash-text">'+esc(String(title||"").slice(0,60))+'</div>' +
+        '<div class="trash-meta">' +
+          esc(getM(d.authorId).displayName)+'さんの'+label+' · ' +
+          '<strong>'+esc(who)+'さんが削除</strong>' +
+          (d.deletedAtMs ? ' · '+tAgo(d.deletedAtMs) : '') +
+        '</div>' +
+      '</div>';
+    }).join("") +
+  '</div>';
+}
+
 function emptyState(icon, text, sub){
   return '<div class="empty"><span class="empty-icon">'+icon+'</span>'+esc(text)+
     (sub ? '<div class="empty-sub">'+esc(sub)+'</div>' : '')+'</div>';
@@ -806,20 +948,20 @@ function emptyState(icon, text, sub){
  * 既存の「投稿者を選ぶプルダウン」は認証の導入で廃止したが、
  * チーム順グルーピングはフィードの宛先選択で流用する。
  */
-function memberOptionsGrouped(excludeSelf){
+function memberOptionsGrouped(excludeSelf, selectedId){
   var meId = currentUserId();
   var used = {};
   var html = "";
+  function opt(m){
+    return '<option value="'+esc(m.id)+'"'+(m.id===selectedId?" selected":"")+'>'+esc(m.displayName)+'</option>';
+  }
   session.teams.forEach(function(t){
     var ms = session.members.filter(function(m){
       return m.team === t.id && !(excludeSelf && m.id === meId);
     });
     if(!ms.length) return;
     html += '<optgroup label="'+esc(t.label)+'">';
-    ms.forEach(function(m){
-      used[m.id] = true;
-      html += '<option value="'+esc(m.id)+'">'+esc(m.displayName)+'</option>';
-    });
+    ms.forEach(function(m){ used[m.id] = true; html += opt(m); });
     html += '</optgroup>';
   });
   var rest = session.members.filter(function(m){
@@ -827,7 +969,7 @@ function memberOptionsGrouped(excludeSelf){
   });
   if(rest.length){
     html += '<optgroup label="その他">';
-    rest.forEach(function(m){ html += '<option value="'+esc(m.id)+'">'+esc(m.displayName)+'</option>'; });
+    rest.forEach(function(m){ html += opt(m); });
     html += '</optgroup>';
   }
   return html;
@@ -861,6 +1003,7 @@ function renderFeed(){
     '<div class="sortbar">'+sortHtml+'</div>' +
     formHtml +
     body +
+    renderTrash("feed") +
   '</div>';
 }
 
@@ -911,7 +1054,52 @@ function reactionsByEmoji(post){
   return byEmoji;
 }
 
+/** 編集・削除のボタン。出す／出さないの判定はルール側と同じ条件 */
+function renderTools(kind, d, postId){
+  var html = "";
+  if(canEdit(d)){
+    html += '<button class="tool-btn" data-act="edit-start" data-kind="'+kind+'" data-id="'+d.id+'"'+
+            (postId?' data-post="'+postId+'"':'')+'>編集</button>';
+  }
+  if(canDelete(d)){
+    var mine = d.authorId === currentUserId();
+    html += '<button class="tool-btn tool-danger" data-act="delete-ask" data-kind="'+kind+'" data-id="'+d.id+'"'+
+            (postId?' data-post="'+postId+'"':'')+'>'+(mine?"削除":"削除（管理者）")+'</button>';
+  }
+  return html ? '<div class="post-tools">'+html+'</div>' : "";
+}
+
+/** 「編集済み」の小さな印。更新日時は出さない */
+function editedMark(d){
+  return d.edited ? '<span class="edited-mark">編集済み</span>' : "";
+}
+
+function renderFeedEditForm(post){
+  var typeOpts = POST_TYPES.map(function(t){ return '<option'+(t===post.type?" selected":"")+'>'+t+'</option>'; }).join("");
+  var toOpts = '<option value="">全体へ</option>' + memberOptionsGrouped(true, post.toMemberId);
+  var valOpts = '<option value="">バリュー選択（任意）</option>' +
+    VALUES.map(function(v){ return '<option'+(v===post.valueTag?" selected":"")+'>'+v+'</option>'; }).join("");
+  return '<div class="card form-card edit-card">' +
+    '<div class="edit-head">投稿を編集</div>' +
+    '<div class="form-col">' +
+      '<div class="form-row">' +
+        '<select id="editType" class="input">'+typeOpts+'</select>' +
+        '<select id="editTo" class="input">'+toOpts+'</select>' +
+      '</div>' +
+      '<select id="editVal" class="input">'+valOpts+'</select>' +
+      '<textarea id="editText" class="input textarea" rows="3">'+esc(post.text)+'</textarea>' +
+      '<div class="form-row">' +
+        '<button class="btn-primary" data-act="edit-save" data-kind="feed" data-id="'+post.id+'">保存する</button>' +
+        '<button class="btn-ghost" data-act="edit-cancel">キャンセル</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 function renderFeedPost(post){
+  if(state.editing && state.editing.kind==="feed" && state.editing.id===post.id && canEdit(post)){
+    return renderFeedEditForm(post);
+  }
   var me = currentUserId();
   var from = getM(post.authorId);
   var to = post.toMemberId ? getM(post.toMemberId) : null;
@@ -938,7 +1126,21 @@ function renderFeedPost(post){
   if(isOpen){
     commentsHtml = '<div class="comments">' +
       state.comments.map(function(c){
-        return '<div class="comment-row">'+avatar(c.authorId,22)+'<div class="comment-bubble"><span class="comment-name">'+esc(getM(c.authorId).displayName)+' </span><span class="comment-text">'+esc(c.text)+'</span></div></div>';
+        if(state.editing && state.editing.kind==="comment" && state.editing.id===c.id && canEdit(c)){
+          return '<div class="comment-edit-row">' + avatar(c.authorId,22) +
+            '<input id="editCommentText" class="input comment-input" value="'+esc(c.text)+'">' +
+            '<button class="tool-btn" data-act="edit-save" data-kind="comment" data-id="'+c.id+'" data-post="'+post.id+'">保存</button>' +
+            '<button class="tool-btn" data-act="edit-cancel">中止</button>' +
+          '</div>';
+        }
+        return '<div class="comment-row">'+avatar(c.authorId,22) +
+          '<div class="comment-bubble">' +
+            '<span class="comment-name">'+esc(getM(c.authorId).displayName)+' </span>' +
+            '<span class="comment-text">'+esc(c.text)+'</span>' +
+            editedMark(c) +
+          '</div>' +
+          renderTools("comment", c, post.id) +
+        '</div>';
       }).join("") +
       '<div class="comment-input-row">' + avatar(me,22) +
         '<input class="input comment-input" placeholder="コメントを入力... (Enter で送信)" data-act="comment-input" data-id="'+post.id+'">' +
@@ -955,8 +1157,9 @@ function renderFeedPost(post){
           badge(post.type, CT[post.type]||"blue") +
           (post.valueTag ? badge(post.valueTag,"purple") : "") +
         '</div>' +
-        '<div class="post-time">'+tAgo(post.createdAtMs)+(post.pending?' <span class="pending-mark">送信中</span>':'')+'</div>' +
+        '<div class="post-time">'+tAgo(post.createdAtMs)+editedMark(post)+(post.pending?' <span class="pending-mark">送信中</span>':'')+'</div>' +
       '</div>' +
+      renderTools("feed", post) +
     '</div>' +
     '<div class="post-text">'+esc(post.text)+'</div>' +
     '<div class="post-actions">' + reactHtml +
@@ -984,6 +1187,7 @@ function renderBoard(){
     '<button class="dashed-trigger" data-act="'+(state.boardShowForm?"board-cancel":"board-open-form")+'">'+(state.boardShowForm?"× 閉じる":"+ 掲示板に投稿する")+'</button>' +
     formHtml +
     body +
+    renderTrash("board") +
   '</div>';
 }
 
@@ -1034,7 +1238,31 @@ function renderPeoplePanel(cfg){
   return html + '</div>';
 }
 
+function renderBoardEditForm(post){
+  var catOpts = ["重要","連絡","お知らせ"].map(function(c){
+    return '<option'+(c===post.category?" selected":"")+'>'+c+'</option>';
+  }).join("");
+  return '<div class="card form-card edit-card">' +
+    '<div class="edit-head">共有事項を編集</div>' +
+    '<div class="form-col">' +
+      '<input id="editTitle" class="input input-strong" value="'+esc(post.title)+'">' +
+      '<div class="form-row form-row-center">' +
+        '<select id="editCat" class="input" style="flex:1">'+catOpts+'</select>' +
+        '<label class="checkbox-label nowrap"><input type="checkbox" id="editPinned"'+(post.pinned?" checked":"")+'> 📌 固定</label>' +
+      '</div>' +
+      '<textarea id="editBody" class="input textarea" rows="3">'+esc(post.body)+'</textarea>' +
+      '<div class="form-row">' +
+        '<button class="btn-primary" data-act="edit-save" data-kind="board" data-id="'+post.id+'">保存する</button>' +
+        '<button class="btn-ghost" data-act="edit-cancel">キャンセル</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 function renderBoardPost(post){
+  if(state.editing && state.editing.kind==="board" && state.editing.id===post.id && canEdit(post)){
+    return renderBoardEditForm(post);
+  }
   var me = currentUserId();
   var readBy = post.readBy || {};
   var isRead = !!readBy[me];
@@ -1050,8 +1278,9 @@ function renderBoardPost(post){
       (!isRead?badge("NEW","red"):"") +
       '<span class="board-time">'+tAgo(post.createdAtMs)+(post.pending?' · 送信中':'')+'</span>' +
     '</div>' +
-    '<div class="board-title">'+esc(post.title)+'</div>' +
+    '<div class="board-title">'+esc(post.title)+editedMark(post)+'</div>' +
     '<div class="board-body">'+esc(post.body)+'</div>' +
+    renderTools("board", post) +
     '<div class="board-footer">' + avatar(post.authorId,18) +
       '<span class="board-footer-text">'+esc(getM(post.authorId).displayName)+'</span>' +
       '<button class="reader-toggle'+(isOpen?" reader-toggle-open":"")+'" data-act="board-readers" data-id="'+post.id+'" aria-expanded="'+(isOpen?"true":"false")+'">' +
@@ -1080,6 +1309,7 @@ function renderSurvey(){
     '<button class="dashed-trigger" data-act="'+(state.surveyShowForm?"survey-cancel":"survey-open-form")+'">'+(state.surveyShowForm?"× 閉じる":"+ アンケートを作成する")+'</button>' +
     formHtml +
     body +
+    renderTrash("surveys") +
   '</div>';
 }
 
@@ -1118,7 +1348,33 @@ function voteCounts(sv){
   return { counts: counts, total: total };
 }
 
+function renderSurveyEditForm(sv){
+  var optRows = (sv.options||[]).map(function(o, i){
+    return '<input class="input edit-opt" value="'+esc(o.label)+'" aria-label="選択肢 '+(i+1)+'">';
+  }).join("");
+  return '<div class="card form-card edit-card">' +
+    '<div class="edit-head">アンケートを編集</div>' +
+    '<div class="form-col">' +
+      '<input id="editTitle" class="input" value="'+esc(sv.title)+'">' +
+      '<div class="form-col-tight">'+optRows+'</div>' +
+      '<div class="edit-note">選択肢の文言だけ直せます。追加・削除はできません（すでに入っている票の行き場が無くなるため）。</div>' +
+      '<div class="form-row form-row-center">' +
+        '<label class="checkbox-label nowrap"><input type="checkbox" id="editMulti"'+(sv.multi?" checked":"")+'> 複数選択可</label>' +
+        '<input type="date" id="editDeadline" class="input" style="flex:1" value="'+esc(sv.deadline||"")+'">' +
+      '</div>' +
+      '<label class="checkbox-label"><input type="checkbox" id="editClosed"'+(sv.closed?" checked":"")+'> 締め切る（投票を止める）</label>' +
+      '<div class="form-row">' +
+        '<button class="btn-primary" data-act="edit-save" data-kind="survey" data-id="'+sv.id+'">保存する</button>' +
+        '<button class="btn-ghost" data-act="edit-cancel">キャンセル</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 function renderSurveyCard(sv){
+  if(state.editing && state.editing.kind==="survey" && state.editing.id===sv.id && canEdit(sv)){
+    return renderSurveyEditForm(sv);
+  }
   var me = currentUserId();
   var c = voteCounts(sv);
   var myV = (sv.votes && sv.votes[me]) || [];
@@ -1143,10 +1399,11 @@ function renderSurveyCard(sv){
 
   return '<div class="card">' +
     '<div class="survey-head">' + avatar(sv.authorId,28) +
-      '<div>' +
-        '<div class="survey-title">'+esc(sv.title)+'</div>' +
+      '<div class="survey-head-info">' +
+        '<div class="survey-title">'+esc(sv.title)+editedMark(sv)+'</div>' +
         '<div class="survey-meta">'+esc(getM(sv.authorId).displayName)+' · '+(sv.multi?"複数選択可":"単一選択")+(sv.deadline?' · 期限: '+esc(sv.deadline):"")+'</div>' +
       '</div>' +
+      renderTools("survey", sv) +
     '</div>' +
     optsHtml +
     '<div class="survey-foot">' +
@@ -1358,7 +1615,8 @@ function render(){
       '<button class="notice-close" data-act="notice-close" aria-label="閉じる">×</button></div>'
     : '';
   app.innerHTML = renderHeader() + noticeHtml +
-    '<div class="content" id="content">'+body+'</div>' + renderNav();
+    '<div class="content" id="content">'+body+'</div>' + renderNav() +
+    renderConfirmDialog();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1488,6 +1746,158 @@ function submitSurvey(){
   write("アンケートの作成", function(){ return addDoc(collection(db, "surveys"), payload); }, true);
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  編集
+//
+//  更新日時（updatedAt）はデータとしては持つが画面には出さない。
+//  出るのは「編集済み」の印だけ。改ざん感を避けつつ、
+//  投稿の時系列は投稿日時のままにしておくため。
+//
+//  編集履歴は今回保存しない。必要になったら
+//  feedPosts/{id}/revisions のようなサブコレクションを足せばよく、
+//  既存ドキュメントの構造を変える必要はない。
+// ══════════════════════════════════════════════════════════════════
+function startEdit(kind, id, postId){
+  state.editing = { kind:kind, id:id, postId:postId || null };
+  state.notice = "";
+  render();
+}
+function cancelEdit(){ state.editing = null; render(); }
+
+function saveFeedEdit(id){
+  var text = document.getElementById("editText").value.trim();
+  if(!text) return;
+  var patch = {
+    text: text,
+    type: document.getElementById("editType").value,
+    toMemberId: document.getElementById("editTo").value || null,
+    valueTag: document.getElementById("editVal").value || null,
+    edited: true,
+    updatedAt: serverTimestamp()
+  };
+  state.editing = null;
+  write("編集", function(){ return updateDoc(doc(db, "feedPosts", id), patch); }, true);
+}
+
+function saveBoardEdit(id){
+  var title = document.getElementById("editTitle").value.trim();
+  var body  = document.getElementById("editBody").value.trim();
+  if(!title || !body) return;
+  var patch = {
+    title: title,
+    body: body,
+    category: document.getElementById("editCat").value,
+    pinned: document.getElementById("editPinned").checked,
+    edited: true,
+    updatedAt: serverTimestamp()
+  };
+  state.editing = null;
+  write("編集", function(){ return updateDoc(doc(db, "boardPosts", id), patch); }, true);
+}
+
+function saveSurveyEdit(id){
+  var sv = state.surveys.filter(function(s){ return s.id===id; })[0];
+  if(!sv) return;
+  var title = document.getElementById("editTitle").value.trim();
+  if(!title) return;
+  // 選択肢は id を保ったままラベルだけ差し替える。
+  // 追加・削除を許すと、既に入っている票の行き場が無くなるため。
+  var labels = Array.prototype.map.call(document.querySelectorAll(".edit-opt"), function(i){ return i.value.trim(); });
+  var options = sv.options.map(function(o, i){
+    return { id: o.id, label: labels[i] || o.label };
+  });
+  var patch = {
+    title: title,
+    options: options,
+    multi: document.getElementById("editMulti").checked,
+    deadline: document.getElementById("editDeadline").value || null,
+    closed: document.getElementById("editClosed").checked,
+    edited: true,
+    updatedAt: serverTimestamp()
+  };
+  state.editing = null;
+  write("編集", function(){ return updateDoc(doc(db, "surveys", id), patch); }, true);
+}
+
+function saveCommentEdit(postId, commentId){
+  var text = document.getElementById("editCommentText").value.trim();
+  if(!text) return;
+  var patch = { text: text, edited: true, updatedAt: serverTimestamp() };
+  state.editing = null;
+  write("編集", function(){
+    return updateDoc(doc(db, "feedPosts", postId, "comments", commentId), patch);
+  }, true);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  削除（論理削除）
+//
+//  データは消さない。deleted を立て、誰がいつ消したかを必ず同時に記録する。
+//  ルール側でも deletedBy が自分であること・deletedAt がサーバー時刻で
+//  あることを強制しているので、記録を省いた削除はできない。
+//
+//  紐づくコメント・リアクション・既読には手を触れない（下の報告参照）。
+// ══════════════════════════════════════════════════════════════════
+function softDeletePatch(){
+  return { deleted:true, deletedBy: currentUserId(), deletedAt: serverTimestamp() };
+}
+
+function askDelete(kind, id, postId){
+  var target, title, body;
+  if(kind==="feed"){
+    target = state.feed.filter(function(p){ return p.id===id; })[0];
+    if(!target) return;
+    title = "この投稿を削除しますか？";
+    body  = (target.commentCount ? "コメント"+target.commentCount+"件も一緒に見えなくなります。" : "") +
+            "全員の画面からすぐに消えます。データ自体は残り、誰が削除したかが記録されます。";
+  }else if(kind==="board"){
+    target = state.board.filter(function(p){ return p.id===id; })[0];
+    if(!target) return;
+    title = "この共有事項を削除しますか？";
+    body  = "既読 "+readCount(target)+"名の記録も一緒に見えなくなります。" +
+            "全員の画面からすぐに消えます。データ自体は残ります。";
+  }else if(kind==="survey"){
+    target = state.surveys.filter(function(s){ return s.id===id; })[0];
+    if(!target) return;
+    var vc = voteCounts(target);
+    title = "このアンケートを削除しますか？";
+    body  = "集まった "+vc.total+"票も一緒に見えなくなります。" +
+            "全員の画面からすぐに消えます。データ自体は残ります。";
+  }else{
+    target = state.comments.filter(function(c){ return c.id===id; })[0];
+    if(!target) return;
+    title = "このコメントを削除しますか？";
+    body  = "全員の画面からすぐに消えます。データ自体は残ります。";
+  }
+  var notMine = target.authorId !== currentUserId();
+  if(notMine) body += "\n\nこれは" + getM(target.authorId).displayName + "さんの投稿です。管理者権限で削除します。";
+
+  state.confirm = {
+    kind: kind, targetId: id, postId: postId || null,
+    title: title, body: body, okLabel: "削除する"
+  };
+  render();
+}
+
+function runConfirmedDelete(){
+  var c = state.confirm;
+  if(!c) return;
+  state.confirm = null;
+  var patch = softDeletePatch();
+  if(c.kind==="feed"){
+    write("削除", function(){ return updateDoc(doc(db, "feedPosts", c.targetId), patch); }, true);
+  }else if(c.kind==="board"){
+    write("削除", function(){ return updateDoc(doc(db, "boardPosts", c.targetId), patch); }, true);
+  }else if(c.kind==="survey"){
+    write("削除", function(){ return updateDoc(doc(db, "surveys", c.targetId), patch); }, true);
+  }else if(c.kind==="comment"){
+    write("削除", async function(){
+      await updateDoc(doc(db, "feedPosts", c.postId, "comments", c.targetId), patch);
+      await updateDoc(doc(db, "feedPosts", c.postId), { commentCount: increment(-1) });
+    }, true);
+  }
+}
+
 function toggleVote(id, optId){
   var me = currentUserId();
   var sv = state.surveys.filter(function(s){ return s.id===id; })[0];
@@ -1607,6 +2017,24 @@ function bindEvents(){
     else if(act==="legacy-download"){ downloadLegacy(); }
     else if(act==="legacy-discard"){ discardLegacy(); }
     else if(act==="notice-close"){ state.notice = ""; render(); }
+    else if(act==="modal-body"){ return; }   // ダイアログ本体のクリックは背景に伝えない
+    else if(act==="confirm-cancel"){ state.confirm = null; render(); }
+    else if(act==="confirm-ok"){ runConfirmedDelete(); }
+    else if(act==="trash-toggle"){ state.showTrash = !state.showTrash; render(); }
+    else if(act==="edit-start"){
+      startEdit(el.getAttribute("data-kind"), id, el.getAttribute("data-post"));
+    }
+    else if(act==="edit-cancel"){ cancelEdit(); }
+    else if(act==="edit-save"){
+      var k = el.getAttribute("data-kind");
+      if(k==="feed")        saveFeedEdit(id);
+      else if(k==="board")  saveBoardEdit(id);
+      else if(k==="survey") saveSurveyEdit(id);
+      else if(k==="comment")saveCommentEdit(el.getAttribute("data-post"), id);
+    }
+    else if(act==="delete-ask"){
+      askDelete(el.getAttribute("data-kind"), id, el.getAttribute("data-post"));
+    }
     else if(act==="board-open-form"){ state.boardShowForm = true; render(); }
     else if(act==="board-cancel"){ state.boardShowForm = false; render(); }
     else if(act==="board-submit"){ submitBoardPost(); }

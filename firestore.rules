@@ -260,6 +260,7 @@ service cloud.firestore {
                       || ( isAuthor()
                            && !isLogicalDelete()
                            && !isUndelete()
+                           && resource.data.deleted == false
                            && request.resource.data.edited == true
                            && onlyChanged(['text','type','valueTag','toMemberId',
                                            'edited','updatedAt']) )
@@ -288,6 +289,7 @@ service cloud.firestore {
                         || ( isAuthor()
                              && !isLogicalDelete()
                              && !isUndelete()
+                             && resource.data.deleted == false
                              && request.resource.data.edited == true
                              && onlyChanged(['text','edited','updatedAt']) )
                          );
@@ -332,6 +334,7 @@ service cloud.firestore {
                       || ( isAuthor()
                            && !isLogicalDelete()
                            && !isUndelete()
+                           && resource.data.deleted == false
                            && request.resource.data.edited == true
                            && onlyChanged(['title','body','category','pinned',
                                            'edited','updatedAt']) )
@@ -389,6 +392,7 @@ service cloud.firestore {
                       || ( isAuthor()
                            && !isLogicalDelete()
                            && !isUndelete()
+                           && resource.data.deleted == false
                            && request.resource.data.edited == true
                            && onlyChanged(['title','options','multi','deadline',
                                            'closed','edited','updatedAt']) )
