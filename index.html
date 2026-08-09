@@ -216,6 +216,9 @@ body{margin:0;background:var(--page-bg);}
 .team-block-title{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em; position:sticky; left:0; background:var(--bg); display:inline-block; padding:6px 0 2px;}
 
 .shift-note{font-size:12px; color:var(--text-4); margin-bottom:10px;}
+.sync-warn{border-radius:8px; padding:9px 12px; font-size:12px; line-height:1.7; margin-bottom:10px;}
+.sync-warn-bad{background:color-mix(in srgb, var(--red) 12%, transparent); border:1px solid color-mix(in srgb, var(--red) 32%, transparent); color:var(--red); font-weight:600;}
+.sync-warn-soft{background:color-mix(in srgb, var(--amber) 12%, transparent); border:1px solid color-mix(in srgb, var(--amber) 32%, transparent); color:var(--amber-c);}
 .shift-scroll{overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface);}
 .shift-row{display:flex; border-bottom:1px solid var(--border);}
 .shift-row:last-child{border-bottom:none;}
@@ -392,7 +395,7 @@ var state = {
   tab:"feed",
   feed:[], board:[], surveys:[],
   comments:[],              // 開いている投稿のコメント（サブコレクション）
-  shift:null, metrics:null, syncStatus:null,
+  shift:null, metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
   feedShowForm:false, feedSort:"new", feedOpenComment:null,
   boardShowForm:false,
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
@@ -449,10 +452,27 @@ function canDelete(d){ return !!d && !d.deleted && (d.authorId === currentUserId
 var unsubscribers = [];
 var commentUnsub = null;
 
+// 鮮度の警告は時間の経過だけで状態が変わる（データは動かない）。
+// アプリを開きっぱなしにしていても警告が出るよう、定期的に描き直す。
+var freshnessTimer = null;
+function startFreshnessTimer(){
+  if(freshnessTimer) return;
+  var last = "";
+  freshnessTimer = setInterval(function(){
+    if(session.status !== "ready") return;
+    var lv = syncHealth().level;
+    if(lv !== last){ last = lv; render(); }
+  }, 5 * 60 * 1000);
+}
+function stopFreshnessTimer(){
+  if(freshnessTimer){ clearInterval(freshnessTimer); freshnessTimer = null; }
+}
+
 function detachAll(){
   unsubscribers.forEach(function(u){ try{ u(); }catch(e){} });
   unsubscribers = [];
   detachComments();
+  stopFreshnessTimer();
 }
 function detachComments(){
   if(commentUnsub){ try{ commentUnsub(); }catch(e){} commentUnsub = null; }
@@ -699,11 +719,12 @@ async function onAuthChanged(user){
       order: m.order || 0
     };
     await loadMasters();
-    await loadSyncedData();
     loadLegacy();
     session.status = "ready";
     render();
     attachAll();
+    attachSyncedData();
+    startFreshnessTimer();
   }catch(e){
     if(e && e.code === "permission-denied"){
       await denyAccess(user.email || "");
@@ -749,21 +770,94 @@ async function loadMasters(){
   }).filter(function(m){ return m.active; });
 }
 
-// シフト・実績はスプレッドシートから GAS が書き込む（Phase 5）。
-// Phase 1 時点ではまだ空なので、読めなくても落ちないようにしておく。
-async function loadSyncedData(){
-  try{
-    var sh = await getDoc(doc(db, "shifts", currentMonthId()));
-    state.shift = sh.exists() ? sh.data() : null;
-  }catch(e){ state.shift = null; }
-  try{
-    var mt = await getDoc(doc(db, "metrics", "latest"));
-    state.metrics = mt.exists() ? mt.data() : null;
-  }catch(e){ state.metrics = null; }
-  try{
-    var ss = await getDoc(doc(db, "syncStatus", "spreadsheet"));
-    state.syncStatus = ss.exists() ? ss.data() : null;
-  }catch(e){ state.syncStatus = null; }
+// シフト・実績・目標はスプレッドシートから GAS が1時間おきに書き込む。
+// 単発の getDoc ではなく購読にしてあるのは、同期が走った直後に
+// 「最終更新」の表示と鮮度の警告が自動で切り替わるようにするため。
+// いずれも1ドキュメントなので、変化がなければ読み取りは発生しない。
+function subscribeDoc(path, id, onData){
+  unsubscribers.push(onSnapshot(doc(db, path, id),
+    function(snap){ onData(snap.exists() ? snap.data() : null); render(); },
+    function(){ onData(null); render(); }
+  ));
+}
+
+function attachSyncedData(){
+  subscribeDoc("shifts", currentMonthId(), function(v){ state.shift = v; });
+  subscribeDoc("metrics", "latest",        function(v){ state.metrics = v; });
+  subscribeDoc("goals", "current",         function(v){ state.goals = v; });
+  subscribeDoc("syncStatus", "spreadsheet", function(v){
+    state.syncStatus = v;
+    state.syncedAtMs = (v && v.lastSyncedAt && v.lastSyncedAt.toMillis) ? v.lastSyncedAt.toMillis() : null;
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  同期の鮮度
+//
+//  一番危ないのは、同期が止まっているのに古い数字が最新の顔で
+//  出ていることなので、疑わしい状態は必ず画面に出す。
+//
+//  ただし深夜は同期しない設計なので、単純な経過時間だけで判定すると
+//  毎朝かならず誤検知する。稼働時間帯かどうかで分けている。
+// ══════════════════════════════════════════════════════════════════
+var SYNC_HOUR_FROM = 10;   // GAS 側と同じ値
+var SYNC_HOUR_TO   = 22;
+var STALE_HOURS    = 3;
+
+function sameLocalDay(a, b){
+  return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+}
+
+// now を引数で受けられるようにしてあるのは、深夜・早朝の分岐を
+// 実時刻に頼らず確かめられるようにするため。通常は省略して呼ぶ。
+function syncHealth(now){
+  var ms = state.syncedAtMs;
+  if(!ms) return { level:"never" };
+
+  now = now || new Date();
+  var hour = now.getHours();
+  var inHours = hour >= SYNC_HOUR_FROM && hour <= SYNC_HOUR_TO;
+  var ageH = (now.getTime() - ms) / 3600000;
+  var today = sameLocalDay(new Date(ms), now);
+
+  if(state.syncStatus && state.syncStatus.lastResult === "error"){
+    return { level:"error", message:"前回の同期が失敗しています。数字が古いままの可能性があります" };
+  }
+  if(!inHours) return { level:"ok" };                 // 深夜・早朝は警告しない
+  if(!today && hour === SYNC_HOUR_FROM){
+    return { level:"yesterday", message:"前日の数字を表示中です。本日分の同期はこれから行われます" };
+  }
+  if(!today){
+    return { level:"stale", message:"本日まだ一度も同期されていません。数字は前日のものです" };
+  }
+  if(ageH >= STALE_HOURS){
+    return { level:"stale", message:"最終更新から"+Math.floor(ageH)+"時間が経過しています。同期が止まっている可能性があります" };
+  }
+  return { level:"ok" };
+}
+
+function syncedAtLabel(){
+  if(state.syncedAtMs){
+    var d = new Date(state.syncedAtMs);
+    return (d.getMonth()+1)+"月"+d.getDate()+"日 "+d.getHours()+"時"+("0"+d.getMinutes()).slice(-2)+"分";
+  }
+  if(state.syncStatus && state.syncStatus.lastSyncedAtLabel) return state.syncStatus.lastSyncedAtLabel;
+  return null;
+}
+
+/** シフトタブ・実績タブの先頭に出す最終更新と警告 */
+function renderSyncBar(){
+  var label = syncedAtLabel();
+  var h = syncHealth();
+  var warn = "";
+  if(h.level === "stale" || h.level === "error"){
+    warn = '<div class="sync-warn sync-warn-bad">⚠️ '+esc(h.message)+'</div>';
+  }else if(h.level === "yesterday"){
+    warn = '<div class="sync-warn sync-warn-soft">🕙 '+esc(h.message)+'</div>';
+  }
+  return warn + '<div class="shift-note">' +
+    (label ? '最終更新 '+esc(label) : 'まだ一度も同期されていません') +
+  '</div>';
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1439,16 +1533,13 @@ function shiftCellLabel(val){
   if(val) return val;
   return "–";
 }
-function syncedAtLabel(){
-  if(state.syncStatus && state.syncStatus.lastSyncedAtLabel) return state.syncStatus.lastSyncedAtLabel;
-  return null;
-}
 function renderShift(){
   var sh = state.shift;
   if(!sh || !sh.dates || !sh.dates.length){
     return '<div class="tab-pad">' +
-      emptyState("🕐","シフトはまだ同期されていません",
-        "スプレッドシートからの自動同期（Phase 5）を設定すると表示されます") +
+      renderSyncBar() +
+      emptyState("🕐","この月のシフトはまだ同期されていません",
+        "スプレッドシート同期が動くと表示されます") +
     '</div>';
   }
   var todayIdx = sh.dates.indexOf(todayDateLabel());
@@ -1485,9 +1576,8 @@ function renderShift(){
     teamsHtml += '<div class="team-block-title">その他</div>' + shiftRowsFor(orphans);
   }
 
-  var synced = syncedAtLabel();
   return '<div class="tab-pad">' +
-    '<div class="shift-note">📅 今月の早番／遅番予定表'+(synced?' ・ 最終更新 '+esc(synced):'')+'</div>' +
+    renderSyncBar() +
     '<div class="shift-scroll">' +
       '<div class="shift-row shift-header-row">' +
         '<div class="shift-name-cell shift-name-head">メンバー</div>' +
@@ -1517,8 +1607,9 @@ function renderKpi(){
   var byMember = (state.metrics && state.metrics.byMember) || null;
   if(!byMember){
     return '<div class="tab-pad">' +
+      renderSyncBar() +
       emptyState("📈","実績はまだ同期されていません",
-        "スプレッドシートからの自動同期（Phase 5）を設定すると表示されます") +
+        "スプレッドシート同期が動くと表示されます") +
     '</div>';
   }
 
@@ -1582,9 +1673,8 @@ function renderKpi(){
     '</div>';
   }
 
-  var synced = syncedAtLabel();
   return '<div class="tab-pad">' +
-    '<div class="shift-note">📊 生産性データより'+(synced?' ・ 最終更新 '+esc(synced):'')+'</div>' +
+    renderSyncBar() +
     '<div class="kpi-filter">'+filterHtml+'</div>' +
     '<div class="kpi-grid">'+gridHtml+'</div>' +
     rankHtml +
