@@ -4,85 +4,101 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>第二CC Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- デザイン指定のフォント。400と700の2ウェイトだけに絞ってある（日本語は重いため）。
+     display=swap なので、届くまではOS標準の日本語フォントで表示される。 -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
 <style>
+/* ══════════════════════════════════════════════════════════════════
+   デザイントークン
+
+   出典は Claude Design の「第二CC Hub デザイン一式」。
+   狙いは「白と余白がほとんどを占め、粋の水色と雅の江戸紫だけが効いている」状態。
+
+   下段のエイリアスは、以前の配色名で書かれた既存CSSをそのまま動かすためのもの。
+   新しく書くときは --color-* 側を使うこと。
+
+   【ダークモードは持たない】
+   支給されたデザインは暖色のライト1本に絞られていて、ダークの指定が無い。
+   こちらで勝手に暗い配色を作るとデザインの意図から外れるため、
+   media query も data-theme も置いていない。必要になったら
+   --color-* を上書きするブロックを1つ足すだけで対応できる。
+   ══════════════════════════════════════════════════════════════════ */
 :root{
-  --accent:#3B82F6; --accent-fg:#ffffff;
-  --bg:#EEF1F6; --page-bg:#EEF1F6; --surface:#ffffff; --border:#E5E7EB;
-  --text:#111827; --text-2:#4B5563; --text-3:#6B7280; --text-4:#9CA3AF;
-  --input-bg:#F9FAFB; --shadow:0 4px 24px rgba(15,23,42,0.10);
-  --mgmt-bg:#FEF3C7; --mgmt-c:#92400E;
-  --teamA-bg:#DBEAFE; --teamA-c:#1E40AF;
-  --teamB-bg:#EDE9FE; --teamB-c:#4C1D95;
-  --green:#10B981; --green-bg:#D1FAE5; --green-c:#065F46;
-  --amber:#F59E0B; --amber-bg:#FEF3C7; --amber-c:#78350F;
-  --gray-dot:#9CA3AF; --gray-bg:#F3F4F6; --gray-c:#6B7280;
-  --blue:#3B82F6; --purple:#8B5CF6; --red:#EF4444;
-}
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg:#0A0E17; --page-bg:#0A0E17; --surface:#141A28; --border:#252E42;
-    --text:#E7EAF0; --text-2:#B7C0D1; --text-3:#8A97AE; --text-4:#5E6B85;
-    --input-bg:#0F1420; --shadow:0 4px 28px rgba(0,0,0,0.5);
-    --mgmt-bg:#3A2E10; --mgmt-c:#FBBF24;
-    --teamA-bg:#132241; --teamA-c:#93C5FD;
-    --teamB-bg:#241B3D; --teamB-c:#C4B5FD;
-    --green-bg:#0E2A21; --green-c:#34D399;
-    --amber-bg:#2E2410; --amber-c:#FBBF24;
-    --gray-bg:#1B2233; --gray-c:#9AA6BC;
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#0A0E17; --page-bg:#0A0E17; --surface:#141A28; --border:#252E42;
-  --text:#E7EAF0; --text-2:#B7C0D1; --text-3:#8A97AE; --text-4:#5E6B85;
-  --input-bg:#0F1420; --shadow:0 4px 28px rgba(0,0,0,0.5);
-  --mgmt-bg:#3A2E10; --mgmt-c:#FBBF24;
-  --teamA-bg:#132241; --teamA-c:#93C5FD;
-  --teamB-bg:#241B3D; --teamB-c:#C4B5FD;
-  --green-bg:#0E2A21; --green-c:#34D399;
-  --amber-bg:#2E2410; --amber-c:#FBBF24;
-  --gray-bg:#1B2233; --gray-c:#9AA6BC;
-}
-:root[data-theme="light"]{
-  --bg:#EEF1F6; --page-bg:#EEF1F6; --surface:#ffffff; --border:#E5E7EB;
-  --text:#111827; --text-2:#4B5563; --text-3:#6B7280; --text-4:#9CA3AF;
-  --input-bg:#F9FAFB; --shadow:0 4px 24px rgba(15,23,42,0.10);
-  --mgmt-bg:#FEF3C7; --mgmt-c:#92400E;
-  --teamA-bg:#DBEAFE; --teamA-c:#1E40AF;
-  --teamB-bg:#EDE9FE; --teamB-c:#4C1D95;
-  --green-bg:#D1FAE5; --green-c:#065F46;
-  --amber-bg:#FEF3C7; --amber-c:#78350F;
-  --gray-bg:#F3F4F6; --gray-c:#6B7280;
+  color-scheme: light;
+
+  --color-bg:#FCFBF8; --color-page:#F3F1EC; --color-surface:#FFFFFF;
+  --color-text:#1C2A38; --color-text-sub:#6B7785; --color-text-mute:#8C959E;
+  --color-border:#E8E6DF; --color-border-strong:#D8D5CB;
+  --color-track:#F1EFE9;
+
+  --color-accent:#3FA9E0; --color-accent-tint:#E9F4FB; --color-accent-deep:#2A87BA;
+  --color-accent-ink:#1F6E96;
+  --color-plum:#6E5D9E;  --color-plum-tint:#F0EDF8;  --color-plum-ink:#54467D;
+  --color-dusk:#F58A3C;  --color-dusk-tint:#FDF1E6;  --color-dusk-ink:#B4611F;
+  --color-grow:#2FB08A;  --color-grow-tint:#E7F6F1;  --color-grow-ink:#1E7B60;
+  --color-alert:#E2555A; --color-alert-tint:#FCECED; --color-alert-ink:#B4363B;
+
+  --radius-sm:6px; --radius-md:10px; --radius-lg:14px; --radius-pill:999px;
+  --shadow-card:0 1px 2px rgba(28,42,56,.04);
+  --shadow-pop:0 6px 24px rgba(28,42,56,.10);
+
+  /* ── 旧名エイリアス ── */
+  --accent:var(--color-accent); --accent-fg:#ffffff;
+  --bg:var(--color-bg); --page-bg:var(--color-page); --surface:var(--color-surface);
+  --border:var(--color-border);
+  --text:var(--color-text); --text-2:var(--color-text-sub);
+  --text-3:var(--color-text-sub); --text-4:var(--color-text-mute);
+  --input-bg:var(--color-bg); --shadow:var(--shadow-pop);
+  --mgmt-bg:var(--color-dusk-tint);   --mgmt-c:var(--color-dusk-ink);
+  --teamA-bg:var(--color-accent-tint); --teamA-c:var(--color-accent-ink);
+  --teamB-bg:var(--color-plum-tint);   --teamB-c:var(--color-plum-ink);
+  --green:var(--color-grow); --green-bg:var(--color-grow-tint); --green-c:var(--color-grow-ink);
+  --amber:var(--color-dusk); --amber-bg:var(--color-dusk-tint); --amber-c:var(--color-dusk-ink);
+  --gray-dot:var(--color-text-mute); --gray-bg:var(--color-track); --gray-c:var(--color-text-sub);
+  --blue:var(--color-accent); --purple:var(--color-plum); --red:var(--color-alert);
 }
 
 *{box-sizing:border-box;}
-body{margin:0;background:var(--page-bg);}
+body{margin:0;background:var(--color-page);}
 .shell-outer{
   display:flex; justify-content:center; align-items:stretch;
   min-height:100vh; background:var(--page-bg);
-  font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
-  color:var(--text);
+  /* Noto Sans JP が届くまでは各OSの標準日本語フォントで出す */
+  font-family:"Noto Sans JP",-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  color:var(--color-text);
+  /* 日本語主体なので行間は 1.8 を基準にする */
+  line-height:1.8;
+  -webkit-font-smoothing:antialiased;
 }
 .app{
   width:100%; max-width:640px; display:flex; flex-direction:column;
-  height:100vh; background:var(--bg); overflow:hidden;
+  height:100vh; background:var(--color-bg); overflow:hidden;
 }
 @media (min-width:641px){
   .shell-outer{padding:24px 16px;}
-  .app{height:calc(100vh - 48px); max-height:900px; border-radius:16px; box-shadow:var(--shadow); border:1px solid var(--border);}
+  .app{height:calc(100vh - 48px); max-height:900px; border-radius:var(--radius-lg);
+    box-shadow:var(--shadow-pop); border:1px solid var(--color-border);}
 }
 
-.header{padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0;}
+.header{padding:14px 16px; background:var(--color-surface); border-bottom:1px solid var(--color-border);
+  display:flex; align-items:center; gap:10px; flex-shrink:0;}
 .header-info{flex:1; min-width:0;}
-.header-title{font-weight:700; font-size:16px; color:var(--text);}
-.header-online{font-size:12px; color:var(--green); font-weight:600; margin-top:2px;}
+.header-title{font-weight:700; font-size:17px; color:var(--color-text); line-height:1.4;}
+.header-online{font-size:13px; color:var(--color-grow-ink); font-weight:700; margin-top:1px; line-height:1.5;}
 .header-me{display:flex; align-items:center; gap:8px; flex-shrink:0;}
 .header-me-text{min-width:0; text-align:right;}
-.header-me-name{font-size:13px; font-weight:700; color:var(--text); white-space:nowrap;}
-.header-me-role{font-size:10px; color:var(--amber-c); background:var(--amber-bg); border-radius:99px; padding:0 6px; display:inline-block; margin-top:1px;}
-.signout-btn{background:transparent; border:1px solid var(--border); border-radius:8px; padding:5px 8px; font-size:11px; color:var(--text-3); cursor:pointer; font-family:inherit; white-space:nowrap;}
+.header-me-name{font-size:13px; font-weight:700; color:var(--color-text); white-space:nowrap; line-height:1.5;}
+.header-me-role{font-size:12px; font-weight:700; color:var(--color-dusk-ink); background:var(--color-dusk-tint);
+  border-radius:var(--radius-sm); padding:0 6px; display:inline-block; line-height:20px;}
+.signout-btn{background:var(--color-surface); border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-md); padding:0 10px; height:36px; font-size:13px; font-weight:700;
+  color:var(--color-text-sub); cursor:pointer; font-family:inherit; white-space:nowrap;}
+.signout-btn:hover{background:var(--color-bg);}
 
 .content{flex:1; overflow-y:auto;}
-.tab-pad{padding:12px 16px 24px;}
+.tab-pad{padding:16px 16px 28px;}
 .loading{display:flex; justify-content:center; align-items:center; height:100%; color:var(--text-4); font-size:14px;}
 
 /* ── 認証まわりの画面 ───────────────────────────── */
@@ -90,7 +106,11 @@ body{margin:0;background:var(--page-bg);}
 .auth-logo{font-size:34px;}
 .auth-title{font-size:19px; font-weight:700; color:var(--text);}
 .auth-desc{font-size:13px; color:var(--text-3); line-height:1.7; max-width:340px;}
-.google-btn{display:inline-flex; align-items:center; justify-content:center; gap:10px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:12px 20px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; box-shadow:var(--shadow); min-width:260px;}
+.google-btn{display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  background:var(--color-surface); color:var(--color-text); border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-lg); height:52px; padding:0 20px; font-size:15px; font-weight:700;
+  cursor:pointer; font-family:inherit; min-width:280px; line-height:1;}
+.google-btn:hover{background:var(--color-bg);}
 .google-btn:disabled{opacity:0.6; cursor:default;}
 .google-mark{width:18px; height:18px; flex-shrink:0;}
 .auth-note{font-size:11px; color:var(--text-4); line-height:1.7; max-width:340px;}
@@ -100,84 +120,132 @@ body{margin:0;background:var(--page-bg);}
 .auth-setup{background:var(--amber-bg); border:1px solid color-mix(in srgb, var(--amber) 40%, transparent); color:var(--amber-c); border-radius:10px; padding:14px; font-size:12px; line-height:1.8; max-width:420px; text-align:left;}
 .auth-setup code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; background:color-mix(in srgb, var(--amber) 18%, transparent); border-radius:4px; padding:1px 4px;}
 
-.nav{display:flex; background:var(--surface); border-top:1px solid var(--border); flex-shrink:0;}
-.nav-btn{flex:1; padding:8px 4px; background:transparent; border:none; color:var(--text-4); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; position:relative; font-family:inherit;}
-.nav-btn.active{color:var(--accent);}
-.nav-icon{font-size:18px;}
+/* ボトムナビ。高さ72＋下8のセーフエリア余白は、指が届く帯を確保するための指定。 */
+.nav{display:flex; background:var(--color-surface); border-top:1px solid var(--color-border);
+  flex-shrink:0; height:72px; padding-bottom:8px;}
+.nav-btn{flex:1; padding:0 4px; background:transparent; border:none; color:var(--color-text-sub);
+  cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:4px; position:relative; font-family:inherit; line-height:1.4;}
+.nav-btn.active{color:var(--color-accent-deep);}
+.nav-icon{font-size:20px; line-height:1;}
 .nav-label{font-size:11px;}
 .nav-btn.active .nav-label{font-weight:700;}
-.nav-badge{position:absolute; top:6px; right:16%; background:var(--red); color:#fff; border-radius:99px; font-size:11px; padding:1px 5px; font-weight:700;}
-.nav-btn.active::after{content:""; position:absolute; bottom:0; left:20%; right:20%; height:2px; background:var(--accent); border-radius:99px;}
+.nav-badge{position:absolute; top:10px; right:calc(50% - 22px); background:var(--color-alert); color:#fff;
+  border-radius:var(--radius-pill); font-size:10px; font-weight:700; min-width:16px; height:16px;
+  padding:0 4px; display:inline-flex; align-items:center; justify-content:center; line-height:1;}
 
-.card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:10px;}
-.input{background:var(--input-bg); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; color:var(--text); outline:none; width:100%; font-family:inherit;}
-.input:focus-visible, .chip:focus-visible, button:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
-.textarea{resize:vertical;}
+.card{background:var(--color-surface); border:1px solid var(--color-border);
+  border-radius:var(--radius-lg); padding:16px; margin-bottom:12px;}
+/* 入力欄は高さ44。押せる・触れる要素の最小寸法を揃えるための指定。 */
+.input{background:var(--color-surface); border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-md); padding:0 14px; height:44px; font-size:15px;
+  color:var(--color-text); outline:none; width:100%; font-family:inherit; line-height:1.6;}
+.input:focus{border-color:var(--color-accent); outline:2px solid var(--color-accent-tint); outline-offset:0;}
+.input:focus-visible, .chip:focus-visible, button:focus-visible{outline:2px solid var(--color-accent); outline-offset:1px;}
+select.input{padding-right:8px;}
+.textarea{resize:vertical; height:auto; padding:12px 14px; line-height:1.8;}
 .form-card{margin-bottom:12px;}
 .form-col{display:flex; flex-direction:column; gap:8px;}
 .form-col-tight{display:flex; flex-direction:column; gap:8px;}
 .form-row{display:flex; gap:8px;}
 .form-row-center{align-items:center;}
-.input-strong{font-weight:600;}
-.checkbox-label{display:flex; align-items:center; gap:4px; font-size:12px; color:var(--text-3); cursor:pointer;}
+.input-strong{font-weight:700;}
+.checkbox-label{display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700;
+  color:var(--color-text-sub); cursor:pointer; min-height:44px;}
 .checkbox-label.nowrap{white-space:nowrap;}
-.btn-primary{flex:1; background:var(--accent); color:var(--accent-fg); border:none; border-radius:8px; padding:9px; font-weight:700; font-size:13px; cursor:pointer; font-family:inherit;}
+
+/* ボタンは高さ44・角丸10・太字15で揃える。押せるものの寸法を一定にするため。 */
+.btn-primary{flex:1; background:var(--color-accent); color:#fff; border:none;
+  border-radius:var(--radius-md); height:44px; padding:0 20px; font-weight:700; font-size:15px;
+  cursor:pointer; font-family:inherit; line-height:1;}
+.btn-primary:hover{background:var(--color-accent-deep);}
+.btn-primary:disabled{background:var(--color-border); color:#A5AEB8; cursor:default;}
 .btn-primary.full{width:100%;}
-.btn-ghost{padding:9px 14px; background:transparent; border:1px solid var(--border); border-radius:8px; color:var(--text-3); font-size:13px; cursor:pointer; font-family:inherit;}
-.btn-dash{background:transparent; border:1px dashed var(--border); border-radius:8px; padding:6px; color:var(--text-4); font-size:12px; cursor:pointer; font-family:inherit;}
-.dashed-trigger{width:100%; padding:10px; background:var(--input-bg); border:1px dashed var(--border); border-radius:12px; margin-bottom:12px; color:var(--text-3); font-weight:600; cursor:pointer; font-family:inherit; font-size:13px;}
+.btn-ghost{height:44px; padding:0 20px; background:var(--color-surface);
+  border:1px solid var(--color-border-strong); border-radius:var(--radius-md);
+  color:var(--color-text); font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; line-height:1;}
+.btn-ghost:hover{background:var(--color-bg);}
+.btn-dash{background:var(--color-surface); border:1px dashed var(--color-border-strong);
+  border-radius:var(--radius-md); height:44px; color:var(--color-text-sub); font-size:13px;
+  font-weight:700; cursor:pointer; font-family:inherit;}
+.dashed-trigger{width:100%; min-height:44px; padding:11px 14px; background:var(--color-surface);
+  border:1px dashed var(--color-border-strong); border-radius:var(--radius-md); margin-bottom:12px;
+  color:var(--color-text-sub); font-weight:700; cursor:pointer; font-family:inherit; font-size:13px;}
+.dashed-trigger:hover{background:var(--color-bg);}
 
-.empty{padding:28px 16px; text-align:center; color:var(--text-4); font-size:13px; line-height:1.9;}
-.empty-icon{font-size:28px; display:block; margin-bottom:6px;}
-.empty-sub{font-size:11px; color:var(--text-4); margin-top:6px;}
+.empty{padding:32px 16px; text-align:center; color:var(--color-text-sub); font-size:15px; line-height:1.8;}
+.empty-icon{font-size:32px; display:block; margin-bottom:8px;}
+.empty-sub{font-size:13px; color:var(--color-text-sub); margin-top:6px;}
 
-.sortbar{display:flex; gap:6px; margin-bottom:12px;}
-.chip{padding:4px 12px; border-radius:99px; font-size:12px; font-weight:600; background:transparent; color:var(--text-3); border:1px solid var(--border); cursor:pointer; white-space:nowrap; font-family:inherit;}
-.chip-active{background:var(--accent); color:#fff; border-color:var(--accent);}
-.kpi-filter{display:flex; gap:6px; overflow-x:auto; margin-bottom:14px; padding-bottom:2px;}
+/* チップは高さ36の丸形。選択中はベタ塗りにせず、淡い面＋枠＋濃い文字にする。
+   ベタ塗りを増やすと画面上の主役が増えて、白と余白が主体の設計が崩れるため。 */
+.sortbar{display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;}
+.chip{height:36px; padding:0 14px; border-radius:var(--radius-pill); font-size:13px; font-weight:700;
+  background:var(--color-surface); color:var(--color-text-sub); border:1px solid var(--color-border-strong);
+  cursor:pointer; white-space:nowrap; font-family:inherit; line-height:1;}
+.chip:hover{background:var(--color-bg);}
+.chip-active{background:var(--color-accent-tint); color:var(--color-accent-ink); border-color:var(--color-accent);}
+.kpi-filter{display:flex; gap:8px; overflow-x:auto; margin-bottom:14px; padding-bottom:2px;}
 
-.composer-trigger{width:100%; display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--input-bg); border:1px solid var(--border); border-radius:12px; cursor:pointer; margin-bottom:12px; text-align:left; font-family:inherit;}
-.composer-placeholder{color:var(--text-4); font-size:13px;}
-.composer-cta{margin-left:auto; color:var(--accent); font-size:12px; font-weight:600; white-space:nowrap;}
+.composer-trigger{width:100%; display:flex; align-items:center; gap:10px; padding:0 14px; min-height:52px;
+  background:var(--color-surface); border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-md); cursor:pointer; margin-bottom:12px; text-align:left; font-family:inherit;}
+.composer-trigger:hover{background:var(--color-bg);}
+.composer-placeholder{color:var(--color-text-sub); font-size:15px;}
+.composer-cta{margin-left:auto; color:var(--color-accent-deep); font-size:13px; font-weight:700; white-space:nowrap;}
 
-.avatar{border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:600; flex-shrink:0; border:1px solid rgba(0,0,0,0.06);}
-.team-mgmt{background:var(--mgmt-bg); color:var(--mgmt-c);}
-.team-a{background:var(--teamA-bg); color:var(--teamA-c);}
-.team-b{background:var(--teamB-bg); color:var(--teamB-c);}
-.team-none{background:var(--gray-bg); color:var(--gray-c);}
+.avatar{border-radius:var(--radius-pill); display:flex; align-items:center; justify-content:center;
+  font-weight:700; flex-shrink:0; line-height:1;}
+.team-mgmt{background:var(--color-dusk-tint); color:var(--color-dusk-ink);}
+.team-a{background:var(--color-accent-tint); color:var(--color-accent-ink);}
+.team-b{background:var(--color-plum-tint); color:var(--color-plum-ink);}
+.team-none{background:var(--color-bg); color:var(--color-text-sub); border:1px solid var(--color-border);}
 
-.badge{background:color-mix(in srgb, var(--bc) 16%, transparent); color:var(--bc); border:1px solid color-mix(in srgb, var(--bc) 32%, transparent); border-radius:99px; padding:2px 8px; font-size:11px; font-weight:600; white-space:nowrap;}
+/* バッジは淡い面＋濃い文字。角丸6で、丸ピルより情報寄りの見た目にする。 */
+.badge{background:color-mix(in srgb, var(--bc) 14%, #fff); color:var(--bc);
+  border-radius:var(--radius-sm); padding:0 9px; height:24px; font-size:12px; font-weight:700;
+  white-space:nowrap; display:inline-flex; align-items:center; line-height:1;}
 
 .post-card{}
 .post-head{display:flex; gap:10px; margin-bottom:8px;}
 .post-head-info{flex:1; min-width:0;}
 .post-head-line{display:flex; flex-wrap:wrap; align-items:center; gap:6px;}
-.post-name{font-weight:700; font-size:14px;}
+.post-name{font-weight:700; font-size:15px;}
 .post-arrow{color:var(--text-4); font-size:12px;}
 .post-to{font-weight:600; font-size:13px; color:var(--accent);}
-.post-time{color:var(--text-4); font-size:11px; margin-top:2px;}
-.post-text{font-size:14px; color:var(--text-2); line-height:1.6; margin-bottom:10px; padding-left:48px; white-space:pre-wrap; word-break:break-word;}
+.post-time{color:var(--text-4); font-size:12px; margin-top:2px;}
+.post-text{font-size:15px; color:var(--color-text); line-height:1.8; margin-bottom:10px; padding-left:48px; white-space:pre-wrap; word-break:break-word;}
 .post-actions{display:flex; gap:5px; flex-wrap:wrap; padding-left:48px; position:relative;}
 .react-peek{position:absolute; bottom:calc(100% + 6px); left:48px; max-width:calc(100% - 48px); z-index:20;
   background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow);
   padding:7px 10px; font-size:11px; color:var(--text-2); line-height:1.7; word-break:break-word;}
-.react-btn{background:transparent; border:1px solid var(--border); border-radius:99px; padding:3px 9px; font-size:13px; color:var(--text-3); cursor:pointer; display:flex; align-items:center; gap:3px; font-family:inherit;}
-.react-btn.react-mine{background:color-mix(in srgb, var(--accent) 12%, transparent); border-color:color-mix(in srgb, var(--accent) 40%, transparent); color:var(--accent);}
-.react-count{font-size:11px;}
-.comment-toggle-btn{background:transparent; border:1px solid var(--border); border-radius:99px; padding:3px 9px; font-size:12px; color:var(--text-4); margin-left:auto; cursor:pointer; font-family:inherit;}
-.comments{margin-top:10px; padding-left:48px;}
-.comment-row{display:flex; gap:8px; margin-bottom:6px;}
-.comment-bubble{background:var(--input-bg); border-radius:8px; padding:5px 9px; font-size:12px;}
+/* スタンプは高さ36の丸ボタン。自分が押したものだけ淡い水色の面＋枠で示す。 */
+.react-btn{background:var(--color-surface); border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-pill); height:36px; padding:0 12px; font-size:14px;
+  color:var(--color-text-sub); cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+  font-family:inherit; font-weight:700; line-height:1;}
+.react-btn:hover{background:var(--color-bg);}
+.react-btn.react-mine{background:var(--color-accent-tint); border-color:var(--color-accent);
+  color:var(--color-accent-ink);}
+.react-count{font-size:13px;}
+.comment-toggle-btn{background:var(--color-surface); border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-pill); height:36px; padding:0 12px; font-size:13px; font-weight:700;
+  color:var(--color-text-sub); margin-left:auto; cursor:pointer; font-family:inherit; line-height:1;}
+.comment-toggle-btn:hover{background:var(--color-bg);}
+.comments{margin-top:12px; padding-left:48px;}
+.comment-row{display:flex; gap:8px; margin-bottom:8px;}
+.comment-bubble{background:var(--color-bg); border:1px solid var(--color-border);
+  border-radius:var(--radius-md); padding:8px 12px; font-size:13px; line-height:1.8;}
 .comment-name{font-weight:700;}
-.comment-text{color:var(--text-2);}
-.comment-input-row{display:flex; gap:8px; margin-top:6px; align-items:center;}
-.comment-input{font-size:12px; padding:5px 9px;}
+.comment-text{color:var(--color-text-sub);}
+.comment-input-row{display:flex; gap:8px; margin-top:8px; align-items:center;}
+.comment-input{font-size:13px;}
 
 .board-card{cursor:default;}
 .board-meta{display:flex; align-items:center; gap:6px; margin-bottom:6px;}
 .board-time{margin-left:auto; color:var(--text-4); font-size:11px;}
-.board-title{font-weight:700; font-size:15px; color:var(--text); margin-bottom:6px;}
-.board-body{font-size:13px; color:var(--text-2); line-height:1.6; margin-bottom:8px; white-space:pre-wrap; word-break:break-word;}
+.board-title{font-weight:700; font-size:17px; color:var(--text); margin-bottom:6px;}
+.board-body{font-size:15px; color:var(--color-text); line-height:1.8; margin-bottom:8px; white-space:pre-wrap; word-break:break-word;}
 .board-footer{display:flex; align-items:center; gap:6px;}
 .board-footer-text{font-size:11px; color:var(--text-4);}
 .reader-toggle{margin-left:auto; display:flex; align-items:center; gap:6px; background:transparent; border:1px solid var(--border); border-radius:99px; padding:3px 9px; font-size:11px; color:var(--text-3); cursor:pointer; font-family:inherit; white-space:nowrap;}
@@ -196,14 +264,14 @@ body{margin:0;background:var(--page-bg);}
 .reader-chips-muted .reader-chip{opacity:0.6; font-size:11px;}
 
 .survey-head{display:flex; gap:8px; margin-bottom:10px; align-items:flex-start;}
-.survey-title{font-weight:700; font-size:14px; color:var(--text);}
+.survey-title{font-weight:700; font-size:17px; color:var(--text);}
 .survey-meta{font-size:11px; color:var(--text-4);}
 .survey-opt-row{margin-bottom:8px; cursor:pointer;}
 .survey-opt-line{display:flex; justify-content:space-between; margin-bottom:3px;}
 .survey-opt-label{font-size:13px; color:var(--text-2);}
 .survey-opt-label.voted{color:var(--accent); font-weight:700;}
 .survey-opt-count{font-size:12px; color:var(--text-4);}
-.bar-bg{height:6px; background:var(--input-bg); border-radius:99px; overflow:hidden;}
+.bar-bg{height:6px; background:var(--color-track); border-radius:var(--radius-pill); overflow:hidden;}
 .bar-fill{height:100%; border-radius:99px;}
 @media (prefers-reduced-motion:no-preference){ .bar-fill{transition:width 0.3s;} }
 .survey-total{margin-top:8px; text-align:right; font-size:12px; color:var(--text-4);}
@@ -234,21 +302,26 @@ body{margin:0;background:var(--page-bg);}
    月表示は31列を詰めるので狭いまま「早」だけにする。 */
 .shift-week .shift-cell{width:auto; flex:1; min-width:38px; font-size:11px;}
 .shift-week .shift-date-head{font-size:11px;}
-.shift-today{box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);}
-.shift-date-head.shift-today{background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--accent);}
-/* 区分は文字色ではなく背景で塗る。文字を読まずに早/遅が判別できるようにするため。 */
-.shift-early{background:color-mix(in srgb, var(--blue) 22%, transparent); color:var(--blue); font-weight:700;}
-.shift-late{background:color-mix(in srgb, var(--purple) 24%, transparent); color:var(--purple); font-weight:700;}
-.shift-other{background:color-mix(in srgb, var(--amber) 20%, transparent); color:var(--amber-c); font-weight:600; font-size:9px; line-height:1.2; text-align:center;}
-.shift-off{color:var(--text-4); opacity:.45;}
+.shift-today{box-shadow:inset 0 0 0 2px var(--color-accent);}
+.shift-date-head.shift-today{background:var(--color-accent-tint); color:var(--color-accent-deep);}
+/* 区分は文字色ではなく背景で塗る。文字を読まずに早/遅が判別できるようにするため。
+   色は必ず文字と併記する二重符号化。未提出だけは斜線＋破線枠にしてあり、
+   色が見えない環境でも他と区別できる。 */
+.shift-early{background:#DCEFFA; color:#1F6E96; border-color:#BEE0F5; font-weight:700;}
+.shift-late{background:#FBE7D3; color:#A85A1C; border-color:#F5D2B0; font-weight:700;}
+.shift-night{background:#EDE8F7; color:#54467D; border-color:#DCD4EE; font-weight:700; font-size:10px;}
+.shift-other{background:var(--color-dusk-tint); color:var(--color-dusk-ink); font-weight:700;
+  font-size:9px; line-height:1.2; text-align:center;}
+.shift-off{background:#F4F2ED; color:var(--color-text-sub);}
 /* 未提出＝シフト表にその人の行が無い。休み（行はあるが空欄）とは別物として出す。 */
-.shift-none{background:repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-4) 14%, transparent) 0 4px, transparent 4px 8px); color:var(--text-4); font-size:9px;}
+.shift-none{background:repeating-linear-gradient(135deg,#FFF,#FFF 5px,var(--color-track) 5px,var(--color-track) 10px);
+  color:#8C959E; font-size:10px; border-color:var(--color-border-strong);}
 .shift-name-cell.shift-name-none{color:var(--text-4);}
 .shift-count-row{background:var(--input-bg); border-top:2px solid var(--border);}
 .shift-count-row .shift-name-cell{background:var(--input-bg); font-weight:700; color:var(--text-3); font-size:11px;}
 .shift-count-cell{flex-direction:column; gap:1px; font-size:10px; line-height:1.25; font-weight:700;}
-.shift-count-early{color:var(--blue);}
-.shift-count-late{color:var(--purple);}
+.shift-count-early{color:#1F6E96;}
+.shift-count-late{color:#A85A1C;}
 .shift-legend{display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-4); flex-wrap:wrap;}
 .legend-item{display:flex; align-items:center; gap:5px;}
 .legend-dot{display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:var(--input-bg); font-size:10px; font-weight:700;}
@@ -257,7 +330,7 @@ body{margin:0;background:var(--page-bg);}
 .shift-bar{display:flex; align-items:center; gap:6px; margin-bottom:10px;}
 .shift-bar-label{flex:1; text-align:center; font-size:13px; font-weight:700; color:var(--text);}
 .shift-bar-sub{font-size:11px; font-weight:400; color:var(--text-4); margin-left:4px;}
-.shift-nav-btn{background:var(--input-bg); border:1px solid var(--border); border-radius:8px; width:34px; height:30px; color:var(--text-2); cursor:pointer; font-family:inherit; font-size:13px; flex-shrink:0;}
+.shift-nav-btn{background:var(--color-surface); border:1px solid var(--color-border-strong); border-radius:var(--radius-md); width:40px; height:36px; color:var(--text-2); cursor:pointer; font-family:inherit; font-size:13px; flex-shrink:0;}
 .shift-nav-btn:disabled{opacity:.35; cursor:default;}
 .shift-controls{display:flex; gap:6px; align-items:center; margin-bottom:10px; flex-wrap:wrap;}
 .shift-controls-spacer{flex:1;}
@@ -281,18 +354,18 @@ body{margin:0;background:var(--page-bg);}
 .kpi-value{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;}
 .kpi-unit{font-size:11px; color:var(--text-4);}
 .kpi-target{margin-left:auto; font-size:11px; color:var(--text-4); white-space:nowrap;}
-.kpi-bar-bg{height:4px; background:var(--input-bg); border-radius:99px;}
+.kpi-bar-bg{height:4px; background:var(--color-track); border-radius:var(--radius-pill);}
 .kpi-bar{height:100%; border-radius:99px;}
 .section-label{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em;}
 
 /* ── 目標進捗 ───────────────────────────────────── */
-.prog-note{font-size:11px; color:var(--text-3); line-height:1.7; background:var(--input-bg);
+.prog-note{font-size:13px; color:var(--text-3); line-height:1.7; background:var(--input-bg);
   border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin-bottom:10px;}
 .prog-note b{color:var(--text); font-weight:700;}
 
 /* ── Mission / Vision / Value ─────────────────────── */
 .mvv{margin-bottom:12px;}
-.mvv-toggle{width:100%; display:flex; align-items:center; gap:8px; padding:10px 12px;
+.mvv-toggle{width:100%; min-height:52px; display:flex; align-items:center; gap:8px; padding:10px 12px;
   background:var(--input-bg); border:1px solid var(--border); border-radius:10px;
   color:var(--text-2); font-size:13px; font-weight:700; cursor:pointer;
   font-family:inherit; margin-bottom:10px; text-align:left;}
@@ -303,7 +376,7 @@ body{margin:0;background:var(--page-bg);}
 .mvv-kind-ja{font-size:11px; font-weight:400; letter-spacing:0; color:var(--text-4);}
 .mvv-kind-standalone{margin:14px 0 8px;}
 .mvv-lead{font-size:15px; font-weight:700; color:var(--text); line-height:1.65; text-wrap:balance;}
-.mvv-body{font-size:13px; color:var(--text-2); line-height:1.8; margin-top:4px;}
+.mvv-body{font-size:15px; color:var(--text-2); line-height:1.8; margin-top:4px;}
 .mvv-note{font-size:12px; color:var(--accent); font-weight:600; margin-top:8px;}
 .mvv-points{display:flex; flex-direction:column; gap:8px; margin-top:12px;
   padding-top:12px; border-top:1px solid var(--border);}
@@ -338,7 +411,7 @@ body{margin:0;background:var(--page-bg);}
 .prog-bar-top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
 .prog-bar-name{font-size:12px; font-weight:700; color:var(--text-2);}
 .prog-bar-pct{font-size:16px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums;}
-.prog-bar-bg{height:10px; background:var(--input-bg); border-radius:99px; overflow:hidden;}
+.prog-bar-bg{height:10px; background:var(--color-track); border-radius:var(--radius-pill); overflow:hidden;}
 .prog-bar{height:100%; border-radius:99px; background:var(--accent);}
 @media (prefers-reduced-motion:no-preference){ .prog-bar{transition:width .3s;} }
 .prog-bar-labels{display:flex; justify-content:space-between; margin-top:5px;
@@ -352,7 +425,7 @@ body{margin:0;background:var(--page-bg);}
 .prog-cell-sub{font-size:10px; color:var(--text-4); margin-top:3px; line-height:1.5;}
 
 .prog-section{margin-top:6px;}
-.prog-toggle{width:100%; display:flex; align-items:center; gap:8px; padding:10px 12px;
+.prog-toggle{width:100%; min-height:52px; display:flex; align-items:center; gap:8px; padding:10px 12px;
   background:var(--input-bg); border:1px solid var(--border); border-radius:10px;
   color:var(--text-2); font-size:13px; font-weight:700; cursor:pointer;
   font-family:inherit; margin-bottom:10px;}
@@ -1841,6 +1914,7 @@ function renderSurveyCard(sv){
 function shiftCellClass(val){
   if(val==="早番") return "shift-early";
   if(val==="遅番") return "shift-late";
+  if(val==="21時") return "shift-night";   // 出現頻度が高いのでデザイン上も独立した色を持つ
   if(val) return "shift-other";
   return "shift-off";
 }
@@ -2126,7 +2200,8 @@ function renderShift(){
     '<div class="shift-legend">' +
       '<span class="legend-item"><span class="legend-dot shift-early">早</span>早番</span>' +
       '<span class="legend-item"><span class="legend-dot shift-late">遅</span>遅番</span>' +
-      '<span class="legend-item"><span class="legend-dot shift-other">他</span>21時など</span>' +
+      '<span class="legend-item"><span class="legend-dot shift-night">21</span>21時</span>' +
+      '<span class="legend-item"><span class="legend-dot shift-other">他</span>その他</span>' +
       '<span class="legend-item"><span class="legend-dot shift-off">–</span>休み</span>' +
       '<span class="legend-item"><span class="legend-dot shift-none">未</span>未提出</span>' +
     '</div>' +
