@@ -289,8 +289,42 @@ body{margin:0;background:var(--page-bg);}
 .prog-note{font-size:11px; color:var(--text-3); line-height:1.7; background:var(--input-bg);
   border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin-bottom:10px;}
 .prog-note b{color:var(--text); font-weight:700;}
-.prog-note-warn{background:color-mix(in srgb, var(--amber) 12%, transparent);
-  border-color:color-mix(in srgb, var(--amber) 32%, transparent); color:var(--amber-c);}
+
+/* ── Mission / Vision / Value ─────────────────────── */
+.mvv{margin-bottom:12px;}
+.mvv-toggle{width:100%; display:flex; align-items:center; gap:8px; padding:10px 12px;
+  background:var(--input-bg); border:1px solid var(--border); border-radius:10px;
+  color:var(--text-2); font-size:13px; font-weight:700; cursor:pointer;
+  font-family:inherit; margin-bottom:10px; text-align:left;}
+.mvv-toggle-sub{margin-left:auto; font-size:11px; font-weight:400; color:var(--text-4); white-space:nowrap;}
+.mvv-block{margin-bottom:10px;}
+.mvv-kind{font-size:11px; font-weight:700; letter-spacing:0.12em; color:var(--accent);
+  display:flex; align-items:baseline; gap:8px; margin-bottom:8px;}
+.mvv-kind-ja{font-size:11px; font-weight:400; letter-spacing:0; color:var(--text-4);}
+.mvv-kind-standalone{margin:14px 0 8px;}
+.mvv-lead{font-size:15px; font-weight:700; color:var(--text); line-height:1.65; text-wrap:balance;}
+.mvv-body{font-size:13px; color:var(--text-2); line-height:1.8; margin-top:4px;}
+.mvv-note{font-size:12px; color:var(--accent); font-weight:600; margin-top:8px;}
+.mvv-points{display:flex; flex-direction:column; gap:8px; margin-top:12px;
+  padding-top:12px; border-top:1px solid var(--border);}
+.mvv-point-t{font-size:12px; font-weight:700; color:var(--text);}
+.mvv-point-d{font-size:11px; color:var(--text-3); line-height:1.7; margin-top:2px;}
+
+.mvv-axis{margin-bottom:8px;}
+.mvv-axis-head{display:flex; align-items:baseline; gap:8px; margin-bottom:10px;
+  padding-bottom:8px; border-bottom:1px solid var(--border);}
+.mvv-axis-no{font-size:11px; font-weight:700; color:var(--accent-fg);
+  background:var(--accent); border-radius:5px; padding:1px 6px; font-variant-numeric:tabular-nums;}
+.mvv-axis-title{font-size:13px; font-weight:700; color:var(--text);}
+.mvv-value{padding:7px 0;}
+.mvv-value + .mvv-value{border-top:1px dashed var(--border);}
+.mvv-value-head{display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;}
+.mvv-value-no{font-size:10px; color:var(--text-4); font-variant-numeric:tabular-nums;}
+.mvv-value-en{font-size:12px; font-weight:700; color:var(--text);}
+.mvv-value-ja{font-size:11px; color:var(--text-3);}
+.mvv-value-d{font-size:11px; color:var(--text-3); line-height:1.7; margin-top:3px;}
+.mvv-closing{font-size:12px; color:var(--text-2); line-height:1.8; text-align:center;
+  padding:12px 10px; margin-bottom:4px;}
 
 /* 必要ペースの一文。ここだけ大きくして、開いた瞬間に目に入るようにする。 */
 .prog-head{background:color-mix(in srgb, var(--accent) 8%, var(--surface));
@@ -388,7 +422,88 @@ import {
 // 公開リポジトリに社員のメールアドレスや氏名を置かないため。
 var REACTIONS = ["👍","🔥","💎","🎉","💪"];
 var POST_TYPES = ["Thanks","お知らせ","雑談","質問","報告"];
-var VALUES = ["🤝 チームワーク","💰 商売を楽しむ","🔥 MVVを体現","💎 主体性","✨ 凡事徹底"];
+// ══════════════════════════════════════════════════════════════════
+//  第二CC の Mission / Vision / Value
+//
+//  出典はスライド「第二MVV」。文言はそこに合わせてある。
+//  原典が改訂されたらここを直す（画面とバリュー選択の両方がここを見る）。
+//
+//  バリューの通し番号（no）は原典のもので、軸の並び順とは一致しない。
+//  例: 軸01「提供価値の最大化」に入るのは 04・05・10。原典の番号を
+//  勝手に振り直すと、スライドと会話が噛み合わなくなるのでそのまま持つ。
+// ══════════════════════════════════════════════════════════════════
+var MVV = {
+  mission: {
+    lead: "お客様のあらゆるニーズに最適解を届け、より良い、を商う。",
+    body: "1つの買取から、暮らしが豊かになる『あって良かった』を広げていく。",
+    points: [
+      { t:"確かな価値を満たす", d:"一人ひとりに合わせた「確かな価値」を満たし、「より良い」を追求します。" },
+      { t:"豊かさを広げる",     d:"1つの買取をきっかけに、それぞれの「豊かさ」を広げ、「あって良かった」と心から実感していただく。" },
+      { t:"未来を好転させる",   d:"私たちはモノの売買を超え、お客様の暮らしの未来を心地よく好転させる。" }
+    ]
+  },
+  vision: {
+    lead: "「人の力」が最大限に活きる。",
+    body: "一人ひとりが主役となって「達成感」を分かち合い、お客様との間に「Win-Win」を創造できるように。",
+    note: "「人だからこその感動価値」を最大化する。",
+    points: [
+      { t:"主体性",  d:"個人リユース・マシナリー・車の各領域で、一人ひとりが主体性を発揮する。" },
+      { t:"達成感",  d:"定量的・定性的な目標をクリアする最高の達成感を、仲間と分かち合う。" },
+      { t:"Win-Win", d:"主役たちの挑戦が、お客様の幸せと私たちの成長が循環する未来を創る。" }
+    ]
+  },
+  axes: [
+    { no:"01", title:"提供価値の最大化", values:[
+      { no:"04", en:"Priority",           ja:"優先順位",   d:"お客様の「心地よい未来」を最優先とし、最も価値ある一手に全力を注ぐ。" },
+      { no:"05", en:"Creativity",         ja:"発想",       d:"売買の枠を超え、一人ひとりの「より良い」を創る柔軟なアイデアを出す。" },
+      { no:"10", en:"Long-term thinking", ja:"長期思考",   d:"目先の取引で終わらせず、お客様と循環し続ける信頼と豊かな未来を見据える。" }
+    ]},
+    { no:"02", title:"主役としての推進力", values:[
+      { no:"01", en:"Change & Challenge", ja:"変化と挑戦", d:"現状維持を否定し、自らが主役となって新しい領域へ果敢に挑み続ける。" },
+      { no:"02", en:"Speed",              ja:"速度",       d:"誰よりも早く決断して行動し、圧倒的なスピードで市場と組織を力強く牽引する。" },
+      { no:"03", en:"Input & Output",     ja:"学びと行動", d:"常に知識をインプットし、即座に現場へアウトプットして進化する。" }
+    ]},
+    { no:"03", title:"組織の共創", values:[
+      { no:"06", en:"Team Work",          ja:"共創",       d:"個人の力を掛け合わせ、領域を超えて「人だからこその感動価値」を最大化する。" },
+      { no:"07", en:"Key Communication",  ja:"本質的議論", d:"お互いの成長とWin-Winのために、本質に向き合った誠実な議論を行う。" }
+    ]},
+    { no:"04", title:"成果を証明する覚悟", values:[
+      { no:"08", en:"Responsibility",       ja:"責任感",       d:"自分の役割と目標に誇りと責任を持ち、期待に応えるため最後の一歩までやり抜く。" },
+      { no:"09", en:"Continuous Outcome",   ja:"継続的成果",   d:"一過性の成功で満足せず、仕組みと実力を磨き、継続的に成果を出し続ける。" }
+    ]}
+  ],
+  closing: "一人ひとりが主役となり、お客様の「あって良かった」を、共に創っていく。"
+};
+
+/**
+ * バリュー選択の <option> 群。軸ごとに optgroup で分ける。
+ *
+ * 投稿に保存するのは日本語名だけ（"優先順位" など）。10個すべて重複が無く、
+ * バッジに出したときも短い。番号と英語名は選ぶときの手がかりとして
+ * 選択肢の文字だけに出す。
+ *
+ * selected が現在の10個に無い場合（旧バリューが付いた古い投稿を編集する場合）は
+ * その値を「以前のバリュー」として足す。そうしないと編集して保存するだけで
+ * 元のバリューが黙って外れてしまう。
+ */
+function valueOptionsHtml(selected){
+  var html = '<option value="">バリュー選択（任意）</option>';
+  var found = false;
+  MVV.axes.forEach(function(ax){
+    html += '<optgroup label="'+esc(ax.no+" "+ax.title)+'">';
+    ax.values.forEach(function(v){
+      if(v.ja === selected) found = true;
+      html += '<option value="'+esc(v.ja)+'"'+(v.ja===selected?" selected":"")+'>'+
+        esc(v.no+"  "+v.en+" ／ "+v.ja)+'</option>';
+    });
+    html += '</optgroup>';
+  });
+  if(selected && !found){
+    html += '<optgroup label="以前のバリュー">' +
+      '<option value="'+esc(selected)+'" selected>'+esc(selected)+'</option></optgroup>';
+  }
+  return html;
+}
 var KPI_DEF = {
   call_rate:{ l:"通話率", t:45, u:"%", g:"high" },
   ancillary_rate:{ l:"付帯率", t:25, u:"%", g:"low" },
@@ -492,6 +607,7 @@ var state = {
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
   surveyShowForm:false,
   surveyOpenStatus:null,    // 回答状況パネルを開いているアンケートのID
+  mvvOpen:false,           // MVVパネルの開閉
   progressKpiOpen:false,   // 生産性KPIセクションの開閉
   kpiSel:null,
   busy:false,               // 送信中の二重送信よけ
@@ -1224,10 +1340,71 @@ function renderFeed(){
     : emptyState("📡","まだ投稿がありません","最初の投稿をしてみましょう");
   return '<div class="tab-pad">' +
     renderLegacyCard() +
+    renderMvvPanel() +
     '<div class="sortbar">'+sortHtml+'</div>' +
     formHtml +
     body +
     renderTrash("feed") +
+  '</div>';
+}
+
+/**
+ * MVV の表示。フィードの先頭に置いてある。
+ *
+ * バリューを選んで感謝を送る場所と同じ画面に置かないと、
+ * 「バリュー選択」の10項目が何を指しているのか分からなくなる。
+ * 毎回フィードを押し下げないよう、既定は畳んだ状態。
+ */
+function renderMvvPanel(){
+  var open = state.mvvOpen;
+  var head = '<button class="mvv-toggle" data-act="mvv-toggle">' +
+    '<span>'+(open ? "▼" : "▶")+' 🧭 Mission / Vision / Value</span>' +
+    '<span class="mvv-toggle-sub">10のバリュー、4つの軸</span>' +
+  '</button>';
+  if(!open) return '<div class="mvv">'+head+'</div>';
+
+  function block(kind, label, d){
+    return '<div class="card mvv-block">' +
+      '<div class="mvv-kind">'+kind+'<span class="mvv-kind-ja">'+label+'</span></div>' +
+      '<div class="mvv-lead">'+esc(d.lead)+'</div>' +
+      '<div class="mvv-body">'+esc(d.body)+'</div>' +
+      (d.note ? '<div class="mvv-note">'+esc(d.note)+'</div>' : '') +
+      '<div class="mvv-points">' +
+        d.points.map(function(p){
+          return '<div class="mvv-point">' +
+            '<div class="mvv-point-t">'+esc(p.t)+'</div>' +
+            '<div class="mvv-point-d">'+esc(p.d)+'</div>' +
+          '</div>';
+        }).join("") +
+      '</div>' +
+    '</div>';
+  }
+
+  var axesHtml = MVV.axes.map(function(ax){
+    return '<div class="card mvv-axis">' +
+      '<div class="mvv-axis-head">' +
+        '<span class="mvv-axis-no">'+esc(ax.no)+'</span>' +
+        '<span class="mvv-axis-title">'+esc(ax.title)+'</span>' +
+      '</div>' +
+      ax.values.map(function(v){
+        return '<div class="mvv-value">' +
+          '<div class="mvv-value-head">' +
+            '<span class="mvv-value-no">'+esc(v.no)+'</span>' +
+            '<span class="mvv-value-en">'+esc(v.en)+'</span>' +
+            '<span class="mvv-value-ja">'+esc(v.ja)+'</span>' +
+          '</div>' +
+          '<div class="mvv-value-d">'+esc(v.d)+'</div>' +
+        '</div>';
+      }).join("") +
+    '</div>';
+  }).join("");
+
+  return '<div class="mvv">' + head +
+    block("MISSION", "使命", MVV.mission) +
+    block("VISION", "目指す姿", MVV.vision) +
+    '<div class="mvv-kind mvv-kind-standalone">VALUE<span class="mvv-kind-ja">行動指針</span></div>' +
+    axesHtml +
+    '<div class="mvv-closing">'+esc(MVV.closing)+'</div>' +
   '</div>';
 }
 
@@ -1249,7 +1426,7 @@ function renderLegacyCard(){
 function renderFeedForm(){
   var toOpts = '<option value="">全体へ</option>' + memberOptionsGrouped(true);
   var typeOpts = POST_TYPES.map(function(t){ return '<option'+(t==="Thanks"?" selected":"")+'>'+t+'</option>'; }).join("");
-  var valOpts = '<option value="">バリュー選択（任意）</option>' + VALUES.map(function(v){ return '<option>'+v+'</option>'; }).join("");
+  var valOpts = valueOptionsHtml(null);
   return '<div class="card form-card">' +
     '<div class="form-col">' +
       '<div class="form-row">' +
@@ -1301,8 +1478,7 @@ function editedMark(d){
 function renderFeedEditForm(post){
   var typeOpts = POST_TYPES.map(function(t){ return '<option'+(t===post.type?" selected":"")+'>'+t+'</option>'; }).join("");
   var toOpts = '<option value="">全体へ</option>' + memberOptionsGrouped(true, post.toMemberId);
-  var valOpts = '<option value="">バリュー選択（任意）</option>' +
-    VALUES.map(function(v){ return '<option'+(v===post.valueTag?" selected":"")+'>'+v+'</option>'; }).join("");
+  var valOpts = valueOptionsHtml(post.valueTag);
   return '<div class="card form-card edit-card">' +
     '<div class="edit-head">投稿を編集</div>' +
     '<div class="form-col">' +
@@ -2001,9 +2177,14 @@ function parseClock(s){
 /**
  * シフトの値から実働時間を出す。
  *
- * 対応表に無い値は null を返し、呼び出し側で「区分不明」として画面に出す。
- * 黙って0時間にすると分母が静かに小さくなり、必要ペースが過大に出てしまう。
- * 原本には裸の数字（3 4 5 11 12）が混ざっているので、この扱いが必要。
+ * 対応表に無い値は 0 ではなく null を返す。原本には裸の数字（3 4 5 11 12）が
+ * 混ざっているが、これは入力ミスで直さない方針が確認済みなので、稼働時間には
+ * 数えず、画面にも出さない（出し続けても直らない警告はノイズになるため）。
+ *
+ * 0 と null を分けているのは、集計側で「休み（0時間）」と「区分不明（除外）」を
+ * 別物として扱えるようにしておくため。結果として分母はその分だけ小さくなり、
+ * 必要ペースはわずかに大きく出る。件数が増えて無視できなくなったときに
+ * 気づけるよう、集計側では件数だけ数え続けている。
  */
 function shiftHours(val){
   var v = String(val==null?"":val).trim();
@@ -2036,7 +2217,9 @@ function computeProgress(){
   var shiftIdx = {};
   if(sh && sh.dates) sh.dates.forEach(function(d, i){ shiftIdx[d] = i; });
 
-  var unknown = {};   // 区分不明だった値 → 出現回数
+  // 区分不明だった値 → 出現回数。画面には出さない方針だが、
+  // 件数が膨らんだときに調べられるよう戻り値には残してある。
+  var unknown = {};
 
   function hoursOn(dateLabel){
     if(!monthMatches) return null;
@@ -2146,13 +2329,6 @@ function renderProgress(){
       'それ以降（本日分を含む）は集計中のため、この数字には入っていません。</div>'
     : '<div class="prog-note">📌 今月はまだ実績が入っていません。</div>';
 
-  var unknownKeys = Object.keys(p.unknown);
-  var unknownNote = unknownKeys.length
-    ? '<div class="prog-note prog-note-warn">⚠️ シフトに区分の分からない値があり、稼働時間に数えていません（'+
-      esc(unknownKeys.map(function(k){ return k+"×"+p.unknown[k]; }).join("、"))+
-      '）。原本の入力を確認してください。</div>'
-    : '';
-
   function cell(label, value, sub, color){
     return '<div class="card prog-cell">' +
       '<div class="prog-cell-label">'+esc(label)+'</div>' +
@@ -2185,7 +2361,6 @@ function renderProgress(){
   return '<div class="tab-pad">' +
     renderSyncBar() +
     confirmNote +
-    unknownNote +
     '<div class="card prog-head">' +
       '<div class="prog-head-lead">'+esc(h.lead)+'</div>' +
       '<div class="prog-head-main">'+esc(h.main)+'</div>' +
@@ -2759,6 +2934,7 @@ function bindEvents(){
       render();
     }
     else if(act==="vote"){ toggleVote(id, el.getAttribute("data-opt")); }
+    else if(act==="mvv-toggle"){ state.mvvOpen = !state.mvvOpen; render(); }
     else if(act==="kpi-section-toggle"){ state.progressKpiOpen = !state.progressKpiOpen; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
