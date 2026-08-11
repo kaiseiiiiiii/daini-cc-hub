@@ -185,14 +185,30 @@ function runSync(trigger) {
 //  シートの読み取り
 // ══════════════════════════════════════════════════════════════════════
 
-/** IMPORTRANGE が解決できていないセルが混ざっていないか */
-function assertResolved_(values, tabName) {
+/**
+ * IMPORTRANGE が解決できていないセルが混ざっていないか。
+ *
+ * cols（1始まりの列番号の配列）を渡すと、その列だけを検査する。
+ *
+ * #REF! には意味が2種類あり、区別しないと誤検知する。
+ *   1. タブ全体が #REF!  → IMPORTRANGE そのものの失敗（アクセス許可切れなど）
+ *   2. 一部のセルだけ #REF! → IMPORTRANGE は成功していて、原本側の数式が壊れている
+ *
+ * 1 は呼び出し側の hasUnresolvedRefOnly_ が先に捕捉する。
+ * 2 で全体を止めると、読み取りもしない列（達成率など）の数式エラーだけで
+ * 毎時の同期が丸ごと失敗し続ける。実際に手配粗利額の原本では、
+ * 未作成の週を参照している達成率セルが #REF! になっていた。
+ * そのため、実際に読む列だけを検査できるようにしている。
+ */
+function assertResolved_(values, tabName, cols) {
   for (var r = 0; r < values.length; r++) {
     for (var c = 0; c < values[r].length; c++) {
+      if (cols && cols.indexOf(c + 1) < 0) continue;
       var v = values[r][c];
       if (typeof v === "string" && UNRESOLVED.indexOf(v.trim()) >= 0) {
-        throw new Error(tabName + " の IMPORTRANGE が解決できていません（" + v.trim() + "）。" +
-          "シートを開いてアクセス許可を確認してください。");
+        throw new Error(tabName + " の " + (c + 1) + " 列目に " + v.trim() + " があります。" +
+          "タブ全体が #REF! なら IMPORTRANGE のアクセス許可を、" +
+          "一部のセルだけなら原本の数式を確認してください。");
       }
     }
   }
@@ -322,7 +338,13 @@ function readGoal_(ss, tabName) {
   var values = sheet.getDataRange().getValues();
   if (isEmptyTab_(values)) return null;
   if (hasUnresolvedRefOnly_(values)) return null;
-  assertResolved_(values, tabName);
+  // 実際に読む列だけを検査する。
+  // 達成率（Daily/Weekly/Monthly）は読まないので、そこが #REF! でも同期を止めない。
+  assertResolved_(values, tabName, [
+    GOAL_COL.weekday, GOAL_COL.date,
+    GOAL_COL.dailyTarget, GOAL_COL.dailyActual,
+    GOAL_COL.monthTarget, GOAL_COL.monthActual
+  ]);
 
   var days = [];
   for (var r = 0; r < values.length; r++) {
