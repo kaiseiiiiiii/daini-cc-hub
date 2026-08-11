@@ -284,16 +284,45 @@ body{margin:0;background:var(--page-bg);}
 .kpi-bar-bg{height:4px; background:var(--input-bg); border-radius:99px;}
 .kpi-bar{height:100%; border-radius:99px;}
 .section-label{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em;}
-.rank-card{padding:10px 12px; cursor:pointer;}
-.rank-row{display:flex; align-items:center; gap:10px;}
-.rank-num{width:22px; text-align:center; font-weight:700; font-size:14px; font-variant-numeric:tabular-nums;}
-.rank-info{flex:1;}
-.rank-name{font-weight:600; font-size:13px; color:var(--text);}
-.rank-bar-bg{height:4px; background:var(--input-bg); border-radius:99px; margin-top:4px;}
-.rank-bar{height:100%; border-radius:99px;}
-.rank-pct-col{text-align:right;}
-.rank-pct{font-weight:700; font-size:15px; font-variant-numeric:tabular-nums;}
-.rank-pct-label{font-size:11px; color:var(--text-4);}
+
+/* ── 目標進捗 ───────────────────────────────────── */
+.prog-note{font-size:11px; color:var(--text-3); line-height:1.7; background:var(--input-bg);
+  border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin-bottom:10px;}
+.prog-note b{color:var(--text); font-weight:700;}
+.prog-note-warn{background:color-mix(in srgb, var(--amber) 12%, transparent);
+  border-color:color-mix(in srgb, var(--amber) 32%, transparent); color:var(--amber-c);}
+
+/* 必要ペースの一文。ここだけ大きくして、開いた瞬間に目に入るようにする。 */
+.prog-head{background:color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color:color-mix(in srgb, var(--accent) 30%, var(--border)); margin-bottom:10px;}
+.prog-head-lead{font-size:12px; color:var(--text-3); margin-bottom:2px;}
+.prog-head-main{font-size:19px; font-weight:700; color:var(--text); line-height:1.5;
+  text-wrap:balance; font-variant-numeric:tabular-nums;}
+.prog-head-sub{font-size:11px; color:var(--text-4); margin-top:4px;}
+
+.prog-bar-card{margin-bottom:10px;}
+.prog-bar-top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
+.prog-bar-name{font-size:12px; font-weight:700; color:var(--text-2);}
+.prog-bar-pct{font-size:16px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums;}
+.prog-bar-bg{height:10px; background:var(--input-bg); border-radius:99px; overflow:hidden;}
+.prog-bar{height:100%; border-radius:99px; background:var(--accent);}
+@media (prefers-reduced-motion:no-preference){ .prog-bar{transition:width .3s;} }
+.prog-bar-labels{display:flex; justify-content:space-between; margin-top:5px;
+  font-size:11px; color:var(--text-4); font-variant-numeric:tabular-nums;}
+
+.prog-grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-bottom:14px;}
+.prog-cell{padding:10px 12px; margin-bottom:0;}
+.prog-cell-label{font-size:11px; color:var(--text-4); margin-bottom:3px;}
+.prog-cell-value{font-size:16px; font-weight:700; color:var(--text);
+  font-variant-numeric:tabular-nums; line-height:1.35; word-break:break-all;}
+.prog-cell-sub{font-size:10px; color:var(--text-4); margin-top:3px; line-height:1.5;}
+
+.prog-section{margin-top:6px;}
+.prog-toggle{width:100%; display:flex; align-items:center; gap:8px; padding:10px 12px;
+  background:var(--input-bg); border:1px solid var(--border); border-radius:10px;
+  color:var(--text-2); font-size:13px; font-weight:700; cursor:pointer;
+  font-family:inherit; margin-bottom:10px;}
+.prog-toggle-sub{margin-left:auto; font-size:11px; font-weight:400; color:var(--text-4);}
 
 .notice{margin:10px 16px 0; padding:8px 12px; background:color-mix(in srgb, var(--amber) 12%, transparent); border:1px solid color-mix(in srgb, var(--amber) 30%, transparent); border-radius:8px; font-size:11px; color:var(--amber-c); line-height:1.5;}
 .notice-error{background:color-mix(in srgb, var(--red) 12%, transparent); border-color:color-mix(in srgb, var(--red) 32%, transparent); color:var(--red); display:flex; align-items:flex-start; gap:8px; font-size:12px;}
@@ -463,6 +492,7 @@ var state = {
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
   surveyShowForm:false,
   surveyOpenStatus:null,    // 回答状況パネルを開いているアンケートのID
+  progressKpiOpen:false,   // 生産性KPIセクションの開閉
   kpiSel:null,
   busy:false,               // 送信中の二重送信よけ
   notice:"",                // 書き込み失敗などの通知
@@ -1071,7 +1101,7 @@ function renderNav(){
     var rb = state.board[i].readBy || {};
     if(!rb[me]) unread++;
   }
-  var TABS = [{id:"feed",icon:"📡",l:"フィード"},{id:"board",icon:"📋",l:"掲示板"},{id:"survey",icon:"📊",l:"アンケート"},{id:"shift",icon:"🕐",l:"シフト"},{id:"kpi",icon:"📈",l:"実績"}];
+  var TABS = [{id:"feed",icon:"📡",l:"フィード"},{id:"board",icon:"📋",l:"掲示板"},{id:"survey",icon:"📊",l:"アンケート"},{id:"shift",icon:"🕐",l:"シフト"},{id:"progress",icon:"🎯",l:"目標進捗"}];
   return '<div class="nav">' + TABS.map(function(t){
     return '<button class="nav-btn'+(state.tab===t.id?" active":"")+'" data-act="tab" data-id="'+t.id+'">' +
       '<span class="nav-icon">'+t.icon+'</span>' +
@@ -1928,8 +1958,259 @@ function renderShift(){
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  RENDER: KPI（Phase 7 で「目標進捗」に置き換え予定）
+//  RENDER: 目標進捗（旧・実績タブ）
+//
+//  「第二CC の目標達成まであとどれくらいか」を出すタブ。
+//  シフトから残り稼働時間を積み上げ、必要ペースを円/時間で示す。
+//
+//  数値の定義（2026-08-11 に合意）
+//    指標      手配粗利額（円）。月次の目標と実績が揃う唯一の指標。
+//              生産性データ側（通話率・手配数）には月次目標が無いため使えない
+//    月間目標  Σ dailyTarget
+//    実績      Σ dailyActual（値が入っている日まで）
+//    確定境界  dailyActual が入っている最後の日。それ以降は「残り」として扱う
+//    実働時間  早番・遅番・21時 = 8時間 / AM・PM = 4時間
+//              時間帯表記は差分から休憩1時間を引く
+//              業務外・社外・記念 = 0時間、空欄（休み）= 0時間
+//    対象日    dailyTarget > 0 の日（目標0の日は残り営業日に数えない）
+//
+//  【重要】原本の Monthly 結果（J列）は使っていない。
+//  あれは28日間のローリング集計で、月末になると月初の実績が窓から外れる。
+//  実測では 8/31 の値が 8/1〜8/3 を含んでおらず、月間実績として使うと
+//  過小表示になる。実績は Daily 結果（D列）を自分で合計している。
+// ══════════════════════════════════════════════════════════════════
+
+// 1人1日あたりの実働時間。ここが必要ペースの分母になるので、
+// 変更すると画面の数字が直接動く。運用が変わったらここを直す。
+var SHIFT_HOURS = {
+  "早番": 8, "遅番": 8, "21時": 8,
+  "AM": 4, "PM": 4,
+  "業務外": 0, "社外": 0, "記念": 0
+};
+var SHIFT_BREAK_HOURS = 1;   // 時間帯表記（10-18 など）から引く休憩
+
+/** "9" "9.5" "0845" "1600" を時（小数）に直す */
+function parseClock(s){
+  if(/^\d{3,4}$/.test(s)){
+    return parseInt(s.slice(0, s.length-2), 10) + parseInt(s.slice(-2), 10)/60;
+  }
+  var n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * シフトの値から実働時間を出す。
+ *
+ * 対応表に無い値は null を返し、呼び出し側で「区分不明」として画面に出す。
+ * 黙って0時間にすると分母が静かに小さくなり、必要ペースが過大に出てしまう。
+ * 原本には裸の数字（3 4 5 11 12）が混ざっているので、この扱いが必要。
+ */
+function shiftHours(val){
+  var v = String(val==null?"":val).trim();
+  if(!v) return 0;                                   // 空欄＝休み
+  if(SHIFT_HOURS[v] !== undefined) return SHIFT_HOURS[v];
+  var m = v.match(/^([0-9.]+)\s*[-–〜~]\s*([0-9.]+)$/);
+  if(m){
+    var a = parseClock(m[1]), b = parseClock(m[2]);
+    if(a !== null && b !== null && b > a){
+      return Math.max(0, Math.round((b - a - SHIFT_BREAK_HOURS) * 100) / 100);
+    }
+  }
+  return null;                                       // 不明
+}
+
+function yen(n){ return Math.round(n).toLocaleString("ja-JP") + "円"; }
+function hoursText(h){ return (Math.round(h * 10) / 10).toLocaleString("ja-JP") + "時間"; }
+
+/** 目標進捗の計算。画面はこの戻り値だけを見る。 */
+function computeProgress(){
+  var team = state.goals && state.goals.teams && state.goals.teams.all;
+  var days = team && team.days;
+  if(!days || !days.length) return null;
+
+  var sh = state.shiftCurrent;
+  // シフトと目標が同じ月を指しているか。ずれていたら稼働時間は出さない
+  // （前月の出勤日数で今月の必要ペースを割るのが一番まずい間違いになる）。
+  var monthMatches = !!(sh && sh.dates && state.goals.monthId === currentMonthId());
+
+  var shiftIdx = {};
+  if(sh && sh.dates) sh.dates.forEach(function(d, i){ shiftIdx[d] = i; });
+
+  var unknown = {};   // 区分不明だった値 → 出現回数
+
+  function hoursOn(dateLabel){
+    if(!monthMatches) return null;
+    var i = shiftIdx[dateLabel];
+    if(i === undefined) return null;
+    var total = 0;
+    session.members.forEach(function(m){
+      if(!hasShiftRow(sh, m.id)) return;
+      var v = String(sh.rows[m.id][i] || "").trim();
+      var h = shiftHours(v);
+      if(h === null){ unknown[v] = (unknown[v] || 0) + 1; return; }
+      total += h;
+    });
+    return total;
+  }
+
+  var monthTarget = 0, actual = 0, lastActualIdx = -1;
+  days.forEach(function(d, i){
+    monthTarget += (d.dailyTarget || 0);
+    if(d.dailyActual !== null && d.dailyActual !== undefined){
+      actual += d.dailyActual;
+      lastActualIdx = i;
+    }
+  });
+
+  var doneHours = 0, doneDays = 0, leftHours = 0, leftDays = 0, hoursUnavailable = false;
+  days.forEach(function(d, i){
+    var h = hoursOn(d.date);
+    if(h === null && monthMatches) hoursUnavailable = true;
+    if(i <= lastActualIdx){
+      doneDays++;
+      if(h !== null) doneHours += h;
+    }else if((d.dailyTarget || 0) > 0){
+      leftDays++;
+      if(h !== null) leftHours += h;
+    }
+  });
+
+  var remaining  = monthTarget - actual;
+  var totalHours = doneHours + leftHours;
+  var nowPerHour = doneHours > 0 ? actual / doneHours : null;
+
+  // 月初は消化が薄く、そこから伸ばすと非現実的な着地になる。
+  // 総稼働の1割を消化するまでは見込みを出さない。
+  var enough   = totalHours > 0 && doneHours >= totalHours * 0.1;
+  var forecast = (enough && nowPerHour !== null) ? nowPerHour * totalHours : null;
+
+  return {
+    monthTarget: monthTarget,
+    actual: actual,
+    remaining: remaining,
+    pct: monthTarget > 0 ? (actual / monthTarget * 100) : 0,
+    lastActualDate: lastActualIdx >= 0 ? days[lastActualIdx].date : null,
+    doneHours: doneHours, doneDays: doneDays,
+    leftHours: leftHours, leftDays: leftDays,
+    needPerHour: leftHours > 0 ? remaining / leftHours : null,
+    nowPerHour: nowPerHour,
+    forecast: forecast,
+    gap: forecast !== null ? forecast - monthTarget : null,
+    monthMatches: monthMatches,
+    hoursUnavailable: hoursUnavailable,
+    unknown: unknown
+  };
+}
+
+/**
+ * 見出しの一文。
+ * 未達でも煽らず、必要な数字だけを出す（責める文言は入れない）。
+ */
+function progressHeadline(p){
+  if(p.remaining <= 0){
+    return { lead:"月間目標を達成しています", main:"超過 " + yen(-p.remaining),
+             sub:"残りは上積みになります" };
+  }
+  if(!p.monthMatches || p.leftHours <= 0){
+    var why = !p.monthMatches
+      ? "シフトが同じ月の分でないため、残り稼働時間を計算できません"
+      : "残りのシフトに稼働予定がありません";
+    return { lead:"目標まで", main:yen(p.remaining), sub:why };
+  }
+  return {
+    lead: "あと " + hoursText(p.leftHours) + " で",
+    main: "1時間あたり " + yen(p.needPerHour) + " のペースが必要",
+    sub:  "残り " + yen(p.remaining) + " ／ 残り " + p.leftDays + "日"
+  };
+}
+
+function renderProgress(){
+  var p = computeProgress();
+  if(!p){
+    return '<div class="tab-pad">' +
+      renderSyncBar() +
+      emptyState("🎯","目標データがまだ同期されていません",
+        "スプレッドシート同期が動くと表示されます") +
+      renderKpiSection() +
+    '</div>';
+  }
+
+  var h = progressHeadline(p);
+  var pct = Math.max(0, Math.min(100, p.pct));
+
+  // 実績がどこまで確定しているかを必ず出す。
+  // 日中に見ている数字が当日を含まないことが分からないと、
+  // 未達に見えて誤った判断につながる。
+  var confirmNote = p.lastActualDate
+    ? '<div class="prog-note">📌 実績は <b>'+esc(p.lastActualDate)+'</b> 分まで確定しています。'+
+      'それ以降（本日分を含む）は集計中のため、この数字には入っていません。</div>'
+    : '<div class="prog-note">📌 今月はまだ実績が入っていません。</div>';
+
+  var unknownKeys = Object.keys(p.unknown);
+  var unknownNote = unknownKeys.length
+    ? '<div class="prog-note prog-note-warn">⚠️ シフトに区分の分からない値があり、稼働時間に数えていません（'+
+      esc(unknownKeys.map(function(k){ return k+"×"+p.unknown[k]; }).join("、"))+
+      '）。原本の入力を確認してください。</div>'
+    : '';
+
+  function cell(label, value, sub, color){
+    return '<div class="card prog-cell">' +
+      '<div class="prog-cell-label">'+esc(label)+'</div>' +
+      '<div class="prog-cell-value"'+(color?' style="color:var(--'+color+')"':'')+'>'+esc(value)+'</div>' +
+      (sub ? '<div class="prog-cell-sub">'+esc(sub)+'</div>' : '') +
+    '</div>';
+  }
+
+  var cells = "";
+  cells += cell("現ペース",
+    p.nowPerHour !== null ? yen(p.nowPerHour)+" / 時" : "—",
+    p.doneHours > 0 ? "消化 "+hoursText(p.doneHours)+"（"+p.doneDays+"日）"
+      : (!p.monthMatches ? "シフトの月が一致しません" : "確定分がありません"));
+
+  if(p.forecast !== null){
+    cells += cell("着地見込み", yen(p.forecast), "現ペースが続いた場合");
+    cells += cell("目標との差",
+      (p.gap >= 0 ? "+" : "−") + yen(Math.abs(p.gap)),
+      p.gap >= 0 ? "超過の見込み" : "不足の見込み",
+      p.gap >= 0 ? "green" : "red");
+  }else{
+    cells += cell("着地見込み", "算出前",
+      "消化稼働が総稼働の1割に届くまでは出しません");
+  }
+
+  cells += cell("残り稼働時間",
+    p.monthMatches ? hoursText(p.leftHours) : "—",
+    p.monthMatches ? "残り "+p.leftDays+"日" : "シフトの月が一致しません");
+
+  return '<div class="tab-pad">' +
+    renderSyncBar() +
+    confirmNote +
+    unknownNote +
+    '<div class="card prog-head">' +
+      '<div class="prog-head-lead">'+esc(h.lead)+'</div>' +
+      '<div class="prog-head-main">'+esc(h.main)+'</div>' +
+      '<div class="prog-head-sub">'+esc(h.sub)+'</div>' +
+    '</div>' +
+    '<div class="card prog-bar-card">' +
+      '<div class="prog-bar-top">' +
+        '<span class="prog-bar-name">手配粗利額</span>' +
+        '<span class="prog-bar-pct">'+(Math.round(p.pct*10)/10)+'%</span>' +
+      '</div>' +
+      '<div class="prog-bar-bg"><div class="prog-bar" style="width:'+pct+'%"></div></div>' +
+      '<div class="prog-bar-labels">' +
+        '<span>実績 '+esc(yen(p.actual))+'</span>' +
+        '<span>目標 '+esc(yen(p.monthTarget))+'</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="prog-grid">'+cells+'</div>' +
+    renderKpiSection() +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  生産性KPI（目標進捗タブの下部。折りたたみ）
 //  データは Firestore の metrics/latest（Phase 5 で GAS が書き込む）。
+//  個人別ランキングは作らない方針なので、一覧と本人選択だけ。
 // ══════════════════════════════════════════════════════════════════
 function kSt(key,val){
   var t = KPI_DEF[key];
@@ -1937,14 +2218,20 @@ function kSt(key,val){
   if(t.g==="low") return val<=t.t ? "success" : (val<=t.t*1.1 ? "warn" : "bad");
   return Math.abs(val-t.t)<=0.5 ? "success" : (Math.abs(val-t.t)<=1 ? "warn" : "bad");
 }
-function renderKpi(){
+function renderKpiSection(){
   var byMember = (state.metrics && state.metrics.byMember) || null;
+  var open = state.progressKpiOpen;
+
+  var head = '<button class="prog-toggle" data-act="kpi-section-toggle">' +
+    '<span>'+(open ? "▼" : "▶")+' 生産性KPI</span>' +
+    '<span class="prog-toggle-sub">通話率・待機率など</span>' +
+  '</button>';
+
+  if(!open) return '<div class="prog-section">'+head+'</div>';
+
   if(!byMember){
-    return '<div class="tab-pad">' +
-      renderSyncBar() +
-      emptyState("📈","実績はまだ同期されていません",
-        "スプレッドシート同期が動くと表示されます") +
-    '</div>';
+    return '<div class="prog-section">'+head+
+      '<div class="prog-note">生産性データはまだ同期されていません。</div></div>';
   }
 
   // 集計対象は「同期データに実績が入っているメンバー」。
@@ -1956,24 +2243,21 @@ function renderKpi(){
     var vals = []; agents.forEach(function(m){ if(byMember[m.id] && byMember[m.id][k]!=null) vals.push(byMember[m.id][k]); });
     avg[k] = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length*10)/10 : 0;
   });
-  var ranks = agents.map(function(m){
-    var sc=0, tot=0;
-    Object.keys(KPI_DEF).forEach(function(k){
-      if(byMember[m.id][k]==null) return;
-      var st = kSt(k, byMember[m.id][k]);
-      sc += st==="success"?3:(st==="warn"?1:0); tot += 3;
-    });
-    return { m:m, pct: tot ? Math.round(sc/tot*100) : 0 };
-  }).sort(function(a,b){ return b.pct-a.pct; });
 
   var disp = state.kpiSel ? byMember[state.kpiSel] : avg;
   var filterHtml = '<button class="chip'+(!state.kpiSel?" chip-active":"")+'" data-act="kpi-clear">全体</button>' +
     agents.map(function(m){ return '<button class="chip'+(state.kpiSel===m.id?" chip-active":"")+'" data-act="kpi-toggle" data-id="'+m.id+'">'+esc(m.displayName)+'</button>'; }).join("");
 
+  // 日中は実績が入っている人が数名しかいない。全体＝その数名の平均に
+  // なることを書いておかないと、センター全体の数字だと誤読される。
+  var scopeNote = '<div class="prog-note">実績が入っているのは '+agents.length+
+    '名分です。「全体」はその平均で、確定値ではありません。</div>';
+
   if(state.kpiSel && !byMember[state.kpiSel]){
-    return '<div class="tab-pad">' +
+    return '<div class="prog-section">'+head+
       '<div class="kpi-filter">'+filterHtml+'</div>' +
-      '<div class="notice">'+esc(getM(state.kpiSel).displayName)+'さんは本日の生産性データがまだありません。</div>' +
+      '<div class="prog-note">'+esc(getM(state.kpiSel).displayName)+
+        'さんは本日の生産性データがまだありません。</div>' +
     '</div>';
   }
 
@@ -1989,29 +2273,10 @@ function renderKpi(){
     '</div>';
   }).join("");
 
-  var rankHtml = "";
-  if(!state.kpiSel){
-    rankHtml = '<div><div class="section-label">メンバーランキング</div>' +
-      ranks.map(function(r,i){
-        var color = r.pct>=70?"var(--green)":(r.pct>=40?"var(--amber)":"var(--red)");
-        var numColor = i===0?"var(--amber)":(i<3?"var(--text-3)":"var(--border)");
-        return '<div class="card rank-card" data-act="kpi-select" data-id="'+r.m.id+'">' +
-          '<div class="rank-row">' +
-            '<div class="rank-num" style="color:'+numColor+'">'+(i+1)+'</div>' +
-            avatar(r.m.id,34) +
-            '<div class="rank-info"><div class="rank-name">'+esc(r.m.displayName)+'</div><div class="rank-bar-bg"><div class="rank-bar" style="width:'+r.pct+'%;background:'+color+'"></div></div></div>' +
-            '<div class="rank-pct-col"><div class="rank-pct" style="color:'+color+'">'+r.pct+'%</div><div class="rank-pct-label">KPI達成</div></div>' +
-          '</div>' +
-        '</div>';
-      }).join("") +
-    '</div>';
-  }
-
-  return '<div class="tab-pad">' +
-    renderSyncBar() +
+  return '<div class="prog-section">'+head+
+    scopeNote +
     '<div class="kpi-filter">'+filterHtml+'</div>' +
     '<div class="kpi-grid">'+gridHtml+'</div>' +
-    rankHtml +
   '</div>';
 }
 
@@ -2033,7 +2298,7 @@ function render(){
     state.tab==="board"  ? renderBoard() :
     state.tab==="survey" ? renderSurvey() :
     state.tab==="shift"  ? renderShift() :
-    renderKpi();
+    renderProgress();
   var noticeHtml = state.notice
     ? '<div class="notice notice-error">'+esc(state.notice)+
       '<button class="notice-close" data-act="notice-close" aria-label="閉じる">×</button></div>'
@@ -2494,9 +2759,9 @@ function bindEvents(){
       render();
     }
     else if(act==="vote"){ toggleVote(id, el.getAttribute("data-opt")); }
+    else if(act==="kpi-section-toggle"){ state.progressKpiOpen = !state.progressKpiOpen; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
-    else if(act==="kpi-select"){ state.kpiSel = id; render(); }
   });
 
   app.addEventListener("change", function(e){
