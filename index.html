@@ -226,17 +226,53 @@ body{margin:0;background:var(--page-bg);}
 .shift-name-cell{position:sticky; left:0; z-index:1; background:var(--surface); width:92px; flex-shrink:0; display:flex; align-items:center; gap:6px; padding:6px 8px; font-size:12px; font-weight:600; color:var(--text); border-right:1px solid var(--border); overflow:hidden; white-space:nowrap;}
 .shift-header-row .shift-name-cell{background:var(--input-bg); font-weight:700; color:var(--text-3);}
 .shift-name-head{justify-content:center;}
-.shift-days{display:flex;}
+.shift-days{display:flex; flex:1;}
 .shift-cell{width:28px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; padding:7px 0; color:var(--text-3); border-right:1px solid var(--border);}
+.shift-cell:last-child{border-right:none;}
 .shift-date-head{flex-direction:column; font-size:10px; line-height:1.3; font-weight:700; color:var(--text-4); gap:1px;}
-.shift-today{background:color-mix(in srgb, var(--accent) 12%, transparent);}
-.shift-early{color:var(--blue); font-weight:700;}
-.shift-late{color:var(--purple); font-weight:700;}
-.shift-other{color:var(--amber); font-weight:600; font-size:9px;}
-.shift-off{color:var(--border);}
-.shift-legend{display:flex; gap:16px; margin-top:10px; font-size:11px; color:var(--text-4);}
+/* 週表示は列が7つしかないので、セルを広げて「早番」まで書く。
+   月表示は31列を詰めるので狭いまま「早」だけにする。 */
+.shift-week .shift-cell{width:auto; flex:1; min-width:38px; font-size:11px;}
+.shift-week .shift-date-head{font-size:11px;}
+.shift-today{box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);}
+.shift-date-head.shift-today{background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--accent);}
+/* 区分は文字色ではなく背景で塗る。文字を読まずに早/遅が判別できるようにするため。 */
+.shift-early{background:color-mix(in srgb, var(--blue) 22%, transparent); color:var(--blue); font-weight:700;}
+.shift-late{background:color-mix(in srgb, var(--purple) 24%, transparent); color:var(--purple); font-weight:700;}
+.shift-other{background:color-mix(in srgb, var(--amber) 20%, transparent); color:var(--amber-c); font-weight:600; font-size:9px; line-height:1.2; text-align:center;}
+.shift-off{color:var(--text-4); opacity:.45;}
+/* 未提出＝シフト表にその人の行が無い。休み（行はあるが空欄）とは別物として出す。 */
+.shift-none{background:repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-4) 14%, transparent) 0 4px, transparent 4px 8px); color:var(--text-4); font-size:9px;}
+.shift-name-cell.shift-name-none{color:var(--text-4);}
+.shift-count-row{background:var(--input-bg); border-top:2px solid var(--border);}
+.shift-count-row .shift-name-cell{background:var(--input-bg); font-weight:700; color:var(--text-3); font-size:11px;}
+.shift-count-cell{flex-direction:column; gap:1px; font-size:10px; line-height:1.25; font-weight:700;}
+.shift-count-early{color:var(--blue);}
+.shift-count-late{color:var(--purple);}
+.shift-legend{display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-4); flex-wrap:wrap;}
 .legend-item{display:flex; align-items:center; gap:5px;}
 .legend-dot{display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:var(--input-bg); font-size:10px; font-weight:700;}
+
+/* 月・週の切り替えバー */
+.shift-bar{display:flex; align-items:center; gap:6px; margin-bottom:10px;}
+.shift-bar-label{flex:1; text-align:center; font-size:13px; font-weight:700; color:var(--text);}
+.shift-bar-sub{font-size:11px; font-weight:400; color:var(--text-4); margin-left:4px;}
+.shift-nav-btn{background:var(--input-bg); border:1px solid var(--border); border-radius:8px; width:34px; height:30px; color:var(--text-2); cursor:pointer; font-family:inherit; font-size:13px; flex-shrink:0;}
+.shift-nav-btn:disabled{opacity:.35; cursor:default;}
+.shift-controls{display:flex; gap:6px; align-items:center; margin-bottom:10px; flex-wrap:wrap;}
+.shift-controls-spacer{flex:1;}
+
+/* 本日のシフトサマリー */
+.shift-today-card{margin-bottom:12px; background:color-mix(in srgb, var(--accent) 7%, var(--surface)); border-color:color-mix(in srgb, var(--accent) 28%, var(--border));}
+.shift-today-head{display:flex; align-items:baseline; gap:8px; margin-bottom:10px;}
+.shift-today-title{font-size:13px; font-weight:700; color:var(--text);}
+.shift-today-date{font-size:11px; color:var(--text-4);}
+.shift-today-group{display:flex; gap:8px; padding:6px 0; border-top:1px solid color-mix(in srgb, var(--border) 70%, transparent);}
+.shift-today-group:first-of-type{border-top:none;}
+.shift-today-tag{flex-shrink:0; width:56px; text-align:center; border-radius:6px; padding:3px 0; font-size:11px; font-weight:700; height:fit-content;}
+.shift-today-names{flex:1; font-size:12px; color:var(--text-2); line-height:1.7;}
+.shift-today-count{color:var(--text-4); font-size:11px; margin-left:4px;}
+.shift-today-rest{font-size:11px; color:var(--text-4); padding-top:8px; border-top:1px solid color-mix(in srgb, var(--border) 70%, transparent); margin-top:2px;}
 
 .kpi-grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-bottom:14px;}
 .kpi-card{padding:10px 12px; margin-bottom:0;}
@@ -370,6 +406,22 @@ function badge(text,colorVar){ return '<span class="badge" style="--bc:var(--'+c
 function todayDateLabel(){ var d=new Date(); return (d.getMonth()+1)+"/"+d.getDate(); }
 function currentMonthId(){ var d=new Date(); return d.getFullYear()+"_"+(d.getMonth()+1); }
 
+/**
+ * 当月から offset か月ずらした月。ドキュメントIDの規則は GAS の monthIdOf_ と揃えてある。
+ * new Date(年, 月+offset, 1) は月をまたぐ繰り上がり・繰り下がりを自分で処理してくれるので、
+ * 12月→1月や年替わりを個別に書く必要がない。
+ */
+function monthOf(offset){
+  var n = new Date();
+  var d = new Date(n.getFullYear(), n.getMonth() + offset, 1);
+  return {
+    id:    d.getFullYear()+"_"+(d.getMonth()+1),
+    label: (d.getMonth()+1)+"月",
+    year:  d.getFullYear(),
+    month: d.getMonth()+1
+  };
+}
+
 function getM(id){
   for(var i=0;i<session.members.length;i++) if(session.members[i].id===id) return session.members[i];
   return { id:id, displayName:"?", initial:"?", team:null };
@@ -395,7 +447,17 @@ var state = {
   tab:"feed",
   feed:[], board:[], surveys:[],
   comments:[],              // 開いている投稿のコメント（サブコレクション）
-  shift:null, metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
+  // シフトは月ごとに別ドキュメント。当月は常に購読し（ヘッダーの本日人数と
+  // 本日サマリーが、どの月を見ていても正しく出るようにするため）、
+  // 前月・翌月を見ているあいだだけ2本目を張る。
+  shiftCurrent:null,
+  shiftOther:null,
+  shiftOtherLoading:false,
+  shiftMonthOffset:0,       // -1=前月 / 0=当月 / +1=翌月
+  shiftView:"week",         // "week" | "month"。31日の横スクロールを既定にしない
+  shiftWeekStart:null,      // 週表示の先頭 index。null なら本日を含む週
+  shiftTeam:"all",
+  metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
   feedShowForm:false, feedSort:"new", feedOpenComment:null,
   boardShowForm:false,
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
@@ -451,6 +513,7 @@ function canDelete(d){ return !!d && !d.deleted && (d.authorId === currentUserId
 // ══════════════════════════════════════════════════════════════════
 var unsubscribers = [];
 var commentUnsub = null;
+var shiftOtherUnsub = null;   // 前月/翌月を見ているあいだだけ張る
 
 // 鮮度の警告は時間の経過だけで状態が変わる（データは動かない）。
 // アプリを開きっぱなしにしていても警告が出るよう、定期的に描き直す。
@@ -472,11 +535,17 @@ function detachAll(){
   unsubscribers.forEach(function(u){ try{ u(); }catch(e){} });
   unsubscribers = [];
   detachComments();
+  detachShiftOther();
   stopFreshnessTimer();
 }
 function detachComments(){
   if(commentUnsub){ try{ commentUnsub(); }catch(e){} commentUnsub = null; }
   state.comments = [];
+}
+function detachShiftOther(){
+  if(shiftOtherUnsub){ try{ shiftOtherUnsub(); }catch(e){} shiftOtherUnsub = null; }
+  state.shiftOther = null;
+  state.shiftOtherLoading = false;
 }
 
 function subscribe(colName, orderField, onData){
@@ -782,13 +851,42 @@ function subscribeDoc(path, id, onData){
 }
 
 function attachSyncedData(){
-  subscribeDoc("shifts", currentMonthId(), function(v){ state.shift = v; });
+  subscribeDoc("shifts", currentMonthId(), function(v){ state.shiftCurrent = v; });
   subscribeDoc("metrics", "latest",        function(v){ state.metrics = v; });
   subscribeDoc("goals", "current",         function(v){ state.goals = v; });
   subscribeDoc("syncStatus", "spreadsheet", function(v){
     state.syncStatus = v;
     state.syncedAtMs = (v && v.lastSyncedAt && v.lastSyncedAt.toMillis) ? v.lastSyncedAt.toMillis() : null;
   });
+}
+
+/**
+ * 表示する月を切り替える。
+ * 当月は attachSyncedData で張った購読を使い回し、前月・翌月を見るあいだだけ
+ * 2本目を張って、離れたら必ず落とす（張りっぱなしは読み取り課金の無駄になる）。
+ */
+function setShiftMonth(offset){
+  if(offset === state.shiftMonthOffset) return;
+  state.shiftMonthOffset = offset;
+  state.shiftWeekStart = null;          // 月が変わったら週の位置は選び直す
+  detachShiftOther();
+  if(offset !== 0){
+    state.shiftOtherLoading = true;
+    shiftOtherUnsub = onSnapshot(doc(db, "shifts", monthOf(offset).id),
+      function(snap){
+        state.shiftOther = snap.exists() ? snap.data() : null;
+        state.shiftOtherLoading = false;
+        render();
+      },
+      function(){ state.shiftOther = null; state.shiftOtherLoading = false; render(); }
+    );
+  }
+  render();
+}
+
+/** いま表示すべき月のシフト。当月なら常時購読しているものを返す。 */
+function displayedShift(){
+  return state.shiftMonthOffset === 0 ? state.shiftCurrent : state.shiftOther;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -933,12 +1031,14 @@ function renderErrorScreen(){
 //  RENDER: HEADER / NAV
 // ══════════════════════════════════════════════════════════════════
 function todayScheduledCount(){
-  if(!state.shift || !state.shift.dates || !state.shift.rows) return null;
-  var idx = state.shift.dates.indexOf(todayDateLabel());
+  // どの月を見ていてもヘッダーは「本日」を出すので、当月の購読だけを見る。
+  var sh = state.shiftCurrent;
+  if(!sh || !sh.dates || !sh.rows) return null;
+  var idx = sh.dates.indexOf(todayDateLabel());
   if(idx < 0) return null;
   var n = 0;
   session.members.forEach(function(m){
-    var row = state.shift.rows[m.id];
+    var row = sh.rows[m.id];
     if(row && row[idx]) n++;
   });
   return n;
@@ -1521,41 +1621,246 @@ function renderSurveyCard(sv){
 //  RENDER: SHIFT
 //  データは Firestore の shifts/{YYYY_M}（Phase 5 で GAS が書き込む）。
 // ══════════════════════════════════════════════════════════════════
+// 「休み」と「未提出」の区別について。
+//
+// 原本のセルは、休みでも未提出でも同じ空欄なので、セル単体では区別できない。
+// ただし「その人の行がシフト表に無い」ことは区別できる（GAS が氏名で照合して
+// 一致した行だけ rows に入れるため）。そこで、
+//
+//   行が無い          → 未提出（表に載っていない）
+//   行はあるが空欄    → 休み
+//
+// とした。行の中の空欄をさらに分けたい場合は、原本側に「休」などの明示的な
+// 記号を入れてもらう必要がある。それ以外に判別材料は無い。
 function shiftCellClass(val){
   if(val==="早番") return "shift-early";
   if(val==="遅番") return "shift-late";
   if(val) return "shift-other";
   return "shift-off";
 }
-function shiftCellLabel(val){
-  if(val==="早番") return "早";
-  if(val==="遅番") return "遅";
+function shiftCellLabel(val, wide){
+  if(val==="早番") return wide ? "早番" : "早";
+  if(val==="遅番") return wide ? "遅番" : "遅";
   if(val) return val;
   return "–";
 }
-function renderShift(){
-  var sh = state.shift;
-  if(!sh || !sh.dates || !sh.dates.length){
-    return '<div class="tab-pad">' +
-      renderSyncBar() +
-      emptyState("🕐","この月のシフトはまだ同期されていません",
-        "スプレッドシート同期が動くと表示されます") +
-    '</div>';
+
+/** 表示中の月のシフト表に、その人の行があるか */
+function hasShiftRow(sh, memberId){
+  return !!(sh && sh.rows && sh.rows[memberId]);
+}
+
+/** 絞り込み後のメンバー。チームセレクタと連動する。 */
+function shiftFilteredMembers(){
+  if(state.shiftTeam === "all") return session.members;
+  return session.members.filter(function(m){ return m.team === state.shiftTeam; });
+}
+
+/**
+ * 週表示で出す日付の範囲を決める。
+ *
+ * 週の始まりは月曜。手配粗利額シートの Weekly 集計が月曜起点なので、
+ * そちらに合わせておかないと「今週の実績」と見比べたときにズレる。
+ */
+function shiftWeekRange(sh){
+  var dates = sh.dates || [];
+  var wds = sh.weekdays || [];
+  if(!dates.length) return { start:0, end:0 };
+
+  var start = state.shiftWeekStart;
+  if(start === null || start === undefined){
+    // 本日を含む週。本日が別の月なら、その月の最初の週。
+    var t = dates.indexOf(todayDateLabel());
+    start = t >= 0 ? t : 0;
+    while(start > 0 && String(wds[start]).trim() !== "月") start--;
   }
-  var todayIdx = sh.dates.indexOf(todayDateLabel());
-  var dateHeaderCells = sh.dates.map(function(d,i){
-    return '<div class="shift-cell shift-date-head'+(i===todayIdx?" shift-today":"")+'">'+esc(String(d).split("/")[1])+'<br>'+esc((sh.weekdays||[])[i]||"")+'</div>';
+  start = Math.max(0, Math.min(start, dates.length - 1));
+
+  // 月曜から次の月曜の手前まで。月初・月末は7日に満たないこともある。
+  var end = start + 1;
+  while(end < dates.length && String(wds[end]).trim() !== "月" && end - start < 7) end++;
+  return { start:start, end:end };
+}
+
+/** その週の1つ前・1つ後の月曜の index（無ければ null） */
+function shiftWeekStep(sh, dir){
+  var dates = sh.dates || [], wds = sh.weekdays || [];
+  var r = shiftWeekRange(sh);
+  if(dir > 0){
+    return r.end < dates.length ? r.end : null;
+  }
+  if(r.start === 0) return null;
+  var i = r.start - 1;
+  while(i > 0 && String(wds[i]).trim() !== "月") i--;
+  return i;
+}
+
+/**
+ * 本日のシフトを区分ごとにまとめる。
+ * 「早番が誰か」を名前で知りたいのが第一の用途なので、区分→氏名の配列にする。
+ * どの月を見ていても本日を出すため、当月の購読だけを見る。
+ */
+function todayShiftGroups(){
+  var sh = state.shiftCurrent;
+  if(!sh || !sh.dates || !sh.rows) return null;
+  var idx = sh.dates.indexOf(todayDateLabel());
+  if(idx < 0) return null;
+
+  var order = [], byKind = {}, restCount = 0, unsubmitted = 0;
+  session.members.forEach(function(m){
+    if(!hasShiftRow(sh, m.id)){ unsubmitted++; return; }
+    var v = String(sh.rows[m.id][idx] || "").trim();
+    if(!v){ restCount++; return; }
+    if(!byKind[v]){ byKind[v] = []; order.push(v); }
+    byKind[v].push(m.displayName);
+  });
+
+  // 早番・遅番を先に、残りは人数の多い順。運用上その2つを最初に見るため。
+  order.sort(function(a,b){
+    var rank = function(k){ return k==="早番" ? 0 : k==="遅番" ? 1 : 2; };
+    if(rank(a) !== rank(b)) return rank(a) - rank(b);
+    return byKind[b].length - byKind[a].length;
+  });
+  return { order:order, byKind:byKind, rest:restCount, unsubmitted:unsubmitted };
+}
+
+function renderTodayShiftCard(){
+  var g = todayShiftGroups();
+  if(!g) return "";
+  var d = new Date();
+  var wd = ["日","月","火","水","木","金","土"][d.getDay()];
+
+  var groups = g.order.map(function(k){
+    var cls = k==="早番" ? "shift-early" : k==="遅番" ? "shift-late" : "shift-other";
+    return '<div class="shift-today-group">' +
+      '<span class="shift-today-tag '+cls+'">'+esc(k)+'</span>' +
+      '<div class="shift-today-names">'+esc(g.byKind[k].join("、")) +
+        '<span class="shift-today-count">'+g.byKind[k].length+'名</span>' +
+      '</div>' +
+    '</div>';
   }).join("");
 
-  function shiftRowsFor(members){
-    return members.map(function(m){
-      var data = (sh.rows && sh.rows[m.id]) || [];
-      var cells = sh.dates.map(function(d,i){
-        var val = data[i] || "";
-        return '<div class="shift-cell '+shiftCellClass(val)+(i===todayIdx?" shift-today":"")+'">'+esc(shiftCellLabel(val))+'</div>';
+  if(!groups){
+    groups = '<div class="shift-today-names">本日シフトに入っているメンバーはいません</div>';
+  }
+
+  var foot = [];
+  if(g.rest) foot.push("休み "+g.rest+"名");
+  if(g.unsubmitted) foot.push("未提出 "+g.unsubmitted+"名");
+
+  return '<div class="card shift-today-card">' +
+    '<div class="shift-today-head">' +
+      '<span class="shift-today-title">本日のシフト</span>' +
+      '<span class="shift-today-date">'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+wd+'）</span>' +
+    '</div>' +
+    groups +
+    (foot.length ? '<div class="shift-today-rest">'+esc(foot.join(" / "))+'</div>' : '') +
+  '</div>';
+}
+/** 月切替バー。翌月は原本に無いことが普通にあるので、無いこと自体を表示する。 */
+function renderShiftMonthBar(){
+  var off = state.shiftMonthOffset;
+  var m = monthOf(off);
+  return '<div class="shift-bar">' +
+    '<button class="shift-nav-btn" data-act="shift-month" data-id="'+(off-1)+'"'+
+      (off <= -1 ? ' disabled' : '')+' aria-label="前の月">◀</button>' +
+    '<div class="shift-bar-label">'+m.year+'年'+m.label +
+      (off===0 ? '<span class="shift-bar-sub">当月</span>' :
+       off===-1 ? '<span class="shift-bar-sub">前月</span>' :
+                  '<span class="shift-bar-sub">翌月</span>') +
+    '</div>' +
+    '<button class="shift-nav-btn" data-act="shift-month" data-id="'+(off+1)+'"'+
+      (off >= 1 ? ' disabled' : '')+' aria-label="次の月">▶</button>' +
+  '</div>';
+}
+
+/** 週/月の切り替えとチーム絞り込み */
+function renderShiftControls(){
+  var chips = [["week","週"],["month","月"]].map(function(v){
+    return '<button class="chip'+(state.shiftView===v[0]?" chip-active":"")+'" '+
+      'data-act="shift-view" data-id="'+v[0]+'">'+v[1]+'</button>';
+  }).join("");
+
+  var teamChips = '<button class="chip'+(state.shiftTeam==="all"?" chip-active":"")+'" '+
+    'data-act="shift-team" data-id="all">全体</button>' +
+    session.teams.map(function(t){
+      return '<button class="chip'+(state.shiftTeam===t.id?" chip-active":"")+'" '+
+        'data-act="shift-team" data-id="'+esc(t.id)+'">'+esc(t.label)+'</button>';
+    }).join("");
+
+  return '<div class="shift-controls">'+chips+
+    '<span class="shift-controls-spacer"></span>'+teamChips+'</div>';
+}
+
+function renderShift(){
+  var sh = displayedShift();
+  var off = state.shiftMonthOffset;
+
+  if(!sh || !sh.dates || !sh.dates.length){
+    var body;
+    if(state.shiftOtherLoading){
+      body = emptyState("🕐","読み込み中…","");
+    }else if(off === 1){
+      // 翌月分がまだ作られていないのは正常な状態。エラーとして見せない。
+      body = emptyState("🗓","翌月のシフトは未作成です",
+        "原本に翌月のシートが追加されると、次の同期で表示されます");
+    }else if(off === -1){
+      body = emptyState("🗓","前月のシフトが見つかりません",
+        "原本に前月のシートが無いか、まだ同期されていません");
+    }else{
+      body = emptyState("🕐","この月のシフトはまだ同期されていません",
+        "スプレッドシート同期が動くと表示されます");
+    }
+    return '<div class="tab-pad">' +
+      renderSyncBar() + renderShiftMonthBar() + renderTodayShiftCard() + body +
+    '</div>';
+  }
+
+  var todayIdx = sh.dates.indexOf(todayDateLabel());
+  var wide = state.shiftView === "week";
+
+  // 表示する日付の範囲。月表示は全日、週表示は月曜起点の1週間。
+  var from = 0, to = sh.dates.length, weekBar = "";
+  if(wide){
+    var r = shiftWeekRange(sh);
+    from = r.start; to = r.end;
+    var prev = shiftWeekStep(sh, -1), next = shiftWeekStep(sh, 1);
+    weekBar = '<div class="shift-bar">' +
+      '<button class="shift-nav-btn" data-act="shift-week" data-id="'+(prev===null?"":prev)+'"'+
+        (prev===null?' disabled':'')+' aria-label="前の週">◀</button>' +
+      '<div class="shift-bar-label">'+esc(sh.dates[from])+' 〜 '+esc(sh.dates[to-1])+'</div>' +
+      '<button class="shift-nav-btn" data-act="shift-week" data-id="'+(next===null?"":next)+'"'+
+        (next===null?' disabled':'')+' aria-label="次の週">▶</button>' +
+    '</div>';
+  }
+
+  var idxs = [];
+  for(var i = from; i < to; i++) idxs.push(i);
+
+  var dateHeaderCells = idxs.map(function(i){
+    return '<div class="shift-cell shift-date-head'+(i===todayIdx?" shift-today":"")+'">' +
+      esc(String(sh.dates[i]).split("/")[1])+'<br>'+esc((sh.weekdays||[])[i]||"") +
+    '</div>';
+  }).join("");
+
+  var members = shiftFilteredMembers();
+
+  function shiftRowsFor(ms){
+    return ms.map(function(m){
+      var hasRow = hasShiftRow(sh, m.id);
+      var data = hasRow ? sh.rows[m.id] : [];
+      var cells = idxs.map(function(i){
+        if(!hasRow){
+          return '<div class="shift-cell shift-none'+(i===todayIdx?" shift-today":"")+'">未</div>';
+        }
+        var val = String(data[i] || "").trim();
+        return '<div class="shift-cell '+shiftCellClass(val)+(i===todayIdx?" shift-today":"")+'">' +
+          esc(shiftCellLabel(val, wide)) + '</div>';
       }).join("");
       return '<div class="shift-row">' +
-        '<div class="shift-name-cell">'+avatar(m.id,24)+'<span>'+esc(m.displayName)+'</span></div>' +
+        '<div class="shift-name-cell'+(hasRow?"":" shift-name-none")+'">' +
+          avatar(m.id,24)+'<span>'+esc(m.displayName)+'</span>' +
+        '</div>' +
         '<div class="shift-days">'+cells+'</div>' +
       '</div>';
     }).join("");
@@ -1563,7 +1868,7 @@ function renderShift(){
 
   var placed = {};
   var teamsHtml = session.teams.map(function(team){
-    var ms = session.members.filter(function(m){ return m.team===team.id; });
+    var ms = members.filter(function(m){ return m.team===team.id; });
     ms.forEach(function(m){ placed[m.id] = true; });
     if(!ms.length) return "";
     return '<div class="team-block-title">'+esc(team.label)+'</div>' + shiftRowsFor(ms);
@@ -1571,24 +1876,53 @@ function renderShift(){
 
   // チーム未設定のメンバーが表から抜け落ちないようにする。
   // 「載っていない人がいる」ことに気づけないのが一番まずいため。
-  var orphans = session.members.filter(function(m){ return !placed[m.id]; });
+  var orphans = members.filter(function(m){ return !placed[m.id]; });
   if(orphans.length){
     teamsHtml += '<div class="team-block-title">その他</div>' + shiftRowsFor(orphans);
   }
 
+  // 日別の人数。絞り込み中はその範囲の人数になるので、見えている行と一致する。
+  //
+  // 人数が少ない日への警告色は入れていない。土日や、遅番を置かない曜日など
+  // 「元々薄いのが正常」な日が実データに存在し、機械的に色を付けると
+  // ノイズになって誰も見なくなるため。数字だけ出して判断は人に委ねる。
+  var countCells = idxs.map(function(i){
+    var e = 0, l = 0;
+    members.forEach(function(m){
+      if(!hasShiftRow(sh, m.id)) return;
+      var v = String(sh.rows[m.id][i] || "").trim();
+      if(v === "早番") e++;
+      else if(v === "遅番") l++;
+    });
+    return '<div class="shift-cell shift-count-cell'+(i===todayIdx?" shift-today":"")+'">' +
+      '<span class="shift-count-early">'+e+'</span>' +
+      '<span class="shift-count-late">'+l+'</span>' +
+    '</div>';
+  }).join("");
+
   return '<div class="tab-pad">' +
     renderSyncBar() +
-    '<div class="shift-scroll">' +
+    renderShiftMonthBar() +
+    renderTodayShiftCard() +
+    renderShiftControls() +
+    weekBar +
+    '<div class="shift-scroll'+(wide?" shift-week":"")+'">' +
       '<div class="shift-row shift-header-row">' +
         '<div class="shift-name-cell shift-name-head">メンバー</div>' +
         '<div class="shift-days">'+dateHeaderCells+'</div>' +
       '</div>' +
       teamsHtml +
+      '<div class="shift-row shift-count-row">' +
+        '<div class="shift-name-cell">早番 / 遅番</div>' +
+        '<div class="shift-days">'+countCells+'</div>' +
+      '</div>' +
     '</div>' +
     '<div class="shift-legend">' +
       '<span class="legend-item"><span class="legend-dot shift-early">早</span>早番</span>' +
       '<span class="legend-item"><span class="legend-dot shift-late">遅</span>遅番</span>' +
+      '<span class="legend-item"><span class="legend-dot shift-other">他</span>21時など</span>' +
       '<span class="legend-item"><span class="legend-dot shift-off">–</span>休み</span>' +
+      '<span class="legend-item"><span class="legend-dot shift-none">未</span>未提出</span>' +
     '</div>' +
   '</div>';
 }
@@ -2088,6 +2422,18 @@ function bindEvents(){
       // 一覧の3本はログイン中つなぎっぱなし（張り直すと全件読み直しになるため）。
       state.feedOpenComment = null;
       detachComments();
+      render();
+    }
+    else if(act==="shift-month"){ setShiftMonth(parseInt(id, 10)); }
+    else if(act==="shift-view"){
+      state.shiftView = id;
+      state.shiftWeekStart = null;   // 月表示から戻ったら本日の週に合わせ直す
+      render();
+    }
+    else if(act==="shift-team"){ state.shiftTeam = id; render(); }
+    else if(act==="shift-week"){
+      if(id === "") return;          // 端まで来ている（ボタンは disabled）
+      state.shiftWeekStart = parseInt(id, 10);
       render();
     }
     else if(act==="feed-sort"){ state.feedSort = id; render(); }
