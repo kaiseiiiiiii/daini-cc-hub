@@ -288,6 +288,68 @@ select.input{padding-right:8px;}
 .shift-count-late{color:#A85A1C;}
 .shift-legend{display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-4); flex-wrap:wrap;}
 
+/* ══════════════════════════════════════════════════════════════════
+   PC レイアウト（900px 以上）
+   狭い画面は下部タブの1カラムのまま。ここは広い画面専用の骨組み。
+   ══════════════════════════════════════════════════════════════════ */
+body.wide .app{max-width:1280px; height:calc(100vh - 48px); max-height:none;}
+
+.pc-topbar{display:flex; align-items:center; gap:20px; padding:0 20px; height:60px; flex-shrink:0;
+  background:var(--color-surface); border-bottom:1px solid var(--color-border);}
+.pc-brand{font-size:17px; font-weight:700; white-space:nowrap;}
+.pc-tabs{display:flex; align-items:stretch; gap:2px; height:100%; flex:1;}
+.pctab{display:flex; align-items:center; gap:7px; padding:0 16px; height:100%;
+  background:transparent; border:none; color:var(--color-text-sub);
+  font-family:inherit; font-size:15px; cursor:pointer;}
+.pctab:hover{color:var(--color-text);}
+.pctab-on{color:var(--color-accent-deep); font-weight:700;
+  box-shadow:inset 0 -3px 0 var(--color-accent);}
+.pc-me{display:flex; align-items:center; gap:8px; flex-shrink:0;}
+.pc-me-name{font-size:14px; font-weight:700; white-space:nowrap;}
+.pc-me-role{font-size:10px; color:var(--color-dusk-ink); background:var(--color-dusk-tint);
+  border-radius:var(--radius-pill); padding:1px 7px;}
+.pc-signout{background:transparent; border:none; color:var(--color-text-sub);
+  font-family:inherit; font-size:13px; cursor:pointer; padding:8px; min-height:36px;}
+.pc-signout:hover{color:var(--color-text); text-decoration:underline;}
+
+.infobar{display:flex; align-items:center; gap:16px; min-height:40px; padding:0 20px;
+  background:var(--color-bg); border-bottom:1px solid var(--color-border);
+  font-size:13px; color:var(--color-text-sub); flex-shrink:0; flex-wrap:wrap;}
+.infobar-left{display:flex; align-items:center; gap:14px; flex:1; flex-wrap:wrap;}
+.infobar-date{font-weight:700; color:var(--color-text);}
+.infobar-total{font-weight:700; color:var(--color-text);}
+.infobar-kind{display:inline-flex; align-items:center; gap:5px;}
+.infobar .dot{width:8px; height:8px; border-radius:2px; display:inline-block;}
+.infobar-unread{font-weight:700; color:var(--color-accent-deep);}
+.infobar-mute{color:var(--color-text-mute);}
+
+.pc-cols{display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:20px;
+  align-items:start; padding:20px; max-width:1240px; margin:0 auto;}
+body.wide .tab-pad{padding:0;}
+.pc-main{min-width:0;}
+.pc-side{display:flex; flex-direction:column; gap:12px; position:sticky; top:0;}
+.side-card{padding:14px 16px;}
+.side-title{font-size:13px; font-weight:700; margin-bottom:8px;}
+.side-num{font-size:13px; color:var(--color-text-sub);}
+.side-num b{font-size:32px; font-weight:700; color:var(--color-text); margin-right:2px;}
+.side-sub{margin-left:6px;}
+.side-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px;}
+.side-link{display:block; width:100%; text-align:left; background:transparent; border:none;
+  padding:7px 0 7px 14px; position:relative; font-family:inherit; font-size:13px;
+  color:var(--color-text); cursor:pointer; line-height:1.6; min-height:36px;}
+.side-link::before{content:""; position:absolute; left:0; top:14px;
+  width:7px; height:7px; border-radius:var(--radius-pill); background:var(--color-accent);}
+.side-link:hover{color:var(--color-accent-deep);}
+.side-due{display:block; font-size:11px; color:var(--color-text-sub);}
+.side-card-pending{background:color-mix(in srgb, var(--color-dusk) 7%, var(--color-surface));
+  border-color:color-mix(in srgb, var(--color-dusk) 32%, transparent);}
+.side-card-pending .side-title{color:var(--color-dusk-ink);}
+.side-card-pending .side-link::before{background:var(--color-dusk);}
+
+/* サイドバーが無いタブは本文を全幅で使う */
+body.wide .pc-cols:has(.pc-side:empty),
+.pc-cols:not(:has(aside)){grid-template-columns:minmax(0,1fr);}
+
 /* 写真・イラストのアバター。頭文字版と同じ寸法・同じ丸みで置き換わる。 */
 .avatar-img{object-fit:cover; border-radius:var(--radius-pill); flex:none;
   border:1px solid rgba(28,42,56,.08); background:var(--color-track);}
@@ -1358,18 +1420,11 @@ function renderHeader(){
 }
 
 function renderNav(){
-  var me = currentUserId();
-  var unread = 0;
-  for(var i=0;i<state.board.length;i++){
-    var rb = state.board[i].readBy || {};
-    if(!rb[me]) unread++;
-  }
-  var TABS = [{id:"feed",icon:"📡",l:"フィード"},{id:"board",icon:"📋",l:"掲示板"},{id:"survey",icon:"📊",l:"アンケート"},{id:"shift",icon:"🕐",l:"シフト"},{id:"progress",icon:"🎯",l:"目標進捗"}];
-  return '<div class="nav">' + TABS.map(function(t){
+  return '<div class="nav">' + navTabs().map(function(t){
     return '<button class="nav-btn'+(state.tab===t.id?" active":"")+'" data-act="tab" data-id="'+t.id+'">' +
       '<span class="nav-icon">'+t.icon+'</span>' +
       '<span class="nav-label">'+esc(t.l)+'</span>' +
-      (t.id==="board"&&unread>0 ? '<span class="nav-badge">'+unread+'</span>' : '') +
+      (t.count ? '<span class="nav-badge">'+t.count+'</span>' : '') +
     '</button>';
   }).join("") + '</div>';
 }
@@ -1423,6 +1478,142 @@ function renderTrash(kind){
       '</div>';
     }).join("") +
   '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PC レイアウト
+//
+//  狭い画面は下部タブの1カラムのまま（ハンドオフ指定）。
+//  広い画面だけ上部タブ＋2カラムに組み替える。
+//  各タブの中身は共通で、外側の骨組みだけを差し替えている。
+// ══════════════════════════════════════════════════════════════════
+var mqWide = window.matchMedia("(min-width: 900px)");
+function isWide(){ return mqWide.matches; }
+if(mqWide.addEventListener){
+  mqWide.addEventListener("change", function(){ if(session.status==="ready") render(); });
+}
+
+/** 未読の掲示板 */
+function unreadBoards(){
+  var me = currentUserId();
+  return state.board.filter(function(p){ return !(p.readBy && p.readBy[me]); });
+}
+/** 未回答のアンケート（締切済みは除く） */
+function pendingSurveys(){
+  var me = currentUserId();
+  return state.surveys.filter(function(s){ return !s.closed && !(s.votes && s.votes[me]); });
+}
+
+/** 月曜起点の週の開始時刻 */
+function weekStartMs(offsetWeeks){
+  var d = new Date();
+  d.setHours(0,0,0,0);
+  var dow = (d.getDay() + 6) % 7;            // 月曜=0
+  d.setDate(d.getDate() - dow + (offsetWeeks||0) * 7);
+  return d.getTime();
+}
+/** 今週と先週の Thanks 件数 */
+function thanksCounts(){
+  var thisStart = weekStartMs(0), lastStart = weekStartMs(-1);
+  var now = 0, prev = 0;
+  state.feed.forEach(function(p){
+    if(p.type !== "Thanks") return;
+    if(p.createdAtMs >= thisStart) now++;
+    else if(p.createdAtMs >= lastStart) prev++;
+  });
+  return { now: now, prev: prev };
+}
+
+function renderTopbar(){
+  var me = currentUser();
+  var TABS = navTabs();
+  var tabs = TABS.map(function(t){
+    return '<button class="pctab'+(state.tab===t.id?" pctab-on":"")+'" data-act="tab" data-id="'+t.id+'">' +
+      esc(t.l) + (t.count ? '<span class="count">'+t.count+'</span>' : '') +
+    '</button>';
+  }).join("");
+  return '<div class="pc-topbar">' +
+    '<div class="pc-brand">第二CC Hub</div>' +
+    '<nav class="pc-tabs">'+tabs+'</nav>' +
+    '<div class="pc-me">' + avatar(me.id, 32) +
+      '<span class="pc-me-name">'+esc(me.displayName)+'</span>' +
+      (isAdmin() ? '<span class="pc-me-role">管理者</span>' : '') +
+      '<button class="pc-signout" data-act="signout">サインアウト</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/** タブ定義と未読件数。上部タブと下部タブで共有する。 */
+function navTabs(){
+  return [
+    { id:"feed",     icon:"📡", l:"フィード" },
+    { id:"board",    icon:"📋", l:"掲示板",     count: unreadBoards().length },
+    { id:"survey",   icon:"📊", l:"アンケート", count: pendingSurveys().length },
+    { id:"shift",    icon:"🕐", l:"シフト" },
+    { id:"progress", icon:"🎯", l:"目標進捗" }
+  ];
+}
+
+/**
+ * 全画面共通の情報バー。本日のシフトを1行に畳んで常に見える位置に置く。
+ * どのタブを見ていても「今日は誰がいるか」が分かる状態にするため。
+ */
+function renderInfobar(){
+  var g = todayShiftGroups();
+  var left;
+  if(!g){
+    left = '<span class="infobar-mute">本日のシフトは未同期です</span>';
+  }else{
+    var d = new Date();
+    var wd = ["日","月","火","水","木","金","土"][d.getDay()];
+    var total = 0;
+    g.order.forEach(function(k){ total += g.byKind[k].length; });
+    var kinds = g.order.map(function(k){
+      return '<span class="infobar-kind"><i class="dot '+shiftCellClass(k)+'"></i>'+
+        esc(k)+' '+g.byKind[k].length+'</span>';
+    }).join("");
+    left = '<span class="infobar-date">本日 '+(d.getMonth()+1)+'/'+d.getDate()+'（'+wd+'）</span>' +
+      '<span class="infobar-total">'+total+'名 シフト予定</span>' + kinds;
+  }
+  var ub = unreadBoards().length, ps = pendingSurveys().length;
+  var right = (ub || ps)
+    ? '<span class="infobar-unread">未読 ' +
+        (ub ? '掲示板'+ub+'件' : '') + (ub && ps ? ' / ' : '') + (ps ? 'アンケート'+ps+'件' : '') +
+      '</span>'
+    : '<span class="infobar-mute">未読なし</span>';
+  return '<div class="infobar"><div class="infobar-left">'+left+'</div>'+right+'</div>';
+}
+
+/** 右サイドバー。いまはフィードタブのみ。 */
+function renderSidebar(){
+  if(state.tab !== "feed") return "";
+  var t = thanksCounts();
+  var ub = unreadBoards().slice(0, 5);
+  var ps = pendingSurveys().slice(0, 5);
+
+  var thanksCard = '<div class="card side-card">' +
+    '<div class="side-title">今週のサンクス</div>' +
+    '<div class="side-num"><b>'+t.now+'</b>件' +
+      '<span class="side-sub">（先週 '+t.prev+'件）</span></div>' +
+  '</div>';
+
+  var boardCard = ub.length ? '<div class="card side-card">' +
+    '<div class="side-title">未読の掲示板</div>' +
+    '<ul class="side-list">' + ub.map(function(p){
+      return '<li><button class="side-link" data-act="tab" data-id="board">'+esc(p.title)+'</button></li>';
+    }).join("") + '</ul>' +
+  '</div>' : "";
+
+  var surveyCard = ps.length ? '<div class="card side-card side-card-pending">' +
+    '<div class="side-title">未回答のアンケート '+ps.length+'件</div>' +
+    '<ul class="side-list">' + ps.map(function(s){
+      return '<li><button class="side-link" data-act="tab" data-id="survey">'+esc(s.title)+
+        (s.deadline ? '<span class="side-due">期限 '+esc(s.deadline)+'</span>' : '') +
+      '</button></li>';
+    }).join("") + '</ul>' +
+  '</div>' : "";
+
+  return '<aside class="pc-side">'+thanksCard+boardCard+surveyCard+'</aside>';
 }
 
 function emptyState(icon, text, sub){
@@ -2884,6 +3075,25 @@ function render(){
     ? '<div class="notice notice-error">'+esc(state.notice)+
       '<button class="notice-close" data-act="notice-close" aria-label="閉じる">×</button></div>'
     : '';
+
+  // 広い画面は上部タブ＋2カラム、狭い画面は今までどおり下部タブの1カラム。
+  // 中身（各タブの描画）は共通で、外側の骨組みだけを差し替えている。
+  document.body.classList.toggle("wide", isWide());
+  if(isWide()){
+    app.innerHTML =
+      renderTopbar() +
+      renderInfobar() +
+      noticeHtml +
+      '<div class="content" id="content">' +
+        '<div class="pc-cols">' +
+          '<div class="pc-main">'+body+'</div>' +
+          renderSidebar() +
+        '</div>' +
+      '</div>' +
+      renderConfirmDialog();
+    return;
+  }
+
   app.innerHTML = renderHeader() + noticeHtml +
     '<div class="content" id="content">'+body+'</div>' + renderNav() +
     renderConfirmDialog();
