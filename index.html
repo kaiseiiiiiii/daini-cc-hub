@@ -288,6 +288,10 @@ select.input{padding-right:8px;}
 .shift-count-late{color:#A85A1C;}
 .shift-legend{display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-4); flex-wrap:wrap;}
 
+/* 写真・イラストのアバター。頭文字版と同じ寸法・同じ丸みで置き換わる。 */
+.avatar-img{object-fit:cover; border-radius:var(--radius-pill); flex:none;
+  border:1px solid rgba(28,42,56,.08); background:var(--color-track);}
+
 /* ── INさん ── */
 .in-char{display:flex; flex-direction:column; align-items:center; gap:6px;}
 .in-art{display:block; width:auto; height:auto; max-width:100%; object-fit:contain;}
@@ -670,9 +674,33 @@ function teamClass(teamId){
   var t = getTeam(teamId);
   return (t && TEAM_COLOR_CLASS[t.colorKey]) || "team-none";
 }
+/**
+ * アバターに使う画像のファイル名。
+ *
+ * 値はメンバーマスタから来るので、そのまま src に入れない。
+ * assets/ 配下の単純なファイル名だけを通し、`../` や外部URLは弾く。
+ * 画像を外部から読ませると、誰がいつ画面を開いたかが
+ * その配信元に伝わってしまうため、自前配信に限っている。
+ */
+function avatarFile(m){
+  var f = (m && m.avatar) ? String(m.avatar) : "";
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*\.(webp|png|jpg|jpeg)$/i.test(f) ? f : "";
+}
+
 function avatar(id,size){
   size = size || 36;
   var m = getM(id);
+  var file = avatarFile(m);
+  if(file){
+    // alt は空にしている。隣に必ず表示名が出るので、
+    // 読み上げで名前が二重になるのを避ける。
+    // 遅延読み込みはしない。小さい画像が最初から見える位置に並ぶので、
+    // 後から差し込まれると名前の隣がちらついて読みにくくなる。
+    return '<img class="avatar avatar-img" src="./assets/'+esc(file)+'"' +
+      ' width="'+size+'" height="'+size+'" alt="" decoding="async"' +
+      ' style="width:'+size+'px;height:'+size+'px">';
+  }
+  // 画像が無い人は今までどおり頭文字。全員分の画像が揃わなくても混在で成立する。
   return '<div class="avatar '+teamClass(m.team)+'" style="width:'+size+'px;height:'+size+'px;font-size:'+Math.round(size*0.38)+'px">'+esc(m.initial)+'</div>';
 }
 
@@ -1025,7 +1053,8 @@ async function onAuthChanged(user){
       team: m.team || null,
       jobTitle: m.jobTitle || "",
       role: m.role === "admin" ? "admin" : "member",
-      order: m.order || 0
+      order: m.order || 0,
+      avatar: m.avatar || ""
     };
     await loadMasters();
     loadLegacy();
@@ -1074,6 +1103,8 @@ async function loadMasters(){
       jobTitle: v.jobTitle || "",
       role: v.role === "admin" ? "admin" : "member",
       order: v.order || 0,
+      // assets/ 配下のファイル名。空なら頭文字のアバターになる。
+      avatar: v.avatar || "",
       active: v.active !== false,
       // シフト表に載せるか。未設定なら載せる（既存メンバーの挙動を変えないため）。
       inShift: v.inShift !== false
