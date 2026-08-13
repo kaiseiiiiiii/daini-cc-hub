@@ -1053,9 +1053,24 @@ async function loadMasters(){
       jobTitle: v.jobTitle || "",
       role: v.role === "admin" ? "admin" : "member",
       order: v.order || 0,
-      active: v.active !== false
+      active: v.active !== false,
+      // シフト表に載せるか。未設定なら載せる（既存メンバーの挙動を変えないため）。
+      inShift: v.inShift !== false
     };
   }).filter(function(m){ return m.active; });
+}
+
+/**
+ * シフト関連の集計・表示に載せるメンバー。
+ *
+ * シフト表・本日のサマリー・ヘッダーの人数・残り稼働時間の4つは、
+ * すべてここを通す。片方だけ除外すると「表には出ないのに稼働時間には
+ * 数えられている」という追いにくい食い違いになるため。
+ *
+ * 除外はコードではなく Firestore のメンバーマスタ側で行う（inShift: false）。
+ */
+function shiftMembers(){
+  return session.members.filter(function(m){ return m.inShift !== false; });
 }
 
 // シフト・実績・目標はスプレッドシートから GAS が1時間おきに書き込む。
@@ -1256,7 +1271,7 @@ function todayScheduledCount(){
   var idx = sh.dates.indexOf(todayDateLabel());
   if(idx < 0) return null;
   var n = 0;
-  session.members.forEach(function(m){
+  shiftMembers().forEach(function(m){
     var row = sh.rows[m.id];
     if(row && row[idx]) n++;
   });
@@ -1932,8 +1947,8 @@ function hasShiftRow(sh, memberId){
 
 /** 絞り込み後のメンバー。チームセレクタと連動する。 */
 function shiftFilteredMembers(){
-  if(state.shiftTeam === "all") return session.members;
-  return session.members.filter(function(m){ return m.team === state.shiftTeam; });
+  if(state.shiftTeam === "all") return shiftMembers();
+  return shiftMembers().filter(function(m){ return m.team === state.shiftTeam; });
 }
 
 /**
@@ -1987,7 +2002,7 @@ function todayShiftGroups(){
   if(idx < 0) return null;
 
   var order = [], byKind = {}, restCount = 0, unsubmitted = 0;
-  session.members.forEach(function(m){
+  shiftMembers().forEach(function(m){
     if(!hasShiftRow(sh, m.id)){ unsubmitted++; return; }
     var v = String(sh.rows[m.id][idx] || "").trim();
     if(!v){ restCount++; return; }
@@ -2301,7 +2316,7 @@ function computeProgress(){
     var i = shiftIdx[dateLabel];
     if(i === undefined) return null;
     var total = 0;
-    session.members.forEach(function(m){
+    shiftMembers().forEach(function(m){
       if(!hasShiftRow(sh, m.id)) return;
       var v = String(sh.rows[m.id][i] || "").trim();
       var h = shiftHours(v);
