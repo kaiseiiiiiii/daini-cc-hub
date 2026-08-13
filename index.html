@@ -599,7 +599,10 @@ var KPI_DEF = {
   wait_rate:{ l:"待機率", t:10, u:"%", g:"low" },
   work_rate:{ l:"作業率", t:10, u:"%", g:"low" },
   avg_call:{ l:"平均通話", t:4, u:"分", g:"target" },
-  dispatch_rate:{ l:"手配率", t:35, u:"%", g:"high" },
+  // 手配率（目標35%）はここには置かない。
+  // 生産性データシートに手配率の列が無く、同期でも値が入らないため、
+  // 定義だけ残すと「0%」として赤く出て未達に見えてしまう。
+  // 出すなら手配粗利額データ側から取る必要があり、そこはまだ繋いでいない。
 };
 var CT = { Thanks:"green", お知らせ:"blue", 雑談:"purple", 質問:"amber", 報告:"blue", 重要:"red", 連絡:"blue" };
 var TEAM_COLOR_CLASS = { mgmt:"team-mgmt", a:"team-a", b:"team-b" };
@@ -2702,10 +2705,12 @@ function renderProgress(){
 
   if(p.forecast !== null){
     cells += cell("着地見込み", yen(p.forecast), "現ペースが続いた場合");
+    // 不足側を赤で出さない（デザイン指定）。
+    // 足りていないことは符号と「不足の見込み」の文字で足りる。
     cells += cell("目標との差",
       (p.gap >= 0 ? "+" : "−") + yen(Math.abs(p.gap)),
       p.gap >= 0 ? "超過の見込み" : "不足の見込み",
-      p.gap >= 0 ? "green" : "red");
+      p.gap >= 0 ? "green" : "");
   }else{
     cells += cell("着地見込み", "算出前",
       "消化稼働が総稼働の1割に届くまでは出しません");
@@ -2778,7 +2783,10 @@ function renderKpiSection(){
   var avg = {};
   Object.keys(KPI_DEF).forEach(function(k){
     var vals = []; agents.forEach(function(m){ if(byMember[m.id] && byMember[m.id][k]!=null) vals.push(byMember[m.id][k]); });
-    avg[k] = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length*10)/10 : 0;
+    // 値が1件も無い指標は 0 ではなく null。
+    // 0 を入れると「0%・未達」として表示され、
+    // データが無いことと成績が悪いことの区別が付かなくなる。
+    avg[k] = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length*10)/10 : null;
   });
 
   var disp = state.kpiSel ? byMember[state.kpiSel] : avg;
@@ -2801,7 +2809,12 @@ function renderKpiSection(){
   var gridHtml = Object.keys(KPI_DEF).map(function(key){
     var cfg = KPI_DEF[key]; var val = disp ? disp[key] : null;
     if(val==null) return "";
-    var st = kSt(key,val); var colorVar = st==="success"?"green":(st==="warn"?"amber":"red");
+    // 目標進捗に赤は使わない（デザイン指定）。未達は煽らず、
+    // 数字と目標を並べて出すだけにする。達成だけ緑で拾う。
+    var st = kSt(key,val);
+    var colorVar = st==="success" ? "color-grow-ink"
+                 : st==="warn"    ? "color-dusk-ink"
+                                  : "color-text-sub";
     var pct = cfg.g==="low" ? Math.min(100, Math.round(cfg.t/val*100)) : Math.min(100, Math.round(val/cfg.t*100));
     return '<div class="card kpi-card">' +
       '<div class="kpi-label">'+cfg.l+'</div>' +
