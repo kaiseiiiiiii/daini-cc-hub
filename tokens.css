@@ -1,0 +1,460 @@
+/* ============================================================
+   第二CC Hub — デザイントークン
+   既存のクラス名は変えず、値だけ var() 参照に置き換えて使う想定。
+   ============================================================ */
+
+:root {
+  /* --- 面と文字 --- */
+  --color-bg:            #FCFBF8;  /* 画面全体の背景 */
+  --color-surface:       #FFFFFF;  /* カード・パネル */
+  --color-text:          #1C2A38;  /* 本文 */
+  --color-text-sub:      #6B7785;  /* 補助テキスト・メタ情報 */
+  --color-border:        #E8E6DF;  /* 通常の境界線 */
+  --color-border-strong: #D8D5CB;  /* 入力欄・押せる要素の枠 */
+
+  /* --- 粋の水色（主アクセント）: 主要ボタン / アクティブタブ / リンク / 早番 --- */
+  --color-accent:      #3FA9E0;
+  --color-accent-tint: #E9F4FB;
+  --color-accent-deep: #2A87BA;  /* hover と、水色地の上のテキスト */
+
+  /* --- 雅の江戸紫（副アクセント）: バリュータグ / 21時シフト --- */
+  --color-plum:      #6E5D9E;
+  --color-plum-tint: #F0EDF8;
+
+  /* --- 夕暮れの橙: 遅番 / 未回答 / 期限が近い --- */
+  --color-dusk:      #F58A3C;
+  --color-dusk-tint: #FDF1E6;
+
+  /* --- 達成の緑: 目標達成 / 完了 --- */
+  --color-grow:      #2FB08A;
+  --color-grow-tint: #E7F6F1;
+
+  /* --- 警告の朱: 人員不足 / 同期エラー / 削除 --- */
+  --color-alert:      #E2555A;
+  --color-alert-tint: #FCECED;
+
+  /* --- 余白 --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+
+  /* --- 角丸 --- */
+  --radius-sm:   6px;   /* タグ・バッジ */
+  --radius-md:  10px;   /* ボタン・入力欄 */
+  --radius-lg:  14px;   /* カード */
+  --radius-pill: 999px; /* チップ・アバター */
+
+  /* --- 文字サイズ（13px 未満は使わない） --- */
+  --font-xs:   12px;
+  --font-sm:   13px;
+  --font-md:   15px;  /* 本文の基準 */
+  --font-lg:   17px;
+  --font-xl:   20px;
+  --font-2xl:  26px;
+  --font-3xl:  34px;
+  --font-num:  44px;  /* 単独で見せる数字 */
+
+  /* --- ウェイトは 400 / 700 の2つだけ --- */
+  --weight-normal: 400;
+  --weight-bold:   700;
+
+  /* --- 影は「浮くもの」だけ。階層は境界線と背景色差で表す --- */
+  --shadow-card: 0 1px 2px rgba(28, 42, 56, .04);
+  --shadow-pop:  0 6px 24px rgba(28, 42, 56, .10);
+
+  /* --- シフト状態（塗り / 文字 / 枠） --- */
+  --shift-early-bg:     #DCEFFA;
+  --shift-early-fg:     #1F6E96;
+  --shift-early-border: #BEE0F5;
+  --shift-late-bg:      #FBE7D3;
+  --shift-late-fg:      #A85A1C;
+  --shift-late-border:  #F5D2B0;
+  --shift-night-bg:     #EDE8F7;
+  --shift-night-fg:     #54467D;
+  --shift-night-border: #DCD4EE;
+  --shift-off-bg:       #F4F2ED;
+  --shift-off-fg:       #8C959E;
+  --shift-off-border:   #E8E6DF;
+}
+
+/* ============================================================
+   基本
+   ============================================================ */
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  font-size: var(--font-md);
+  line-height: 1.8;           /* 日本語主体のため 1.8 を基準 */
+  -webkit-font-smoothing: antialiased;
+}
+
+a         { color: var(--color-accent-deep); text-decoration: none; }
+a:hover   { color: var(--color-accent); text-decoration: underline; }
+
+h1, h2, h3 { line-height: 1.5; font-weight: var(--weight-bold); margin: 0; }
+h1 { font-size: var(--font-3xl); }
+h2 { font-size: var(--font-2xl); }
+h3 { font-size: var(--font-xl); }
+
+p { text-wrap: pretty; }
+
+/* 単独で見せる数字（達成件数・人数など） */
+.num {
+  font-size: var(--font-num);
+  font-weight: var(--weight-bold);
+  letter-spacing: -.02em;
+  line-height: 1;
+}
+
+/* ============================================================
+   ボタン — 押せるものは高さ 44px 以上
+   ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 44px;
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: var(--font-md);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+.btn:hover              { background: var(--color-accent-deep); }
+.btn--secondary         { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border-strong); }
+.btn--secondary:hover   { background: var(--color-bg); }
+.btn--ghost             { background: transparent; color: var(--color-accent-deep); }
+.btn--ghost:hover       { background: var(--color-accent-tint); }
+.btn--danger            { background: var(--color-surface); color: var(--color-alert); border: 1px solid var(--color-alert); }
+.btn--danger:hover      { background: var(--color-alert-tint); }
+.btn[disabled]          { background: var(--color-border); color: #A5AEB8; cursor: default; }
+.btn--block             { width: 100%; height: 52px; border-radius: var(--radius-lg); }
+.btn--sm                { height: 36px; padding: 0 14px; font-size: var(--font-sm); border-radius: var(--radius-pill); }
+
+/* ============================================================
+   カード
+   ============================================================ */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+.card--flat { box-shadow: none; }
+.card--pop  { box-shadow: var(--shadow-pop); }
+
+/* ============================================================
+   タグ・バッジ・チップ
+   状態は必ず「色 + 文字」で示す（色だけに頼らない）
+   ============================================================ */
+
+.tag {                         /* バリュータグ #主体性 など */
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-plum-tint);
+  color: #54467D;
+  font-size: var(--font-sm);
+  font-weight: var(--weight-bold);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-sm);
+  background: #F1EFE9;
+  color: var(--color-text-sub);
+  font-size: var(--font-xs);
+  font-weight: var(--weight-bold);
+}
+.badge--important { background: var(--color-alert-tint); color: #B4363B; }
+.badge--info      { background: var(--color-accent-tint); color: #1F6E96; }
+.badge--pending   { background: var(--color-dusk-tint);   color: #B4611F; }
+.badge--done      { background: var(--color-grow-tint);   color: #1E7B60; }
+
+.badge__dot { width: 6px; height: 6px; border-radius: 2px; background: currentColor; }
+
+.chip {                        /* 名前チップ */
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  font-size: var(--font-sm);
+  font-weight: var(--weight-bold);
+}
+.chip--self { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+
+.count {                       /* タブ横の未読数 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-alert);
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+}
+.count--pending { background: var(--color-dusk); }
+
+.unread-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--color-accent); }
+
+/* ============================================================
+   アバター
+   ============================================================ */
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-tint);
+  color: #1F6E96;
+  font-size: var(--font-md);
+  font-weight: var(--weight-bold);
+}
+.avatar--sm { width: 32px; height: 32px; font-size: var(--font-sm); }
+.avatar--xs { width: 28px; height: 28px; font-size: var(--font-xs); }
+
+/* ============================================================
+   シフト状態
+   未提出のみ斜線パターン + 破線枠 — 色が見えなくても区別できる
+   ============================================================ */
+
+.shift {
+  display: block;
+  padding: 7px 0;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-size: var(--font-xs);
+  font-weight: var(--weight-bold);
+}
+.shift--early { background: var(--shift-early-bg); color: var(--shift-early-fg); border: 1px solid var(--shift-early-border); }
+.shift--late  { background: var(--shift-late-bg);  color: var(--shift-late-fg);  border: 1px solid var(--shift-late-border); }
+.shift--night { background: var(--shift-night-bg); color: var(--shift-night-fg); border: 1px solid var(--shift-night-border); }
+.shift--off   { background: var(--shift-off-bg);   color: var(--shift-off-fg);   border: 1px solid var(--shift-off-border); }
+.shift--none  {
+  color: var(--shift-off-fg);
+  border: 1px dashed var(--color-border-strong);
+  background: repeating-linear-gradient(135deg, #fff, #fff 5px, #F1EFE9 5px, #F1EFE9 10px);
+}
+
+/* 日別の人数。合計5名以下は朱色 + 太字（数値も併記して色だけに頼らない） */
+.daycount       { padding: 7px 0; border-radius: var(--radius-sm); text-align: center; font-size: var(--font-xs); font-weight: var(--weight-bold); background: #F7F6F2; color: var(--color-text-sub); border: 1px solid var(--color-border); }
+.daycount--thin { background: var(--color-alert-tint); color: #B4363B; border-color: #F3C9CB; }
+
+/* ============================================================
+   フォーム
+   ============================================================ */
+
+.field       { display: block; font-size: var(--font-sm); font-weight: var(--weight-bold); margin-bottom: var(--space-2); }
+.input,
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-family: inherit;
+  font-size: var(--font-md);
+  color: var(--color-text);
+}
+.input    { height: 44px; padding: 0 14px; }
+.textarea { padding: 12px 14px; line-height: 1.8; resize: vertical; }
+.input:focus,
+.textarea:focus {
+  border-color: var(--color-accent);
+  outline: 2px solid var(--color-accent-tint);
+}
+
+.option {                      /* ラジオ / チェックの行 */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-md);
+  cursor: pointer;
+}
+.option--selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-tint);
+  color: #1F6E96;
+  font-weight: var(--weight-bold);
+}
+
+/* ============================================================
+   進捗バー
+   ============================================================ */
+
+.bar      { height: 12px; border-radius: var(--radius-pill); background: #F1EFE9; overflow: hidden; }
+.bar__fill{ height: 100%; border-radius: var(--radius-pill); background: var(--color-accent); }
+.bar__fill--alt { background: var(--color-plum); }
+.bar__fill--mute{ background: #C3C9CF; }
+
+/* 目標進捗の「本日時点の想定ライン」マーカー */
+.bar--marked { position: relative; }
+.bar__marker { position: absolute; top: -4px; width: 2px; height: 20px; background: var(--color-text); }
+
+/* ============================================================
+   リアクション
+   ============================================================ */
+
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-sub);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+.reaction:hover      { background: var(--color-bg); }
+.reaction--on        { border-color: var(--color-accent); background: var(--color-accent-tint); color: #1F6E96; }
+.reaction--add       { width: 40px; padding: 0; justify-content: center; border-style: dashed; }
+
+/* ============================================================
+   ナビゲーション
+   ============================================================ */
+
+/* PC: 上部タブ */
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 16px;
+  color: var(--color-text-sub);
+  font-size: var(--font-md);
+  cursor: pointer;
+}
+.tab--active {
+  color: var(--color-accent-deep);
+  font-weight: var(--weight-bold);
+  box-shadow: inset 0 -3px 0 var(--color-accent);
+}
+
+/* 全画面共通のインフォバー（本日のシフトを1行で） */
+.infobar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 40px;
+  padding: 0 var(--space-5);
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-sm);
+}
+
+/* スマホ: 下部タブ（片手で届く位置） */
+.tabbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 72px;
+  padding-bottom: 8px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+.tabbar__item        { text-align: center; font-size: 11px; color: var(--color-text-sub); }
+.tabbar__item--active{ color: var(--color-accent-deep); font-weight: var(--weight-bold); }
+
+/* ============================================================
+   掲示板の行（フィードより硬い質感 — 角丸を控えめに）
+   ============================================================ */
+
+.notice-list { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; }
+.notice {
+  padding: var(--space-4) 18px;
+  border-left: 4px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+.notice:last-child      { border-bottom: none; }
+.notice--unread         { border-left-color: var(--color-accent); background: #FCFDFE; }
+.notice--important      { border-left-color: var(--color-alert); }
+.notice__title          { font-size: var(--font-lg); font-weight: var(--weight-bold); line-height: 1.6; }
+.notice__body,
+.notice__meta           { color: var(--color-text-sub); }
+.notice__body           { font-size: 14px; line-height: 1.8; margin-top: var(--space-1); }
+.notice__meta           { font-size: var(--font-xs); margin-top: var(--space-2); }
+.notice--read .notice__title { color: var(--color-text-sub); }
+
+/* ============================================================
+   ここから下はアプリ側の追加。
+   ハンドオフの tokens.css は上の行までで、以下は
+   実装で必要になった派生トークンと、旧配色名のエイリアス。
+
+   ・-ink 系: 淡い地色の上に置く濃い文字色。
+     ハンドオフには tint と本色しか無いが、
+     「色 + 文字」の二重符号化でコントラストを確保するために必要。
+   ・--color-page: 画面の外周。カード面（surface）と
+     アプリ面（bg）に加えて、もう一段外側の面を分けている。
+   ・エイリアス: Phase 1〜5 で書いた CSS を書き換えずに動かすためのもの。
+     新しく書くときは --color-* 側を使う。
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  --color-page:      #F3F1EC;
+  --color-text-mute: #8C959E;
+  --color-track:     #F1EFE9;
+
+  --color-accent-ink: #1F6E96;
+  --color-plum-ink:   #54467D;
+  --color-dusk-ink:   #B4611F;
+  --color-grow-ink:   #1E7B60;
+  --color-alert-ink:  #B4363B;
+
+  /* ── 旧名エイリアス ── */
+  --accent:var(--color-accent); --accent-fg:#ffffff;
+  --bg:var(--color-bg); --page-bg:var(--color-page); --surface:var(--color-surface);
+  --border:var(--color-border);
+  --text:var(--color-text); --text-2:var(--color-text-sub);
+  --text-3:var(--color-text-sub); --text-4:var(--color-text-mute);
+  --input-bg:var(--color-bg); --shadow:var(--shadow-pop);
+  --mgmt-bg:var(--color-dusk-tint);    --mgmt-c:var(--color-dusk-ink);
+  --teamA-bg:var(--color-accent-tint); --teamA-c:var(--color-accent-ink);
+  --teamB-bg:var(--color-plum-tint);   --teamB-c:var(--color-plum-ink);
+  --green:var(--color-grow); --green-bg:var(--color-grow-tint); --green-c:var(--color-grow-ink);
+  --amber:var(--color-dusk); --amber-bg:var(--color-dusk-tint); --amber-c:var(--color-dusk-ink);
+  --gray-dot:var(--color-text-mute); --gray-bg:var(--color-track); --gray-c:var(--color-text-sub);
+  --blue:var(--color-accent); --purple:var(--color-plum); --red:var(--color-alert);
+}

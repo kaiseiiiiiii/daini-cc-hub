@@ -9,58 +9,22 @@
 <!-- デザイン指定のフォント。400と700の2ウェイトだけに絞ってある（日本語は重いため）。
      display=swap なので、届くまではOS標準の日本語フォントで表示される。 -->
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<!-- 支給されたデザイントークン。他のどのCSSより先に読み込む（ハンドオフ指定）。
+     トークン定義と共通コンポーネントのクラスが入っており、
+     下の <style> はその上に重ねる差分として書いている。
+
+     【ダークモードは持たない】
+     支給されたデザインは暖色のライト1本で、ダークの指定が無い。
+     こちらで勝手に暗い配色を作ると意図から外れるため、
+     media query も data-theme も置いていない。必要になったら
+     --color-* を上書きするブロックを1つ足すだけで対応できる。 -->
+<link rel="stylesheet" href="./tokens.css">
 <style>
-/* ══════════════════════════════════════════════════════════════════
-   デザイントークン
-
-   出典は Claude Design の「第二CC Hub デザイン一式」。
-   狙いは「白と余白がほとんどを占め、粋の水色と雅の江戸紫だけが効いている」状態。
-
-   下段のエイリアスは、以前の配色名で書かれた既存CSSをそのまま動かすためのもの。
-   新しく書くときは --color-* 側を使うこと。
-
-   【ダークモードは持たない】
-   支給されたデザインは暖色のライト1本に絞られていて、ダークの指定が無い。
-   こちらで勝手に暗い配色を作るとデザインの意図から外れるため、
-   media query も data-theme も置いていない。必要になったら
-   --color-* を上書きするブロックを1つ足すだけで対応できる。
-   ══════════════════════════════════════════════════════════════════ */
-:root{
-  color-scheme: light;
-
-  --color-bg:#FCFBF8; --color-page:#F3F1EC; --color-surface:#FFFFFF;
-  --color-text:#1C2A38; --color-text-sub:#6B7785; --color-text-mute:#8C959E;
-  --color-border:#E8E6DF; --color-border-strong:#D8D5CB;
-  --color-track:#F1EFE9;
-
-  --color-accent:#3FA9E0; --color-accent-tint:#E9F4FB; --color-accent-deep:#2A87BA;
-  --color-accent-ink:#1F6E96;
-  --color-plum:#6E5D9E;  --color-plum-tint:#F0EDF8;  --color-plum-ink:#54467D;
-  --color-dusk:#F58A3C;  --color-dusk-tint:#FDF1E6;  --color-dusk-ink:#B4611F;
-  --color-grow:#2FB08A;  --color-grow-tint:#E7F6F1;  --color-grow-ink:#1E7B60;
-  --color-alert:#E2555A; --color-alert-tint:#FCECED; --color-alert-ink:#B4363B;
-
-  --radius-sm:6px; --radius-md:10px; --radius-lg:14px; --radius-pill:999px;
-  --shadow-card:0 1px 2px rgba(28,42,56,.04);
-  --shadow-pop:0 6px 24px rgba(28,42,56,.10);
-
-  /* ── 旧名エイリアス ── */
-  --accent:var(--color-accent); --accent-fg:#ffffff;
-  --bg:var(--color-bg); --page-bg:var(--color-page); --surface:var(--color-surface);
-  --border:var(--color-border);
-  --text:var(--color-text); --text-2:var(--color-text-sub);
-  --text-3:var(--color-text-sub); --text-4:var(--color-text-mute);
-  --input-bg:var(--color-bg); --shadow:var(--shadow-pop);
-  --mgmt-bg:var(--color-dusk-tint);   --mgmt-c:var(--color-dusk-ink);
-  --teamA-bg:var(--color-accent-tint); --teamA-c:var(--color-accent-ink);
-  --teamB-bg:var(--color-plum-tint);   --teamB-c:var(--color-plum-ink);
-  --green:var(--color-grow); --green-bg:var(--color-grow-tint); --green-c:var(--color-grow-ink);
-  --amber:var(--color-dusk); --amber-bg:var(--color-dusk-tint); --amber-c:var(--color-dusk-ink);
-  --gray-dot:var(--color-text-mute); --gray-bg:var(--color-track); --gray-c:var(--color-text-sub);
-  --blue:var(--color-accent); --purple:var(--color-plum); --red:var(--color-alert);
-}
-
 *{box-sizing:border-box;}
+
+/* tokens.css の .input は高さ44pxで固定される（押せる要素の最小寸法）。
+   複数行入力はそれに縛られてはいけないので戻す。 */
+.textarea{height:auto;}
 body{margin:0;background:var(--color-page);}
 .shell-outer{
   display:flex; justify-content:center; align-items:stretch;
@@ -323,6 +287,58 @@ select.input{padding-right:8px;}
 .shift-count-early{color:#1F6E96;}
 .shift-count-late{color:#A85A1C;}
 .shift-legend{display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-4); flex-wrap:wrap;}
+
+/* ── INさん ── */
+.in-char{display:flex; flex-direction:column; align-items:center; gap:6px;}
+.in-art{display:block; width:auto; height:auto; max-width:100%; object-fit:contain;}
+.in-line{font-size:13px; font-weight:700; color:var(--color-text-sub); text-align:center;}
+.in-strip{display:flex; justify-content:center; padding:14px 0 4px;}
+.in-strip-happy .in-line{color:var(--color-grow-ink);}
+.sync-warn-in{display:flex; align-items:center; gap:12px;}
+.sync-warn-in .in-char{flex:0 0 auto;}
+.sync-warn-in .in-line{display:none;}   /* 文言は警告文そのものに任せる */
+.empty-text{margin-top:2px;}
+.onboard-card{display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center;
+  border-color:color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background:color-mix(in srgb, var(--color-accent) 5%, var(--color-surface));}
+.onboard-body{font-size:13px; color:var(--color-text-sub); line-height:1.8;}
+.onboard-ok{width:auto; min-width:160px; min-height:44px;}
+
+/* ── スマホ用のシフト。横スクロールは日付の帯だけに閉じ込める ── */
+.daystrip{display:flex; gap:6px; overflow-x:auto; padding:2px 0 8px; scroll-snap-type:x proximity;
+  -webkit-overflow-scrolling:touch;}
+.daystrip-btn{flex:0 0 auto; scroll-snap-align:center; width:46px; min-height:52px; display:flex;
+  flex-direction:column; align-items:center; justify-content:center; gap:1px;
+  background:var(--color-surface); border:1px solid var(--color-border);
+  border-radius:var(--radius-md); color:var(--color-text-sub); font-family:inherit; cursor:pointer;}
+.daystrip-btn-today{border-color:var(--color-accent);}
+.daystrip-btn-on{background:var(--color-accent); border-color:var(--color-accent); color:#fff;}
+.daystrip-d{font-size:15px; font-weight:700; line-height:1;}
+.daystrip-w{font-size:11px;}
+
+.daycard-date{font-size:15px; font-weight:700; margin:2px 0 10px; display:flex; align-items:center; gap:8px;}
+.daycard{padding:12px 14px;}
+.daycard-head{display:flex; align-items:center; gap:8px; margin-bottom:8px;}
+.daycard-count{margin-left:auto; font-size:13px; font-weight:700; color:var(--color-text-sub);}
+.daycard-empty{font-size:13px; color:var(--color-text-sub);}
+.daycard-foot{font-size:13px; color:var(--color-text-sub); margin-top:2px;}
+.shift-names{display:flex; flex-wrap:wrap; gap:6px;}
+.shift-names .chip{cursor:default;}
+/* 自分だけ塗る。アプリ側の .chip が後ろに来るので、勝てる詳細度で書く */
+.chip.chip--self{background:var(--color-accent); border-color:var(--color-accent); color:#fff;}
+
+.vblock-label{font-size:13px; font-weight:700; color:var(--color-text-sub); margin:14px 0 6px;}
+.vblock{padding:2px 12px;}
+.vrow{display:flex; align-items:center; gap:10px; min-height:44px;
+  border-top:1px solid var(--color-border);}
+.vblock .vrow:first-child{border-top:none;}
+.vrow-today{background:var(--color-accent-tint); margin:0 -12px; padding:0 12px;}
+.vrow-date{flex:0 0 62px; font-size:13px; font-weight:700; display:flex; align-items:baseline; gap:4px;}
+.vrow-wd{font-size:11px; font-weight:400; color:var(--color-text-sub);}
+.vrow .shift{flex:1; max-width:140px;}
+.vcounts{display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
+.vcount{font-size:12px; font-weight:700; padding:2px 8px; border-radius:var(--radius-sm);}
+.vcount-total{font-size:12px; font-weight:700; color:var(--color-text-sub);}
 .legend-item{display:flex; align-items:center; gap:5px;}
 .legend-dot{display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:var(--input-bg); font-size:10px; font-weight:700;}
 
@@ -673,6 +689,8 @@ var state = {
   shiftMonthOffset:0,       // -1=前月 / 0=当月 / +1=翌月
   shiftView:"week",         // "week" | "month"。31日の横スクロールを既定にしない
   shiftWeekStart:null,      // 週表示の先頭 index。null なら本日を含む週
+  shiftMobileView:"day",    // スマホ用。"day" | "week"。既定は日表示
+  shiftDayIdx:null,         // 日表示で選んでいる日。null なら本日
   shiftTeam:"all",
   metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
   feedShowForm:false, feedSort:"new", feedOpenComment:null,
@@ -1182,7 +1200,13 @@ function renderSyncBar(){
   var label = syncedAtLabel();
   var h = syncHealth();
   var warn = "";
-  if(h.level === "stale" || h.level === "error"){
+  if(h.level === "error"){
+    // 同期そのものが失敗した場合だけ INさんを出す。
+    // 「3時間更新がない」だけの状態は失敗とは限らないので出さない。
+    warn = '<div class="sync-warn sync-warn-bad sync-warn-in">' +
+      inChar("trouble", "データが取れませんでした", 56) +
+      '<span>'+esc(h.message)+'</span></div>';
+  }else if(h.level === "stale"){
     warn = '<div class="sync-warn sync-warn-bad">⚠️ '+esc(h.message)+'</div>';
   }else if(h.level === "yesterday"){
     warn = '<div class="sync-warn sync-warn-soft">🕙 '+esc(h.message)+'</div>';
@@ -1204,7 +1228,8 @@ var GOOGLE_MARK =
   '</svg>';
 
 function renderSplash(msg){
-  return '<div class="auth-wrap"><div class="loading">'+esc(msg)+'</div></div>';
+  return '<div class="auth-wrap">' + inChar("loading", null, 72) +
+    '<div class="loading">'+esc(msg)+'</div></div>';
 }
 
 function renderConfigNotice(){
@@ -1225,7 +1250,7 @@ function renderLogin(){
     ? '<div class="auth-alert"><div class="auth-alert-title">ログインできませんでした</div>'+esc(session.errorMessage)+'</div>'
     : '';
   return '<div class="auth-wrap">' +
-    '<div class="auth-logo">🚀</div>' +
+    inChar("normal", "おつかれさまです", 120) +
     '<div class="auth-title">第二CC Hub</div>' +
     '<div class="auth-desc">会社のGoogleアカウントでログインしてください。</div>' +
     err +
@@ -1254,7 +1279,7 @@ function renderDenied(){
 
 function renderErrorScreen(){
   return '<div class="auth-wrap">' +
-    '<div class="auth-logo">⚠️</div>' +
+    inChar("trouble", "データが取れませんでした", 110) +
     '<div class="auth-title">読み込みに失敗しました</div>' +
     '<div class="auth-alert">'+esc(session.errorMessage)+'</div>' +
     '<button class="btn-ghost" data-act="signout">サインアウトしてやり直す</button>' +
@@ -1371,6 +1396,14 @@ function emptyState(icon, text, sub){
     (sub ? '<div class="empty-sub">'+esc(sub)+'</div>' : '')+'</div>';
 }
 
+/** INさん付きの空状態。出す場面はデザイン指定の7つに限る */
+function emptyStateIn(artKey, line, text, sub){
+  return '<div class="empty">' + inChar(artKey, line, 104) +
+    '<div class="empty-text">'+esc(text)+'</div>' +
+    (sub ? '<div class="empty-sub">'+esc(sub)+'</div>' : '') +
+  '</div>';
+}
+
 /**
  * 所属チーム順にグルーピングしたメンバーの <option> 群。
  * 既存の「投稿者を選ぶプルダウン」は認証の導入で廃止したが、
@@ -1425,7 +1458,7 @@ function renderFeed(){
   );
   var body = sorted.length
     ? sorted.map(renderFeedPost).join("")
-    : emptyState("📡","まだ投稿がありません","最初の投稿をしてみましょう");
+    : emptyStateIn("lonely","まだ何もないですね","まだ投稿がありません","最初の投稿をしてみましょう");
   return '<div class="tab-pad">' +
     renderLegacyCard() +
     renderMvvPanel() +
@@ -1671,11 +1704,43 @@ function renderBoard(){
   var body = sorted.length
     ? sorted.map(renderBoardPost).join("")
     : emptyState("📋","まだ共有事項がありません");
+
+  // 未読ゼロのときだけ出す。掲示板を全部読み終えた状態は
+  // わざわざ知らせる価値があるので、ここだけ INさんを出す。
+  var me = currentUserId();
+  var allRead = sorted.length > 0 && sorted.every(function(p){
+    return !!(p.readBy && p.readBy[me]);
+  });
+  var readAllHtml = allRead
+    ? '<div class="in-strip">' + inChar("satisfied", "全部見ましたね", 64) + '</div>'
+    : "";
+
   return '<div class="tab-pad">' +
+    renderOnboarding() +
     '<button class="dashed-trigger" data-act="'+(state.boardShowForm?"board-cancel":"board-open-form")+'">'+(state.boardShowForm?"× 閉じる":"+ 掲示板に投稿する")+'</button>' +
     formHtml +
     body +
+    readAllHtml +
     renderTrash("board") +
+  '</div>';
+}
+
+/**
+ * 初回だけ出す案内。デザイン指定の「ここが第二CCの掲示板です」。
+ * 閉じたことは localStorage に持つ（人ごと・端末ごとで十分な性質のため、
+ * Firestore には置かない）。
+ */
+function renderOnboarding(){
+  var key = "cc2:onboarded:" + (currentUserId() || "");
+  var done = true;
+  try{ done = !!localStorage.getItem(key); }catch(e){}
+  if(done) return "";
+  return '<div class="card onboard-card">' +
+    inChar("guide", "ここが第二CCの掲示板です", 88) +
+    '<div class="onboard-body">連絡事項はここに残ります。' +
+      '未読には NEW が付き、開くと既読になります。' +
+      '「既読◯名」を押すと、まだ読んでいない人が分かります。</div>' +
+    '<button class="btn-primary onboard-ok" data-act="onboard-done">わかりました</button>' +
   '</div>';
 }
 
@@ -2069,11 +2134,205 @@ function renderShiftMonthBar(){
   '</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  スマホ用のシフト表示
+//
+//  デザイン指定は「横スクロールはゼロ」。メンバー×日付の表を縮めて
+//  入れるのは無理なので、狭い画面では構造そのものを差し替える。
+//
+//    PC   : 行 = メンバー、列 = 日付
+//    スマホ: 行 = 日付、  列 = シフト種別（縦横を入れ替える）
+//
+//  DOM が変わるので CSS だけでは切り替えられない。matchMedia で
+//  幅を見て描き分け、回転やウィンドウ変更にも追従させる。
+// ══════════════════════════════════════════════════════════════════
+var mqNarrow = window.matchMedia("(max-width: 640px)");
+function isNarrow(){ return mqNarrow.matches; }
+if(mqNarrow.addEventListener){
+  mqNarrow.addEventListener("change", function(){ if(session.status==="ready") render(); });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  INさん（イラスト）
+//
+//  デザイン指定で出す場面が7つに限定されている。
+//  シフト表・目標進捗の数字まわり・重要な連絡・通常のフィード一覧には
+//  出さない。数字や連絡の隣に出すと、真面目に読む場面の邪魔になる。
+//
+//  未達のときに励ます演出も入れない。喜ぶのは達成時だけ。
+//  そこを崩すと「励まされている＝まずい状況」の合図になってしまう。
+// ══════════════════════════════════════════════════════════════════
+var IN_ART = {
+  normal:    "in-normal.webp",      // ログイン画面
+  guide:     "in-guide.webp",       // 初回オンボーディング
+  lonely:    "in-lonely.webp",      // 投稿ゼロ
+  satisfied: "in-satisfied.webp",   // 未読ゼロ
+  trouble:   "in-trouble.webp",     // 取得失敗
+  loading:   "in-normal-sm.webp",   // 読み込み中
+  happy:     "in-happy.webp"        // 月間目標を達成
+};
+
+/**
+ * @param key   IN_ART のキー
+ * @param line  添える一言。省略すると画像だけ
+ * @param size  画像の一辺(px)
+ */
+function inChar(key, line, size){
+  size = size || 96;
+  return '<div class="in-char">' +
+    '<img class="in-art" src="./assets/'+IN_ART[key]+'" width="'+size+'" height="'+size+'" alt="" loading="lazy">' +
+    (line ? '<div class="in-line">'+esc(line)+'</div>' : '') +
+  '</div>';
+}
+
+/** 凡例。色だけに頼らないよう、必ず文字を添える（デザイン指定） */
+function renderShiftLegend(){
+  return '<div class="shift-legend">' +
+    '<span class="legend-item"><span class="legend-dot shift-early">早</span>早番</span>' +
+    '<span class="legend-item"><span class="legend-dot shift-late">遅</span>遅番</span>' +
+    '<span class="legend-item"><span class="legend-dot shift-night">21</span>21時</span>' +
+    '<span class="legend-item"><span class="legend-dot shift-other">他</span>その他</span>' +
+    '<span class="legend-item"><span class="legend-dot shift-off">–</span>休み</span>' +
+    '<span class="legend-item"><span class="legend-dot shift-none">未</span>未提出</span>' +
+  '</div>';
+}
+
+/** 指定した日のシフトを種別ごとにまとめる */
+function shiftGroupsAt(sh, idx){
+  if(!sh || !sh.rows || idx == null || idx < 0) return null;
+  var order = [], byKind = {}, rest = [], unsubmitted = [];
+  shiftFilteredMembers().forEach(function(m){
+    if(!hasShiftRow(sh, m.id)){ unsubmitted.push(m); return; }
+    var v = String(sh.rows[m.id][idx] || "").trim();
+    if(!v){ rest.push(m); return; }
+    if(!byKind[v]){ byKind[v] = []; order.push(v); }
+    byKind[v].push(m);
+  });
+  // 早番・遅番・21時を先に。運用上その3つを最初に見るため。
+  order.sort(function(a,b){
+    var rank = function(k){ return k==="早番"?0 : k==="遅番"?1 : k==="21時"?2 : 3; };
+    if(rank(a)!==rank(b)) return rank(a)-rank(b);
+    return byKind[b].length - byKind[a].length;
+  });
+  return { order:order, byKind:byKind, rest:rest, unsubmitted:unsubmitted };
+}
+
+/** 名前チップ。自分だけ塗る（デザイン指定の .chip--self） */
+function shiftNameChip(m){
+  var self = m.id === currentUserId();
+  return '<span class="chip'+(self?" chip--self":"")+'">'+esc(m.displayName)+'</span>';
+}
+
+/** 選択中の日。未選択なら本日、本日が範囲外ならその月の1日目 */
+function shiftSelectedIdx(sh, todayIdx){
+  if(state.shiftDayIdx !== null && state.shiftDayIdx < sh.dates.length) return state.shiftDayIdx;
+  return todayIdx >= 0 ? todayIdx : 0;
+}
+
+/** 日表示（スマホ既定）。日付を選び、その日の面子を縦に並べる */
+function renderShiftDayView(sh, todayIdx){
+  var sel = shiftSelectedIdx(sh, todayIdx);
+
+  // 日付の選択だけは横スクロールさせる。表を横に流すのとは別で、
+  // 「選ぶための帯」であることが見て分かる形にしている。
+  var strip = '<div class="daystrip" role="tablist">' + sh.dates.map(function(d, i){
+    return '<button class="daystrip-btn'+(i===sel?" daystrip-btn-on":"")+
+      (i===todayIdx?" daystrip-btn-today":"")+'" data-act="shift-day" data-id="'+i+'"'+
+      ' role="tab" aria-selected="'+(i===sel?"true":"false")+'">' +
+      '<span class="daystrip-d">'+esc(String(d).split("/")[1])+'</span>' +
+      '<span class="daystrip-w">'+esc((sh.weekdays||[])[i]||"")+'</span>' +
+    '</button>';
+  }).join("") + '</div>';
+
+  var g = shiftGroupsAt(sh, sel);
+  var cards = g.order.map(function(k){
+    return '<div class="card daycard">' +
+      '<div class="daycard-head">' +
+        '<span class="shift-today-tag '+shiftCellClass(k)+'">'+esc(k)+'</span>' +
+        '<span class="daycard-count">'+g.byKind[k].length+'名</span>' +
+      '</div>' +
+      '<div class="shift-names">'+g.byKind[k].map(shiftNameChip).join("")+'</div>' +
+    '</div>';
+  }).join("");
+
+  if(!cards){
+    cards = '<div class="card daycard"><div class="daycard-empty">' +
+      'この日はシフトに入っているメンバーがいません</div></div>';
+  }
+
+  var foot = [];
+  if(g.rest.length) foot.push("休み "+g.rest.length+"名");
+  if(g.unsubmitted.length) foot.push("未提出 "+g.unsubmitted.length+"名");
+
+  return strip +
+    '<div class="daycard-date">'+esc(sh.dates[sel])+'（'+esc((sh.weekdays||[])[sel]||"")+'）'+
+      (sel===todayIdx?'<span class="shift-bar-sub">本日</span>':'')+'</div>' +
+    cards +
+    (foot.length ? '<div class="daycard-foot">'+esc(foot.join(" ・ "))+'</div>' : '');
+}
+
+/** 週表示（スマホ）。日付を縦軸に、自分の1週間を上、日別の人数を下に置く */
+function renderShiftWeekMobile(sh, todayIdx){
+  var r = shiftWeekRange(sh);
+  var prev = shiftWeekStep(sh, -1), next = shiftWeekStep(sh, 1);
+  var bar = '<div class="shift-bar">' +
+    '<button class="shift-nav-btn" data-act="shift-week" data-id="'+(prev===null?"":prev)+'"'+
+      (prev===null?' disabled':'')+' aria-label="前の週">◀</button>' +
+    '<div class="shift-bar-label">'+esc(sh.dates[r.start])+' 〜 '+esc(sh.dates[r.end-1])+'</div>' +
+    '<button class="shift-nav-btn" data-act="shift-week" data-id="'+(next===null?"":next)+'"'+
+      (next===null?' disabled':'')+' aria-label="次の週">▶</button>' +
+  '</div>';
+
+  var meId = currentUserId();
+  var myRow = sh.rows[meId];
+  var mine = '';
+  for(var i = r.start; i < r.end; i++){
+    var v = myRow ? String(myRow[i] || "").trim() : null;
+    var cls = myRow ? shiftCellClass(v) : "shift-none";
+    var label = myRow ? (v || "休み") : "未提出";
+    mine += '<div class="vrow'+(i===todayIdx?" vrow-today":"")+'">' +
+      '<span class="vrow-date">'+esc(String(sh.dates[i]).split("/")[1])+'日'+
+        '<span class="vrow-wd">'+esc((sh.weekdays||[])[i]||"")+'</span></span>' +
+      '<span class="shift '+cls+'">'+esc(label)+'</span>' +
+    '</div>';
+  }
+
+  var counts = '';
+  for(var j = r.start; j < r.end; j++){
+    var g = shiftGroupsAt(sh, j);
+    var e = (g.byKind["早番"]||[]).length;
+    var l = (g.byKind["遅番"]||[]).length;
+    var n = (g.byKind["21時"]||[]).length;
+    var tot = 0;
+    g.order.forEach(function(k){ tot += g.byKind[k].length; });
+    counts += '<div class="vrow'+(j===todayIdx?" vrow-today":"")+'">' +
+      '<span class="vrow-date">'+esc(String(sh.dates[j]).split("/")[1])+'日'+
+        '<span class="vrow-wd">'+esc((sh.weekdays||[])[j]||"")+'</span></span>' +
+      '<span class="vcounts">' +
+        '<span class="vcount shift-early">早 '+e+'</span>' +
+        '<span class="vcount shift-late">遅 '+l+'</span>' +
+        '<span class="vcount shift-night">21時 '+n+'</span>' +
+        '<span class="vcount-total">計 '+tot+'</span>' +
+      '</span>' +
+    '</div>';
+  }
+
+  return bar +
+    '<div class="vblock-label">自分の1週間</div>' +
+    '<div class="card vblock">'+mine+'</div>' +
+    '<div class="vblock-label">日別の人数</div>' +
+    '<div class="card vblock">'+counts+'</div>';
+}
+
 /** 週/月の切り替えとチーム絞り込み */
 function renderShiftControls(){
-  var chips = [["week","週"],["month","月"]].map(function(v){
-    return '<button class="chip'+(state.shiftView===v[0]?" chip-active":"")+'" '+
-      'data-act="shift-view" data-id="'+v[0]+'">'+v[1]+'</button>';
+  // 狭い画面では表の形が違うので、切り替えの選択肢も変える。
+  var views = isNarrow() ? [["day","日"],["week","週"]] : [["week","週"],["month","月"]];
+  var cur = isNarrow() ? state.shiftMobileView : state.shiftView;
+  var act = isNarrow() ? "shift-mview" : "shift-view";
+  var chips = views.map(function(v){
+    return '<button class="chip'+(cur===v[0]?" chip-active":"")+'" '+
+      'data-act="'+act+'" data-id="'+v[0]+'">'+v[1]+'</button>';
   }).join("");
 
   var teamChips = '<button class="chip'+(state.shiftTeam==="all"?" chip-active":"")+'" '+
@@ -2112,6 +2371,21 @@ function renderShift(){
   }
 
   var todayIdx = sh.dates.indexOf(todayDateLabel());
+
+  // 狭い画面は表ではなく、日付を縦軸にした別構造にする
+  if(isNarrow()){
+    return '<div class="tab-pad">' +
+      renderSyncBar() +
+      renderShiftMonthBar() +
+      renderTodayShiftCard() +
+      renderShiftControls() +
+      (state.shiftMobileView === "week"
+        ? renderShiftWeekMobile(sh, todayIdx)
+        : renderShiftDayView(sh, todayIdx)) +
+      renderShiftLegend() +
+    '</div>';
+  }
+
   var wide = state.shiftView === "week";
 
   // 表示する日付の範囲。月表示は全日、週表示は月曜起点の1週間。
@@ -2212,14 +2486,7 @@ function renderShift(){
         '<div class="shift-days">'+countCells+'</div>' +
       '</div>' +
     '</div>' +
-    '<div class="shift-legend">' +
-      '<span class="legend-item"><span class="legend-dot shift-early">早</span>早番</span>' +
-      '<span class="legend-item"><span class="legend-dot shift-late">遅</span>遅番</span>' +
-      '<span class="legend-item"><span class="legend-dot shift-night">21</span>21時</span>' +
-      '<span class="legend-item"><span class="legend-dot shift-other">他</span>その他</span>' +
-      '<span class="legend-item"><span class="legend-dot shift-off">–</span>休み</span>' +
-      '<span class="legend-item"><span class="legend-dot shift-none">未</span>未提出</span>' +
-    '</div>' +
+    renderShiftLegend() +
   '</div>';
 }
 
@@ -2468,6 +2735,11 @@ function renderProgress(){
       '</div>' +
     '</div>' +
     '<div class="prog-grid">'+cells+'</div>' +
+    // 月間目標を達成したときだけ。未達のときに励ます演出は入れない（デザイン指定）。
+    // 数字の隣ではなく、数字を読み終えた先に置く。
+    (p.monthTarget > 0 && p.actual >= p.monthTarget
+      ? '<div class="in-strip in-strip-happy">' + inChar("happy", "達成です！", 88) + '</div>'
+      : "") +
     renderKpiSection() +
   '</div>';
 }
@@ -2960,6 +3232,12 @@ function bindEvents(){
       state.shiftWeekStart = null;   // 月表示から戻ったら本日の週に合わせ直す
       render();
     }
+    else if(act==="shift-mview"){
+      state.shiftMobileView = id;
+      state.shiftWeekStart = null;
+      render();
+    }
+    else if(act==="shift-day"){ state.shiftDayIdx = parseInt(id, 10); render(); }
     else if(act==="shift-team"){ state.shiftTeam = id; render(); }
     else if(act==="shift-week"){
       if(id === "") return;          // 端まで来ている（ボタンは disabled）
@@ -2987,6 +3265,10 @@ function bindEvents(){
     else if(act==="confirm-cancel"){ state.confirm = null; render(); }
     else if(act==="confirm-ok"){ runConfirmedDelete(); }
     else if(act==="trash-toggle"){ state.showTrash = !state.showTrash; render(); }
+    else if(act==="onboard-done"){
+      try{ localStorage.setItem("cc2:onboarded:" + (currentUserId()||""), "1"); }catch(e){}
+      render();
+    }
     else if(act==="edit-start"){
       startEdit(el.getAttribute("data-kind"), id, el.getAttribute("data-post"));
     }
