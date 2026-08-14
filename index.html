@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>第二CC Hub</title>
+<!-- ファビコン。INさん（in-guide.webp）の頭部を切り出したもの。
+     16pxのタブでは細部が潰れるので、顔が大きく入る位置で切っている。
+     apple-touch-icon に地色を敷いているのは、iOS が透過を黒で塗るため
+     （元画像の背景は白なので、ここも白で揃えてある）。
+     Android は manifest が無い場合 apple-touch-icon を流用するので、
+     192px 版は別に置いていない。 -->
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- デザイン指定のフォント。400と700の2ウェイトだけに絞ってある（日本語は重いため）。
