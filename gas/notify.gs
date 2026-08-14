@@ -80,15 +80,26 @@ function runNotify(trigger) {
       // 初回。ここまでの投稿を一気に流すと事故になるので、
       // 起点だけ置いて何も送らない。
       resetNotifyWatermark();
+      notifyLog_("ok", trigger, new Date() - startedAt, 0,
+        "初回のため起点だけ設定しました。次の投稿から通知します");
       return;
     }
 
+    // 何件見て何件が新着だったかを残す。
+    // 送らなかったときに「壊れているのか、単に新着が無いのか」を
+    // ログだけで区別できるようにするため。
+    var seen = { boardPosts: 0, surveys: 0 };
     var items = []
-      .concat(collectNew_(projectId, token, "boardPosts", since))
-      .concat(collectNew_(projectId, token, "surveys", since));
+      .concat(collectNew_(projectId, token, "boardPosts", since, seen))
+      .concat(collectNew_(projectId, token, "surveys", since, seen));
+
+    var sinceText = Utilities.formatDate(new Date(since), TZ, "MM-dd HH:mm:ss");
 
     if (!items.length) {
       touchWatermark_(projectId, token, startedAt, 0, "");
+      notifyLog_("ok", trigger, new Date() - startedAt, 0,
+        "新着なし（起点 " + sinceText + " 以降／掲示板 " + seen.boardPosts +
+        "件・アンケート " + seen.surveys + "件を確認）");
       return;
     }
 
@@ -101,7 +112,8 @@ function runNotify(trigger) {
     sent = items.length;
 
     touchWatermark_(projectId, token, startedAt, sent, "");
-    notifyLog_("ok", trigger, new Date() - startedAt, sent, "");
+    notifyLog_("ok", trigger, new Date() - startedAt, sent,
+      "送信しました（起点 " + sinceText + " 以降）");
 
   } catch (e) {
     var msg = (e && e.message) ? e.message : String(e);
@@ -145,7 +157,7 @@ function touchWatermark_(projectId, token, at, sent, error) {
  * 新しい順に少し多めに取って、こちら側で絞る。
  * 削除済みは通知しない（消したものが後から流れると混乱するため）。
  */
-function collectNew_(projectId, token, col, sinceMs) {
+function collectNew_(projectId, token, col, sinceMs, seen) {
   var url = fsBase_(projectId) + col +
     "?pageSize=30&orderBy=" + encodeURIComponent("createdAt desc");
   var res = UrlFetchApp.fetch(url, {
@@ -156,6 +168,7 @@ function collectNew_(projectId, token, col, sinceMs) {
     throw new Error(col + " を読めませんでした: " + res.getContentText());
   }
   var docs = (JSON.parse(res.getContentText()).documents) || [];
+  if (seen) seen[col] = docs.length;
   var out = [];
   docs.forEach(function (d) {
     var f = d.fields || {};
@@ -303,6 +316,47 @@ function checkNotifySetup() {
   } catch (e) {
     out.push("失敗    Firestore 接続: " + e.message);
   }
+  Logger.log(out.join("\n"));
+  return out.join("\n");
+}
+
+/**
+ * 「投稿したのに来ない」を切り分ける。
+ * 通知の起点と、直近の投稿の時刻を並べて出すだけ。
+ * 起点より古い投稿は対象外なので、それが一目で分かる。
+ */
+function whyNoNotify() {
+  var token = getAccessToken_();
+  var pid = requiredProp_("FIREBASE_PROJECT_ID");
+  var since = readWatermark_(pid, token);
+  var out = [];
+
+  out.push("通知の起点: " + (since === null
+    ? "未設定（resetNotifyWatermark を実行してください）"
+    : Utilities.formatDate(new Date(since), TZ, "yyyy-MM-dd HH:mm:ss")));
+  out.push("");
+
+  ["boardPosts", "surveys"].forEach(function (col) {
+    var url = fsBase_(pid) + col + "?pageSize=5&orderBy=" + encodeURIComponent("createdAt desc");
+    var res = UrlFetchApp.fetch(url, {
+      headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true
+    });
+    out.push("── " + col + " HTTP " + res.getResponseCode() + " ──");
+    if (res.getResponseCode() !== 200) { out.push(res.getContentText().slice(0, 300)); return; }
+    var docs = (JSON.parse(res.getContentText()).documents) || [];
+    if (!docs.length) { out.push("  （1件もありません）"); return; }
+    docs.forEach(function (d) {
+      var f = d.fields || {};
+      var ts = f.createdAt && f.createdAt.timestampValue;
+      var ms = ts ? new Date(ts).getTime() : 0;
+      var mark = !ts ? "createdAt なし"
+        : (fsBool_(f.deleted) ? "削除済みのため対象外"
+        : (since !== null && ms > since ? "★ 通知対象" : "起点より前のため対象外"));
+      out.push("  " + (ts ? Utilities.formatDate(new Date(ts), TZ, "MM-dd HH:mm:ss") : "--")
+        + "  " + (fsStr_(f.title) || "(無題)") + "  → " + mark);
+    });
+  });
+
   Logger.log(out.join("\n"));
   return out.join("\n");
 }
