@@ -372,6 +372,44 @@ service cloud.firestore {
 
 
     // ========================================================================
+    // 掲示板の添付画像
+    //   ドキュメントID = 自動ID
+    //   フィールド: authorId, dataUrl（data:image/... の縮小画像）,
+    //               width, height, createdAt
+    //
+    // 投稿とは別のコレクションにしている。掲示板の一覧はログイン中ずっと
+    // 購読しているので、画像を投稿と同じドキュメントに入れると、
+    // タブを開くたびに全員が全部の画像を受け取ることになる。
+    // 別にしておけば、画面に入ったものだけを1件ずつ取れる。
+    //
+    // アイコンと同様、Storage ではなく Firestore に直接入れる
+    // （新しいプロジェクトでは Storage に課金プランが必要）。
+    // その代わりクライアント側で必ず縮小してから書き込む。
+    // ========================================================================
+    match /boardImages/{imageId} {
+      allow read: if isMember();
+
+      allow create: if isMember()
+                    && request.resource.data.authorId == myMemberId()
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.dataUrl is string
+                    // 1ドキュメント上限（約1MiB）に余裕を残して止める。
+                    // アプリ側の BOARD_IMG_MAX と同じ値。
+                    && request.resource.data.dataUrl.size() < 900000
+                    && request.resource.data.dataUrl.matches('^data:image/(png|jpeg|webp);base64,.*')
+                    && request.resource.data.width is int
+                    && request.resource.data.height is int
+                    && request.resource.data.width > 0
+                    && request.resource.data.height > 0;
+
+      // 差し替えは新しいドキュメントを作る。既存を書き換えさせない。
+      // 「あの画像は誰がいつ貼ったか」を後から追えるようにするため、
+      // 投稿から参照を外しても画像そのものは残す（削除も禁止）。
+      allow update, delete: if false;
+    }
+
+
+    // ========================================================================
     // 掲示板（チェックリストを兼ねる）
     //   フィールド: authorId, title, body, category, pinned,
     //               readBy{memberId: 読んだ日時},
@@ -384,6 +422,12 @@ service cloud.firestore {
     //               checkTargets    … 対象者の memberId 配列。
     //                                 null は「全員」を意味する
     //               doneBy{memberId: 完了した日時}
+    //
+    //   添付画像を付けた場合のみ:
+    //               imageId         … boardImages のドキュメントID
+    //               imageW, imageH  … 読み込み前に縦横比の箱を置くための寸法。
+    //                                 画像本体を取る前に必要なので、
+    //                                 投稿側にも持たせている
     // ========================================================================
     match /boardPosts/{postId} {
 
@@ -423,7 +467,7 @@ service cloud.firestore {
                            && request.resource.data.deletedAt == request.time
                            && onlyChanged(['deleted','deletedBy','deletedAt']) )
 
-                         // ④ 本文・期日・対象者の編集は作成者本人のみ。
+                         // ④ 本文・期日・対象者・添付画像の編集は作成者本人のみ。
                          //    doneBy を含めていないので、期日を直すついでに
                          //    他人の完了記録を消すことはできない。
                       || ( isAuthor()
@@ -434,6 +478,7 @@ service cloud.firestore {
                            && validChecklist()
                            && onlyChanged(['title','body','category','pinned',
                                            'dueDate','checkTargets',
+                                           'imageId','imageW','imageH',
                                            'edited','updatedAt']) )
                        );
 

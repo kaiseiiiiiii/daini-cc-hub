@@ -161,6 +161,7 @@ GAS のコードは [`gas/sync.gs`](gas/sync.gs) にあります。
 | `feedPosts` | 自動ID | メンバー | フィード投稿（Phase 2） |
 | `feedPosts/{id}/comments` | 自動ID | メンバー | コメント（Phase 2） |
 | `boardPosts` | 自動ID | メンバー | 掲示板（Phase 2）＋チェックリスト |
+| `boardImages` | 自動ID | メンバー（作成のみ） | 掲示板の添付画像（縮小した data URL） |
 | `surveys` | 自動ID | メンバー | アンケート（Phase 2） |
 
 フィールドの詳細は `firestore.rules` のコメントを参照してください。

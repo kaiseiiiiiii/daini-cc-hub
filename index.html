@@ -230,6 +230,43 @@ select.input{padding-right:8px;}
 .reader-chip-unread{border-color:color-mix(in srgb, var(--red) 35%, transparent); background:color-mix(in srgb, var(--red) 8%, var(--surface)); color:var(--text); font-weight:600;}
 .reader-chips-muted .reader-chip{opacity:0.6; font-size:11px;}
 
+/* ── 掲示板の添付画像 ────────────────────────────────── */
+/* 読み込み前から縦横比どおりの箱を置く。あとから高さが決まると、
+   読んでいる途中の文章が下にずれて視線が飛ぶ。 */
+.post-img-box{display:block; width:100%; max-width:520px; margin:0 0 10px;
+  padding:0; border:1px solid var(--color-border); border-radius:var(--radius-md);
+  overflow:hidden; background:var(--color-track); cursor:zoom-in;}
+.post-img{display:block; width:100%; height:100%; object-fit:cover;}
+.post-img-empty{display:flex; align-items:center; justify-content:center; cursor:default;}
+.post-img-note{font-size:12px; color:var(--color-text-mute); padding:0 12px; text-align:center;}
+.post-img-spin{width:20px; height:20px; border-radius:50%;
+  border:2px solid var(--color-border-strong); border-top-color:transparent;
+  animation:img-spin 0.8s linear infinite;}
+@keyframes img-spin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion: reduce){ .post-img-spin{animation:none;} }
+
+/* 拡大表示。縮小済みなのでこれが原寸 */
+.lightbox-img{max-width:min(96vw, 1280px); max-height:92vh; object-fit:contain;
+  border-radius:var(--radius-md); background:var(--color-surface);}
+.lightbox-close{position:fixed; top:12px; right:12px; width:40px; height:40px;
+  border-radius:50%; border:none; background:rgba(0,0,0,0.55); color:#fff;
+  font-size:22px; line-height:1; cursor:pointer;}
+
+/* 添付欄（投稿フォーム・編集フォーム共用） */
+.img-pick{display:flex; flex-direction:column; gap:8px; padding-top:10px;
+  border-top:1px dashed var(--color-border);}
+.img-pick-btn{align-self:flex-start; display:inline-flex; align-items:center;
+  min-height:40px; padding:0 14px; border:1px dashed var(--color-border-strong);
+  border-radius:var(--radius-md); background:var(--color-surface);
+  font-size:13px; font-weight:700; color:var(--color-text-sub); cursor:pointer;}
+.img-pick-preview{display:flex; flex-direction:column; gap:6px; align-items:flex-start;}
+.img-pick-preview img{max-width:100%; max-height:200px; border-radius:var(--radius-md);
+  border:1px solid var(--color-border);}
+.img-pick-loading{width:160px; aspect-ratio:3/2; border:1px solid var(--color-border);
+  border-radius:var(--radius-md);}
+.img-pick-meta{font-size:11px; color:var(--color-text-mute);}
+.img-pick-clear{align-self:flex-start; min-height:36px; font-size:12px;}
+
 /* 送信できない理由。ボタンの直前に出して、押した場所の近くで読ませる */
 .form-error{font-size:12px; font-weight:700; color:var(--red);
   background:color-mix(in srgb, var(--red) 8%, transparent);
@@ -1021,6 +1058,11 @@ var state = {
   boardShowForm:false,
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
   boardOpenTask:null,       // 完了状況パネルを開いているチェックリストのID
+  boardImageDraft:null,     // 投稿前の添付画像 { dataUrl, width, height }
+  editImageDraft:null,      // 編集中に差し替える画像
+  editImageRemove:false,    // 編集で画像を外すか
+  images:{},                // imageId -> 画像データ | "loading" | "missing" | "error"
+  lightbox:null,            // 拡大表示している imageId
   surveyShowForm:false,
   surveyOpenStatus:null,    // 回答状況パネルを開いているアンケートのID
   surveyDraft:{},           // 送信前の選択。{surveyId: [optionId]}
@@ -2264,6 +2306,7 @@ function renderBoardForm(){
         '<label class="checkbox-label nowrap"><input type="checkbox" id="boardFormPinned"> 📌 固定</label>' +
       '</div>' +
       '<textarea id="boardFormBody" class="input textarea" placeholder="内容（任意）..." rows="3"></textarea>' +
+      renderImageField("boardForm", null) +
       renderTaskFields("boardForm", null) +
       errorSlot("boardFormError") +
       '<button class="btn-primary full" data-act="board-submit">投稿する</button>' +
@@ -2488,6 +2531,7 @@ function renderBoardEditForm(post){
         '<label class="checkbox-label nowrap"><input type="checkbox" id="editPinned"'+(post.pinned?" checked":"")+'> 📌 固定</label>' +
       '</div>' +
       '<textarea id="editBody" class="input textarea" rows="3">'+esc(post.body)+'</textarea>' +
+      renderImageField("editBoard", post) +
       renderTaskFields("editBoard", post) +
       errorSlot("editFormError") +
       '<div class="form-row">' +
@@ -2521,6 +2565,7 @@ function renderBoardPost(post){
     '<div class="board-title">'+esc(post.title)+editedMark(post)+'</div>' +
     // 本文は任意。空のまま出すと、余白だけの行が入って間延びする。
     (post.body ? '<div class="board-body">'+esc(post.body)+'</div>' : "") +
+    renderBoardImage(post) +
     renderTaskBlock(post) +
     renderTools("board", post) +
     '<div class="board-footer">' + avatar(post.authorId,18) +
@@ -3107,6 +3152,206 @@ function squareDataUrl(img){
   var url = canvas.toDataURL("image/webp", 0.85);
   if(url.indexOf("data:image/webp") !== 0) url = canvas.toDataURL("image/jpeg", 0.85);
   return url;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  掲示板の添付画像
+//
+//  画像は boardPosts とは別のコレクション（boardImages）に置く。
+//  掲示板の一覧はログイン中ずっと購読しているので、画像を投稿と同じ
+//  ドキュメントに入れると、タブを開くたびに全員が全部の画像を
+//  受け取ることになる。投稿側には ID と縦横だけを持たせ、
+//  画像そのものは画面に入ったものだけを1件ずつ取りに行く。
+//
+//  Storage を使わないのはアイコンと同じ理由（新しいプロジェクトでは
+//  Storage に課金プランが必要で、この用途には重い依存）。
+// ══════════════════════════════════════════════════════════════════
+
+// 長辺をこの px に収める。掲示板の画像はスクリーンショットが主なので、
+// 文字が読める程度を残しつつ、1枚が重くなりすぎない大きさにしている。
+var BOARD_IMG_PX = 1280;
+
+// data URL の上限。Firestore の1ドキュメント上限は約1MiB。
+// 画像だけで枠を使い切ると同じドキュメントの本文や完了記録が書けなく
+// なるため、余裕を残してここで止める。ルール側でも同じ値で弾いている。
+var BOARD_IMG_MAX = 900000;
+
+/**
+ * 長辺を BOARD_IMG_PX に収め、data URL が上限を切るまで
+ * 品質 → 寸法 の順に落としていく。
+ * 落としきれなければ null を返す（呼び出し側で断る）。
+ */
+function fitImageDataUrl(img){
+  var scale = Math.min(1, BOARD_IMG_PX / Math.max(img.naturalWidth, img.naturalHeight));
+  var baseW = Math.max(1, Math.round(img.naturalWidth  * scale));
+  var baseH = Math.max(1, Math.round(img.naturalHeight * scale));
+  var canvas = document.createElement("canvas");
+  var shrink = [1, 0.8, 0.65, 0.5, 0.35];
+  var quality = [0.82, 0.7, 0.55, 0.4];
+
+  for(var s = 0; s < shrink.length; s++){
+    canvas.width  = Math.max(1, Math.round(baseW * shrink[s]));
+    canvas.height = Math.max(1, Math.round(baseH * shrink[s]));
+    var ctx = canvas.getContext("2d");
+    // 透過 PNG をそのまま webp/jpeg にすると背景が黒く出るので、白で埋めておく
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    for(var q = 0; q < quality.length; q++){
+      var url = canvas.toDataURL("image/webp", quality[q]);
+      // webp が使えない環境では jpeg に落ちる
+      if(url.indexOf("data:image/webp") !== 0) url = canvas.toDataURL("image/jpeg", quality[q]);
+      if(url.length <= BOARD_IMG_MAX){
+        return { dataUrl:url, width:canvas.width, height:canvas.height };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 添付画像を選んだとき。which は "boardForm"（投稿）か "editBoard"（編集）。
+ * 縮小はこの場で済ませ、送信するまでは手元に置く。
+ */
+async function pickBoardImage(file, which){
+  var slot = which === "editBoard" ? "editFormError" : "boardFormError";
+  if(!file) return;
+  if(!/^image\//.test(file.type)){
+    refuse(slot, true, "画像ファイルを選んでください");
+    return;
+  }
+  try{
+    var img = await readAsImage(file);
+    var fitted = fitImageDataUrl(img);
+    if(!fitted){
+      refuse(slot, true, "この画像は小さくできませんでした。別の画像でお試しください");
+      return;
+    }
+    if(which === "editBoard"){
+      state.editImageDraft = fitted;
+      state.editImageRemove = false;
+    }else{
+      state.boardImageDraft = fitted;
+    }
+    render();
+  }catch(e){
+    refuse(slot, true, e.message || "画像を読み込めませんでした");
+  }
+}
+
+/** 画像1件を取りに行く。取得済み・取得中なら何もしない */
+function loadBoardImage(id){
+  if(!id || state.images[id]) return;
+  state.images[id] = "loading";
+  getDoc(doc(db, "boardImages", id)).then(function(snap){
+    var d = snap.exists() ? snap.data() : null;
+    state.images[id] = (d && d.dataUrl) ? d : "missing";
+    render();
+  }).catch(function(err){
+    // 1枚の失敗で画面全体に警告を出さない。その枠の中だけに出す。
+    state.images[id] = "error";
+    render();
+  });
+}
+
+/**
+ * 画面に入った画像だけを読む。
+ *
+ * 起点はスクロールしている要素（#content）にする。既定の「画面全体」に
+ * すると、rootMargin による先読みが内側のスクロール領域には効かない
+ * （rootMargin は途中のスクロール領域の切り取りを広げてくれない）。
+ * それだと画像が見えた瞬間に読み始めることになり、間に合わない。
+ *
+ * #content は描き直しのたびに作り直されるので、監視も毎回張り直す。
+ * IntersectionObserver が無い環境では、置いてある分をそのまま全部読む
+ * （読めないより重いほうがまし）。
+ */
+var imageObserver = null;
+function observeImages(){
+  var slots = document.querySelectorAll("[data-img]");
+  if(!slots.length) return;
+  if(!("IntersectionObserver" in window)){
+    Array.prototype.forEach.call(slots, function(el){
+      loadBoardImage(el.getAttribute("data-img"));
+    });
+    return;
+  }
+  if(imageObserver) imageObserver.disconnect();
+  var scroller = document.getElementById("content");
+  imageObserver = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(!e.isIntersecting) return;
+      imageObserver.unobserve(e.target);
+      loadBoardImage(e.target.getAttribute("data-img"));
+    });
+  }, { root: scroller || null, rootMargin:"400px 0px" });
+  Array.prototype.forEach.call(slots, function(el){ imageObserver.observe(el); });
+}
+
+/**
+ * 投稿カードの中の画像。
+ *
+ * 読み込み前から縦横比どおりの箱を置いておく。あとから高さが決まると、
+ * 読んでいる途中の文章が下にずれて視線が飛ぶ。
+ */
+function renderBoardImage(post){
+  if(!post.imageId) return "";
+  var ar = (post.imageW && post.imageH) ? (post.imageW + "/" + post.imageH) : "3/2";
+  var got = state.images[post.imageId];
+
+  if(got && typeof got === "object"){
+    return '<button class="post-img-box" data-act="lightbox" data-id="'+esc(post.imageId)+'" ' +
+      'style="aspect-ratio:'+ar+'" aria-label="画像を拡大する">' +
+      '<img class="post-img" src="'+got.dataUrl+'" alt="添付画像" decoding="async">' +
+    '</button>';
+  }
+
+  var note = got === "error"   ? "画像を読み込めませんでした"
+           : got === "missing" ? "画像が見つかりません"
+           : "";
+  // 未取得のときだけ data-img を付ける。これが読み込みの引き金になる。
+  return '<div class="post-img-box post-img-empty"'+(got?"":' data-img="'+esc(post.imageId)+'"')+' ' +
+    'style="aspect-ratio:'+ar+'">' +
+    (note ? '<span class="post-img-note">'+esc(note)+'</span>' : '<span class="post-img-spin"></span>') +
+  '</div>';
+}
+
+/** 添付欄。投稿フォームと編集フォームで共用する */
+function renderImageField(which, post){
+  var draft = which === "editBoard" ? state.editImageDraft : state.boardImageDraft;
+  var removing = which === "editBoard" && state.editImageRemove;
+  var existing = which === "editBoard" && post && post.imageId && !removing ? post.imageId : null;
+
+  var preview = "";
+  if(draft){
+    preview = '<div class="img-pick-preview">' +
+      '<img src="'+draft.dataUrl+'" alt="添付する画像">' +
+      '<div class="img-pick-meta">' + draft.width + '×' + draft.height +
+        '・約' + Math.round(draft.dataUrl.length / 1024) + 'KB' +
+      '</div>' +
+      '<button class="btn-ghost img-pick-clear" data-act="img-clear" data-which="'+which+'">添付をやめる</button>' +
+    '</div>';
+  }else if(existing){
+    var got = state.images[existing];
+    preview = '<div class="img-pick-preview">' +
+      (got && typeof got === "object"
+        ? '<img src="'+got.dataUrl+'" alt="いま付いている画像">'
+        : '<div class="post-img-empty img-pick-loading"><span class="post-img-spin"></span></div>') +
+      '<div class="img-pick-meta">いま付いている画像</div>' +
+      '<button class="btn-ghost img-pick-clear" data-act="img-remove" data-which="'+which+'">画像を外す</button>' +
+    '</div>';
+  }else if(removing){
+    preview = '<div class="img-pick-meta">保存すると画像が外れます　' +
+      '<button class="btn-ghost img-pick-clear" data-act="img-undo" data-which="'+which+'">やめる</button></div>';
+  }
+
+  return '<div class="img-pick">' +
+    '<label class="img-pick-btn">' +
+      '<input type="file" accept="image/*" data-act="board-img-file" data-which="'+which+'" hidden>' +
+      '🖼 ' + (draft || existing ? "画像を選び直す" : "画像を添付する") +
+    '</label>' +
+    preview +
+  '</div>';
 }
 
 async function pickAvatarFile(file, targetId){
@@ -3916,8 +4161,69 @@ function renderKpiSection(){
 // ══════════════════════════════════════════════════════════════════
 //  MAIN RENDER
 // ══════════════════════════════════════════════════════════════════
+// ── 描き直しをまたいで入力を保つ ──────────────────────────
+//
+// フォームの入力は state ではなく DOM に値を持っている。画像を選んだ、
+// 対象者を変えた、送信を断られた——フォームを開いたまま描き直す操作は
+// いくつもあり、そのたびに入力途中の本文が消えていた。
+// 個別に「ここでは描き直さない」と対処すると必ず漏れるので、
+// 描き直しの前後で値を運ぶ形に一本化する。
+//
+// ただし、別のフォームに値を移してはいけない（編集対象を A から B に
+// 変えたとき、id は同じ editTitle なので A の文字が B に入ってしまう）。
+// 開いているフォームの組み合わせが前回と同じときだけ復元する。
+var lastFormSig = null;
+
+function formSignature(){
+  var e = state.editing;
+  return [state.tab,
+          state.boardShowForm ? 1 : 0,
+          state.surveyShowForm ? 1 : 0,
+          e ? e.kind+":"+e.id+":"+(e.postId||"") : "-"].join("|");
+}
+
+/** id があれば id、無ければ「同じclassの何番目か」で値を覚える */
+function formFieldKey(el, seen){
+  if(el.id) return "#" + el.id;
+  var cls = el.className || el.tagName;
+  seen[cls] = (seen[cls] || 0) + 1;
+  return "." + cls + ":" + seen[cls];
+}
+
+function captureForms(){
+  var keep = {}, seen = {};
+  Array.prototype.forEach.call(
+    document.querySelectorAll("#app input, #app select, #app textarea"),
+    function(el){
+      if(el.type === "file") return;   // ファイル入力の値は代入できない
+      keep[formFieldKey(el, seen)] = (el.type === "checkbox" || el.type === "radio")
+        ? el.checked : el.value;
+    }
+  );
+  return keep;
+}
+
+function restoreForms(keep){
+  var seen = {};
+  Array.prototype.forEach.call(
+    document.querySelectorAll("#app input, #app select, #app textarea"),
+    function(el){
+      if(el.type === "file") return;
+      var k = formFieldKey(el, seen);
+      if(!(k in keep)) return;
+      if(el.type === "checkbox" || el.type === "radio") el.checked = keep[k];
+      else el.value = keep[k];
+    }
+  );
+}
+
 function render(){
   var app = document.getElementById("app");
+
+  // 前回と同じフォームが開いていれば、入力を引き継ぐ
+  var sig = formSignature();
+  var keep = (sig === lastFormSig) ? captureForms() : null;
+  lastFormSig = sig;
 
   // ログインしていない／許可されていない間は、アプリの中身を一切描画しない。
   if(session.status === "config")    { app.innerHTML = renderConfigNotice(); return; }
@@ -3951,13 +4257,29 @@ function render(){
           renderSidebar() +
         '</div>' +
       '</div>' +
-      renderConfirmDialog() + renderAvatarDialog();
+      renderConfirmDialog() + renderAvatarDialog() + renderLightbox();
+    if(keep) restoreForms(keep);
+    observeImages();
     return;
   }
 
   app.innerHTML = renderHeader() + noticeHtml +
     '<div class="content" id="content">'+body+'</div>' + renderNav() +
-    renderConfirmDialog() + renderAvatarDialog();
+    renderConfirmDialog() + renderAvatarDialog() + renderLightbox();
+  if(keep) restoreForms(keep);
+  // 描き直すたびに置き直す。innerHTML の差し替えで前の要素は捨てられている。
+  observeImages();
+}
+
+/** 画像の拡大表示。縮小してあるので、これが原寸 */
+function renderLightbox(){
+  if(!state.lightbox) return "";
+  var got = state.images[state.lightbox];
+  if(!got || typeof got !== "object") return "";
+  return '<div class="modal" data-act="lightbox-close">' +
+    '<img class="lightbox-img" src="'+got.dataUrl+'" alt="添付画像">' +
+    '<button class="lightbox-close" data-act="lightbox-close" aria-label="閉じる">×</button>' +
+  '</div>';
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -4101,8 +4423,35 @@ function submitBoardPost(){
   // 既読とは違い、作成者も未完了から始める。作った本人が
   // やらなくていいとは限らない（自分にも課すのが普通の運用）。
   payload.doneBy = {};
+  payload.imageId = null;
+  payload.imageW = null;
+  payload.imageH = null;
+  var img = state.boardImageDraft;
+  state.boardImageDraft = null;
   state.boardShowForm = false;
-  write("投稿", function(){ return addDoc(collection(db, "boardPosts"), payload); }, true);
+  write("投稿", async function(){
+    // 画像を先に作る。逆順にすると、画像の作成だけ失敗したときに
+    // 「画像が出ない投稿」が残ってしまう。こちらの順なら、
+    // 最悪でも誰にも見えない画像が1件余るだけで済む。
+    if(img) await attachImage(payload, img);
+    return addDoc(collection(db, "boardPosts"), payload);
+  }, true);
+}
+
+/** 画像を boardImages に作り、投稿側に ID と縦横を書き込む */
+async function attachImage(target, img){
+  var ref = await addDoc(collection(db, "boardImages"), {
+    authorId: currentUserId(),
+    dataUrl: img.dataUrl,
+    width: img.width,
+    height: img.height,
+    createdAt: serverTimestamp()
+  });
+  target.imageId = ref.id;
+  target.imageW = img.width;
+  target.imageH = img.height;
+  // 取りに行かずに済むよう、自分の画面用には手元のものを入れておく
+  state.images[ref.id] = { dataUrl: img.dataUrl, width: img.width, height: img.height };
 }
 
 /**
@@ -4160,10 +4509,17 @@ function submitSurvey(){
 // ══════════════════════════════════════════════════════════════════
 function startEdit(kind, id, postId){
   state.editing = { kind:kind, id:id, postId:postId || null };
+  state.editImageDraft = null;
+  state.editImageRemove = false;
   state.notice = "";
   render();
 }
-function cancelEdit(){ state.editing = null; render(); }
+function cancelEdit(){
+  state.editing = null;
+  state.editImageDraft = null;
+  state.editImageRemove = false;
+  render();
+}
 
 function saveFeedEdit(id){
   var text = document.getElementById("editText").value.trim();
@@ -4197,8 +4553,26 @@ function saveBoardEdit(id){
     edited: true,
     updatedAt: serverTimestamp()
   };
+  // 画像は差し替え・取り外しのときだけ触る。
+  // 何もしていないときに patch へ入れないのは、既に付いている画像を
+  // 消してしまう事故を、書き込む値の形として起こせなくするため。
+  var img = state.editImageDraft;
+  var removing = state.editImageRemove;
+  state.editImageDraft = null;
+  state.editImageRemove = false;
   state.editing = null;
-  write("編集", function(){ return updateDoc(doc(db, "boardPosts", id), patch); }, true);
+  write("編集", async function(){
+    if(img){
+      await attachImage(patch, img);
+    }else if(removing){
+      // 画像そのものは残す（誰が何を貼ったかを追えるようにするため）。
+      // 投稿からの参照だけを外す。
+      patch.imageId = null;
+      patch.imageW = null;
+      patch.imageH = null;
+    }
+    return updateDoc(doc(db, "boardPosts", id), patch);
+  }, true);
 }
 
 function saveSurveyEdit(id){
@@ -4400,6 +4774,8 @@ function bindEvents(){
     if(act==="tab"){
       state.tab = id;
       state.boardShowForm=false; state.surveyShowForm=false;
+      state.boardImageDraft=null; state.editImageDraft=null; state.editImageRemove=false;
+      state.lightbox=null;
       // タブを離れたらコメントの購読だけ落とす。
       // 一覧の3本はログイン中つなぎっぱなし（張り直すと全件読み直しになるため）。
       state.feedOpenComment = null;
@@ -4470,14 +4846,23 @@ function bindEvents(){
     else if(act==="delete-ask"){
       askDelete(el.getAttribute("data-kind"), id, el.getAttribute("data-post"));
     }
-    else if(act==="board-open-form"){ state.boardShowForm = true; render(); }
-    else if(act==="board-cancel"){ state.boardShowForm = false; render(); }
+    else if(act==="board-open-form"){ state.boardShowForm = true; state.boardImageDraft = null; render(); }
+    else if(act==="board-cancel"){ state.boardShowForm = false; state.boardImageDraft = null; render(); }
     else if(act==="board-submit"){ submitBoardPost(); }
     else if(act==="board-read"){ markBoardRead(id); }
     else if(act==="board-readers"){
       state.boardOpenReaders = state.boardOpenReaders===id ? null : id;
       render();
     }
+    else if(act==="img-clear"){
+      if(el.getAttribute("data-which")==="editBoard") state.editImageDraft = null;
+      else state.boardImageDraft = null;
+      render();
+    }
+    else if(act==="img-remove"){ state.editImageRemove = true; state.editImageDraft = null; render(); }
+    else if(act==="img-undo"){ state.editImageRemove = false; render(); }
+    else if(act==="lightbox"){ state.lightbox = id; render(); }
+    else if(act==="lightbox-close"){ state.lightbox = null; render(); }
     else if(act==="task-toggle"){ toggleTaskDone(id); }
     else if(act==="task-status"){
       state.boardOpenTask = state.boardOpenTask===id ? null : id;
@@ -4514,9 +4899,16 @@ function bindEvents(){
   // ファイル選択は click ではなく change で拾う
   app.addEventListener("change", function(e){
     if(session.status !== "ready") return;
-    var el = e.target.closest && e.target.closest('[data-act="avatar-file"]');
-    if(!el) return;
-    pickAvatarFile(el.files && el.files[0], el.getAttribute("data-id"));
+    if(!e.target.closest) return;
+    var av = e.target.closest('[data-act="avatar-file"]');
+    if(av){ pickAvatarFile(av.files && av.files[0], av.getAttribute("data-id")); return; }
+    var bi = e.target.closest('[data-act="board-img-file"]');
+    if(bi){ pickBoardImage(bi.files && bi.files[0], bi.getAttribute("data-which")); return; }
+  });
+
+  // 拡大表示は Esc でも閉じられるようにする
+  document.addEventListener("keydown", function(e){
+    if(e.key === "Escape" && state.lightbox){ state.lightbox = null; render(); }
   });
 
   app.addEventListener("keydown", function(e){

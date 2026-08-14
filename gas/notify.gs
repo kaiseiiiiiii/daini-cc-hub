@@ -186,7 +186,8 @@ function collectNew_(projectId, token, col, sinceMs, seen) {
       pinned: fsBool_(f.pinned),
       multi: fsBool_(f.multi),
       deadline: fsStr_(f.deadline),
-      dueDate: fsStr_(f.dueDate)     // 掲示板のチェックリストの期日（無ければ ""）
+      dueDate: fsStr_(f.dueDate),    // 掲示板のチェックリストの期日（無ければ ""）
+      hasImage: !!fsStr_(f.imageId)  // 添付画像の有無（画像そのものは送らない）
     });
   });
   return out;
@@ -233,7 +234,10 @@ function buildMessage_(items, names, overflow) {
       // 期日が入っていればチェックリスト。連絡事項と区別が付かないと
       // 「読むだけのもの」と思われて手が動かない。
       var due = b.dueDate ? "  ✅ 期日 " + b.dueDate : "";
-      lines.push("• " + head + cat + b.title + due + "  — " + (names[b.authorId] || "?"));
+      // 画像は Chat に転送しない。「アプリを開く必要がある」ことだけ伝える。
+      // 画像の中身が社外に転送されうる経路を作らないため。
+      var clip = b.hasImage ? "  📎" : "";
+      lines.push("• " + head + cat + b.title + due + clip + "  — " + (names[b.authorId] || "?"));
     });
   }
 
