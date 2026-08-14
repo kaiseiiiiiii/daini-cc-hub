@@ -300,6 +300,34 @@ select.input{padding-right:8px;}
   font-family:inherit; font-size:15px; font-weight:700; cursor:pointer;}
 .btn-post:hover{background:var(--color-accent-deep);}
 
+/* ── アンケート ── */
+.survey-cols{display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start;}
+.survey-main{min-width:0;}
+.survey-todo{display:flex; flex-direction:column; gap:12px;}
+.sbadges{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;}
+.sbadge{display:inline-flex; align-items:center; height:24px; padding:0 9px;
+  border-radius:var(--radius-sm); background:var(--color-track);
+  color:var(--color-text-sub); font-size:12px; font-weight:700;}
+.sbadge-soon{background:var(--color-dusk-tint); color:var(--color-dusk-ink);}
+.sbadge-done{background:var(--color-track); color:var(--color-text-mute);}
+.sbadge-mode{background:var(--color-accent-tint); color:var(--color-accent-ink);}
+
+.vote-card{border-color:color-mix(in srgb, var(--color-accent) 45%, transparent);}
+.vote-opts{display:flex; flex-direction:column; gap:8px; margin:10px 0 14px;}
+.vote-opts .option{width:100%; text-align:left; background:var(--color-surface);
+  font-family:inherit; cursor:pointer;}
+.option-box{flex:none; width:20px; height:20px; border-radius:var(--radius-sm);
+  border:1px solid var(--color-border-strong); display:inline-flex;
+  align-items:center; justify-content:center; font-size:13px; font-weight:700;
+  background:var(--color-surface);}
+.option-box-round{border-radius:var(--radius-pill);}
+.option--selected .option-box{background:var(--color-accent); border-color:var(--color-accent); color:#fff;}
+.btn-vote{margin-left:0; width:100%;}
+.btn-vote[disabled]{background:var(--color-border); color:#A5AEB8; cursor:default;}
+.revote-btn{background:transparent; border:none; color:var(--color-accent-deep);
+  font-family:inherit; font-size:13px; cursor:pointer; padding:8px; min-height:36px;}
+.revote-btn:hover{text-decoration:underline;}
+
 /* バリュータグ。#付きの短い表記にする（デザイン指定） */
 .tag-value{display:inline-flex; align-items:center; height:26px; padding:0 10px;
   border-radius:var(--radius-sm); background:var(--color-plum-tint);
@@ -813,6 +841,8 @@ var state = {
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
   surveyShowForm:false,
   surveyOpenStatus:null,    // 回答状況パネルを開いているアンケートのID
+  surveyDraft:{},           // 送信前の選択。{surveyId: [optionId]}
+  surveyRevote:null,        // 回答済みから選び直しに戻しているアンケートのID
   mvvOpen:false,           // MVVパネルの開閉
   progressKpiOpen:false,   // 生産性KPIセクションの開閉
   kpiSel:null,
@@ -2117,16 +2147,154 @@ function renderBoardPost(post){
 // ══════════════════════════════════════════════════════════════════
 //  RENDER: SURVEY
 // ══════════════════════════════════════════════════════════════════
+function deadlineDate(sv){
+  if(!sv.deadline) return null;
+  var p = String(sv.deadline).split("-");
+  if(p.length !== 3) return null;
+  var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** 締切までの残り日数。0 は本日締切、null は期限なし */
+function surveyDaysLeft(sv){
+  var end = deadlineDate(sv);
+  if(!end) return null;
+  end.setHours(0,0,0,0);
+  var today = new Date(); today.setHours(0,0,0,0);
+  return Math.round((end.getTime() - today.getTime()) / 86400000);
+}
+
+/** 期限を "8/16（土）" の形に */
+function deadlineLabel(sv){
+  var d = deadlineDate(sv);
+  if(!d) return "";
+  return (d.getMonth()+1)+"/"+d.getDate()+"（"+["日","月","火","水","木","金","土"][d.getDay()]+"）";
+}
+
+/** 期限と選択方式のバッジ。締切が近いものは色を変える */
+function surveyBadges(sv){
+  var out = "";
+  if(sv.closed){
+    out += '<span class="sbadge sbadge-done">締切済み'+(sv.deadline?' · '+esc(deadlineLabel(sv)):'')+'</span>';
+  }else{
+    var d = surveyDaysLeft(sv);
+    if(d === null){
+      out += '<span class="sbadge">期限なし</span>';
+    }else if(d < 0){
+      out += '<span class="sbadge sbadge-done">期限切れ · '+esc(deadlineLabel(sv))+'</span>';
+    }else{
+      // 残り2日以内は色を変える。締切当日に初めて気づく事態を避けるため。
+      out += '<span class="sbadge'+(d<=2?" sbadge-soon":"")+'">⏳ ' +
+        (d===0 ? "本日まで" : "残り"+d+"日") + ' · '+esc(deadlineLabel(sv))+'</span>';
+    }
+  }
+  out += '<span class="sbadge sbadge-mode">'+(sv.multi?"複数選択":"単一選択")+'</span>';
+  return '<div class="sbadges">'+out+'</div>';
+}
+
+/** 自分がまだ答えていない、回答可能なアンケート */
+function surveyNeedsMe(sv){
+  var me = currentUserId();
+  if(sv.closed) return false;
+  var d = surveyDaysLeft(sv);
+  if(d !== null && d < 0) return false;
+  if(state.surveyRevote === sv.id) return true;   // 選び直し中は回答フォームを出す
+  return !(sv.votes && sv.votes[me]);
+}
+
+/** 選択肢を選ぶ。送信するまでは手元に置くだけ */
+function pickVote(surveyId, optId){
+  var sv = state.surveys.filter(function(s){ return s.id===surveyId; })[0];
+  if(!sv) return;
+  var me = currentUserId();
+  var cur = state.surveyDraft[surveyId] || (sv.votes && sv.votes[me]) || [];
+  var next;
+  if(cur.indexOf(optId) >= 0){
+    next = cur.filter(function(x){ return x!==optId; });
+  }else{
+    next = sv.multi ? cur.concat([optId]) : [optId];
+  }
+  state.surveyDraft[surveyId] = next;
+  render();
+}
+
+/** 選んだ内容をまとめて書き込む */
+function submitVote(surveyId){
+  var me = currentUserId();
+  var draft = state.surveyDraft[surveyId];
+  if(!draft || !draft.length) return;
+  var patch = {};
+  patch["votes." + me] = draft;
+  delete state.surveyDraft[surveyId];
+  state.surveyRevote = null;
+  write("回答", function(){ return updateDoc(doc(db, "surveys", surveyId), patch); }, true);
+}
+
 function renderSurvey(){
   var formHtml = state.surveyShowForm ? renderSurveyForm() : "";
-  var body = state.surveys.length
-    ? state.surveys.map(renderSurveyCard).join("")
-    : emptyState("📊","まだアンケートがありません");
-  return '<div class="tab-pad">' +
-    '<button class="dashed-trigger" data-act="'+(state.surveyShowForm?"survey-cancel":"survey-open-form")+'">'+(state.surveyShowForm?"× 閉じる":"+ アンケートを作成する")+'</button>' +
-    formHtml +
-    body +
+  var trigger = '<button class="dashed-trigger" data-act="'+
+    (state.surveyShowForm?"survey-cancel":"survey-open-form")+'">'+
+    (state.surveyShowForm?"× 閉じる":"+ アンケートを作成する")+'</button>';
+
+  if(!state.surveys.length){
+    return '<div class="tab-pad">'+trigger+formHtml+
+      emptyState("📊","まだアンケートがありません")+renderTrash("surveys")+'</div>';
+  }
+
+  // 回答待ちのものを分けて、答える場所と結果を見る場所を混ぜない。
+  // 広い画面では回答待ちを右に寄せ、左は結果一覧に専念させる。
+  var todo = state.surveys.filter(surveyNeedsMe);
+  var rest = state.surveys.filter(function(s){ return !surveyNeedsMe(s); });
+
+  if(isWide()){
+    return '<div class="survey-cols">' +
+      '<div class="survey-main">' + trigger + formHtml +
+        (rest.length ? rest.map(renderSurveyCard).join("")
+                     : '<div class="prog-note">回答済みのアンケートはまだありません。</div>') +
+        renderTrash("surveys") +
+      '</div>' +
+      '<div class="survey-todo">' +
+        (todo.length ? todo.map(renderSurveyVoteCard).join("")
+                     : '<div class="card side-card"><div class="side-title">回答待ちはありません</div></div>') +
+      '</div>' +
+    '</div>';
+  }
+
+  return '<div class="tab-pad">' + trigger + formHtml +
+    todo.map(renderSurveyVoteCard).join("") +
+    rest.map(renderSurveyCard).join("") +
     renderTrash("surveys") +
+  '</div>';
+}
+
+/**
+ * 回答フォーム。選択肢は行ごとのボタンにして、押しやすくする。
+ * 選んだ内容は送信するまでローカルに置く。複数選択で1つ選ぶたびに
+ * 書き込むと、途中の状態が他の人の画面に出てしまうため。
+ */
+function renderSurveyVoteCard(sv){
+  if(state.editing && state.editing.kind==="survey" && state.editing.id===sv.id && canEdit(sv)){
+    return renderSurveyEditForm(sv);
+  }
+  var me = currentUserId();
+  var draft = state.surveyDraft[sv.id] || (sv.votes && sv.votes[me]) || [];
+
+  var rows = (sv.options || []).map(function(opt){
+    var on = draft.indexOf(opt.id) >= 0;
+    return '<button class="option'+(on?" option--selected":"")+'" ' +
+      'data-act="vote-pick" data-id="'+sv.id+'" data-opt="'+esc(opt.id)+'" ' +
+      'role="'+(sv.multi?"checkbox":"radio")+'" aria-checked="'+(on?"true":"false")+'">' +
+      '<span class="option-box'+(sv.multi?"":" option-box-round")+'">'+(on?"✓":"")+'</span>' +
+      '<span>'+esc(opt.label)+'</span>' +
+    '</button>';
+  }).join("");
+
+  return '<div class="card vote-card">' +
+    surveyBadges(sv) +
+    '<div class="survey-title">'+esc(sv.title)+editedMark(sv)+'</div>' +
+    '<div class="vote-opts">'+rows+'</div>' +
+    '<button class="btn-post btn-vote" data-act="vote-submit" data-id="'+sv.id+'"'+
+      (draft.length?"":" disabled")+'>回答する</button>' +
   '</div>';
 }
 
@@ -2196,16 +2364,25 @@ function renderSurveyCard(sv){
   var c = voteCounts(sv);
   var myV = (sv.votes && sv.votes[me]) || [];
 
+  // 結果表示。バーの色は1位＝水色、2位＝江戸紫、以降＝灰。
+  // 順位を煽らないよう、数字は票数と割合だけにしている。
+  var ranked = (sv.options || []).slice().sort(function(a,b){
+    return (c.counts[b.id]||0) - (c.counts[a.id]||0);
+  });
+  var rankOf = {};
+  ranked.forEach(function(o,i){ rankOf[o.id] = i; });
+
   var optsHtml = (sv.options || []).map(function(opt){
     var cnt = c.counts[opt.id] || 0;
     var pct = c.total>0 ? Math.round(cnt/c.total*100) : 0;
     var voted = myV.indexOf(opt.id)>=0;
-    return '<div class="survey-opt-row"'+(sv.closed?"":' data-act="vote" data-id="'+sv.id+'" data-opt="'+esc(opt.id)+'"')+'>' +
+    var fill = rankOf[opt.id]===0 ? "" : (rankOf[opt.id]===1 ? " bar__fill--alt" : " bar__fill--mute");
+    return '<div class="survey-opt-row">' +
       '<div class="survey-opt-line">' +
         '<span class="survey-opt-label'+(voted?" voted":"")+'">'+(voted?"✓ ":"")+esc(opt.label)+'</span>' +
-        '<span class="survey-opt-count">'+cnt+'票 ('+pct+'%)</span>' +
+        '<span class="survey-opt-count">'+cnt+'票・'+pct+'%</span>' +
       '</div>' +
-      '<div class="bar-bg"><div class="bar-fill" style="width:'+pct+'%;background:'+(voted?"var(--accent)":"var(--text-4)")+'"></div></div>' +
+      '<div class="bar"><div class="bar__fill'+fill+'" style="width:'+pct+'%"></div></div>' +
     '</div>';
   }).join("");
 
@@ -2217,14 +2394,17 @@ function renderSurveyCard(sv){
   return '<div class="card">' +
     '<div class="survey-head">' + avatar(sv.authorId,28) +
       '<div class="survey-head-info">' +
+        surveyBadges(sv) +
         '<div class="survey-title">'+esc(sv.title)+editedMark(sv)+'</div>' +
-        '<div class="survey-meta">'+esc(getM(sv.authorId).displayName)+' · '+(sv.multi?"複数選択可":"単一選択")+(sv.deadline?' · 期限: '+esc(sv.deadline):"")+'</div>' +
+        '<div class="survey-meta">'+esc(getM(sv.authorId).displayName)+'</div>' +
       '</div>' +
       renderTools("survey", sv) +
     '</div>' +
     optsHtml +
     '<div class="survey-foot">' +
-      '<span class="survey-total-text">合計 '+c.total+'票'+(sv.closed?'<span class="survey-closed">終了</span>':'')+'</span>' +
+      '<span class="survey-total-text">合計 '+c.total+'票</span>' +
+      (!sv.closed && myV.length
+        ? '<button class="revote-btn" data-act="vote-revote" data-id="'+sv.id+'">回答を変更</button>' : '') +
       '<button class="reader-toggle'+(isOpen?" reader-toggle-open":"")+'" data-act="survey-status" data-id="'+sv.id+'" aria-expanded="'+(isOpen?"true":"false")+'">' +
         '回答 '+done.length+'名' +
         (pending.length ? '<span class="reader-toggle-unread">未回答 '+pending.length+'</span>' : '') +
@@ -3601,6 +3781,13 @@ function bindEvents(){
       render();
     }
     else if(act==="vote"){ toggleVote(id, el.getAttribute("data-opt")); }
+    else if(act==="vote-pick"){ pickVote(id, el.getAttribute("data-opt")); }
+    else if(act==="vote-submit"){ submitVote(id); }
+    else if(act==="vote-revote"){
+      state.surveyRevote = id;
+      state.surveyDraft[id] = ((state.surveys.filter(function(s){ return s.id===id; })[0]||{}).votes||{})[currentUserId()] || [];
+      render();
+    }
     else if(act==="mvv-toggle"){ state.mvvOpen = !state.mvvOpen; render(); }
     else if(act==="kpi-section-toggle"){ state.progressKpiOpen = !state.progressKpiOpen; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
