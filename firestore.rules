@@ -413,6 +413,7 @@ service cloud.firestore {
     // 掲示板（チェックリストを兼ねる）
     //   フィールド: authorId, title, body, category, pinned,
     //               readBy{memberId: 読んだ日時},
+    //               reactions{memberId: [emoji]},
     //               createdAt, updatedAt, edited,
     //               deleted, deletedBy, deletedAt
     //
@@ -440,7 +441,10 @@ service cloud.firestore {
                     // 「配ったときには既に終わっていた」という記録を作れると、
                     // 完了状況そのものが信用できなくなる。
                     && ( !request.resource.data.keys().hasAny(['doneBy'])
-                         || request.resource.data.doneBy.size() == 0 );
+                         || request.resource.data.doneBy.size() == 0 )
+                    // 同様に、最初から他人のリアクションが付いた状態で作らせない。
+                    && ( !request.resource.data.keys().hasAny(['reactions'])
+                         || request.resource.data.reactions.size() == 0 );
 
       allow update: if isMember()
                     && immutableOrigin()
@@ -452,7 +456,14 @@ service cloud.firestore {
                          //    信用できなくなるため）。
                          ( onlyChanged(['readBy']) && onlyMyKeyIn('readBy') )
 
-                         // ② 完了チェックも同じ考え方で、触れるのは自分のキーだけ。
+                         // ② リアクションの付け外しは全メンバーに許可。
+                         //    フィードと同じ扱い（他人の投稿にスタンプを
+                         //    押すのは正常な操作）。触れるのは自分のキーだけ。
+                         //    この機能より前の投稿には reactions が無いので、
+                         //    フィールドが無い場合も許す版を使う。
+                      || ( onlyChanged(['reactions']) && onlyMyKeyInOrNew('reactions') )
+
+                         // ③ 完了チェックも同じ考え方で、触れるのは自分のキーだけ。
                          //    他人を勝手に完了にできると、未完了者への声かけという
                          //    この機能の目的そのものが成立しない。
                          //    admin も他人の分は変えられない（本人が終わったことは
@@ -460,14 +471,14 @@ service cloud.firestore {
                          //    誰が代行したかを残せる形で別に設計する）。
                       || ( onlyChanged(['doneBy']) && onlyMyKeyInOrNew('doneBy') )
 
-                         // ③ 論理削除は作成者本人、または admin。
+                         // ④ 論理削除は作成者本人、または admin。
                       || ( isLogicalDelete()
                            && (isAuthor() || isAdmin())
                            && request.resource.data.deletedBy == myMemberId()
                            && request.resource.data.deletedAt == request.time
                            && onlyChanged(['deleted','deletedBy','deletedAt']) )
 
-                         // ④ 本文・期日・対象者・添付画像の編集は作成者本人のみ。
+                         // ⑤ 本文・期日・対象者・添付画像の編集は作成者本人のみ。
                          //    doneBy を含めていないので、期日を直すついでに
                          //    他人の完了記録を消すことはできない。
                       || ( isAuthor()

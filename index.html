@@ -209,8 +209,16 @@ select.input{padding-right:8px;}
 .comment-input{font-size:13px;}
 
 .board-card{cursor:default;}
+/* 投稿者はカードの先頭。誰の連絡かを読む前に分かるようにする */
+.board-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+.board-head-who{display:flex; flex-direction:column; min-width:0;}
+.board-author{font-size:14px; font-weight:700; color:var(--color-text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.board-author-role{font-size:11px; color:var(--color-text-mute);}
 .board-meta{display:flex; align-items:center; gap:6px; margin-bottom:6px;}
-.board-time{margin-left:auto; color:var(--text-4); font-size:11px;}
+.board-time{margin-left:auto; flex:none; color:var(--text-4); font-size:11px;}
+/* 掲示板のリアクションはアイコンぶんの字下げが要らない（本文が左端から始まる） */
+.post-actions-board{padding-left:0; margin:2px 0 8px;}
 .board-title{font-weight:700; font-size:17px; color:var(--text); margin-bottom:6px;}
 .board-body{font-size:15px; color:var(--color-text); line-height:1.8; margin-bottom:8px; white-space:pre-wrap; word-break:break-word;}
 .board-footer{display:flex; align-items:center; gap:6px;}
@@ -229,6 +237,50 @@ select.input{padding-right:8px;}
 .reader-chip{display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:99px; padding:2px 9px 2px 3px; font-size:12px; color:var(--text-2); background:var(--surface);}
 .reader-chip-unread{border-color:color-mix(in srgb, var(--red) 35%, transparent); background:color-mix(in srgb, var(--red) 8%, var(--surface)); color:var(--text); font-weight:600;}
 .reader-chips-muted .reader-chip{opacity:0.6; font-size:11px;}
+
+/* ── 期日カレンダー ──────────────────────────────────── */
+.cal-trigger{display:flex; align-items:center; justify-content:center; gap:6px;
+  width:100%; min-height:40px; margin-bottom:10px; padding:0 12px;
+  border:1px solid var(--color-border); border-radius:var(--radius-md);
+  background:var(--color-surface); font-family:inherit; font-size:13px;
+  font-weight:700; color:var(--color-text-sub); cursor:pointer;}
+.cal-trigger-open{border-color:color-mix(in srgb, var(--color-accent) 45%, transparent);
+  color:var(--color-accent-ink);}
+.cal-card{padding:12px; margin-bottom:10px;}
+.cal-head{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+.cal-title{flex:1; text-align:center; font-size:13px; font-weight:700; color:var(--color-text);}
+.cal-nav{width:32px; height:32px; flex:none; border:1px solid var(--color-border);
+  border-radius:var(--radius-sm); background:var(--color-surface);
+  font-size:16px; line-height:1; color:var(--color-text-sub); cursor:pointer;}
+.cal-grid{display:grid; grid-template-columns:repeat(7, 1fr); gap:2px;}
+.cal-dow{text-align:center; font-size:10px; font-weight:700;
+  color:var(--color-text-mute); padding-bottom:4px;}
+/* 日付の枠は正方形に近づける。空いている日と詰まっている日を形で見せたいので、
+   高さを内容任せにせず揃える。 */
+.cal-cell{aspect-ratio:1/1; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:2px; border-radius:var(--radius-sm);
+  background:var(--color-bg); font-size:11px; color:var(--color-text-sub);}
+.cal-blank{background:transparent;}
+.cal-sun{color:var(--red);}
+.cal-sat{color:var(--color-accent-ink);}
+.cal-today{outline:2px solid var(--color-accent); outline-offset:-2px; font-weight:700;}
+.cal-has{background:var(--color-track);}
+.cal-has-mine{background:color-mix(in srgb, var(--red) 12%, var(--color-track));}
+.cal-day{line-height:1;}
+.cal-pips{display:flex; align-items:center; gap:2px;}
+.cal-pip{width:5px; height:5px; border-radius:50%; background:var(--color-text-mute);}
+.cal-pip-mine{background:var(--red);}
+.cal-more{font-size:8px; color:var(--color-text-mute);}
+.cal-list{margin-top:10px; padding-top:10px; border-top:1px solid var(--color-border);
+  display:flex; flex-direction:column;}
+.cal-row{display:flex; align-items:center; gap:8px; min-height:32px; font-size:12px;}
+.cal-row-date{flex:none; width:38px; font-weight:700; color:var(--color-text-sub);}
+.cal-row-title{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; color:var(--color-text);}
+.cal-row-mine{font-weight:700;}
+.cal-row-left{flex:none; font-size:11px; color:var(--color-text-mute);}
+.cal-none{margin-top:10px; padding-top:10px; border-top:1px solid var(--color-border);
+  font-size:12px; color:var(--color-text-mute); text-align:center;}
 
 /* ── 掲示板の添付画像 ────────────────────────────────── */
 /* 読み込み前から縦横比どおりの箱を置く。あとから高さが決まると、
@@ -1063,6 +1115,8 @@ var state = {
   editImageRemove:false,    // 編集で画像を外すか
   images:{},                // imageId -> 画像データ | "loading" | "missing" | "error"
   lightbox:null,            // 拡大表示している imageId
+  calMonth:0,               // 期日カレンダーが当月から何か月ずれているか
+  calOpen:false,            // 期日カレンダーを開いているか
   surveyShowForm:false,
   surveyOpenStatus:null,    // 回答状況パネルを開いているアンケートのID
   surveyDraft:{},           // 送信前の選択。{surveyId: [optionId]}
@@ -2157,43 +2211,6 @@ function renderFeedPost(post){
   var mine = (post.reactions && post.reactions[me]) || [];
   var isOpen = state.feedOpenComment===post.id;
 
-  // 押された絵文字だけ出し、追加は「＋」から。
-  // 5種を常時並べると、0件のボタンが場所を取って
-  // 「何件付いているか」が読み取りにくくなる。
-  var picking = state.reactionPickerFor === post.id;
-  var shown;
-  if(picking){
-    shown = REACTIONS;
-  }else{
-    // 一覧の順で押されたものを出し、そのあとに
-    // 一覧から外れた絵文字（過去に押されたもの）を続ける。
-    // 絵文字を整理しても、押した記録が画面から消えないようにするため。
-    shown = REACTIONS.filter(function(e){ return (byEmoji[e]||[]).length > 0; });
-    Object.keys(byEmoji).forEach(function(e){
-      if(byEmoji[e].length > 0 && REACTIONS.indexOf(e) < 0) shown.push(e);
-    });
-  }
-
-  var reactHtml = shown.map(function(emoji){
-    var who = (byEmoji[emoji]||[]);
-    var cnt = who.length;
-    var isMine = mine.indexOf(emoji)>=0;
-    // 押した人の名前は属性に持たせておき、ホバー／長押し時に
-    // DOM を直接書き換えて出す（後述のとおり render() は呼ばない）
-    var names = who.map(function(mid){ return getM(mid).displayName; }).join("、");
-    return '<button class="react-btn'+(isMine?" react-mine":"")+'"' +
-      ' data-act="react" data-id="'+post.id+'" data-emoji="'+emoji+'"' +
-      ' data-people="'+esc(names)+'"' +
-      ' aria-label="'+emoji+' '+cnt+'人'+(names?'：'+esc(names):'')+'">' +
-      emoji + (cnt>0?'<span class="react-count">'+cnt+'</span>':'') +
-    '</button>';
-  }).join("");
-
-  reactHtml += '<button class="react-btn react-add'+(picking?" react-add-on":"")+'"' +
-    ' data-act="react-picker" data-id="'+post.id+'"' +
-    ' aria-label="'+(picking?"リアクションの選択を閉じる":"リアクションを追加")+'">' +
-    (picking ? '×' : '＋') + '</button>';
-
   var commentsHtml = "";
   if(isOpen){
     commentsHtml = '<div class="comments">' +
@@ -2234,11 +2251,65 @@ function renderFeedPost(post){
       renderTools("feed", post) +
     '</div>' +
     '<div class="post-text">'+esc(post.text)+'</div>' +
-    '<div class="post-actions'+(picking?" post-actions-picking":"")+'">' + reactHtml +
-      '<button class="comment-toggle-btn" data-act="comment-toggle" data-id="'+post.id+'">💬 '+(post.commentCount||0)+'</button>' +
-      '<div class="react-peek" hidden></div>' +
-    '</div>' +
+    renderReactionRow("feed", post,
+      '<button class="comment-toggle-btn" data-act="comment-toggle" data-id="'+post.id+'">💬 '+(post.commentCount||0)+'</button>') +
     commentsHtml +
+  '</div>';
+}
+
+/**
+ * リアクションの行。フィードと掲示板で同じものを使う。
+ *
+ * kind でどのコレクションを更新するかが決まる。パレットの開閉は
+ * kind と ID を組にして覚える（別のタブの同じ位置の投稿とID衝突しても、
+ * 意図しない側が開かないようにするため）。
+ *
+ * 押された絵文字だけを出し、追加は「＋」から。全種を常時並べると
+ * 0件のボタンが場所を取って「何件付いているか」が読み取りにくくなる。
+ */
+function renderReactionRow(kind, post, extraHtml){
+  var me = currentUserId();
+  var byEmoji = reactionsByEmoji(post);
+  var mine = (post.reactions && post.reactions[me]) || [];
+  var key = kind + ":" + post.id;
+  var picking = state.reactionPickerFor === key;
+
+  var shown;
+  if(picking){
+    shown = REACTIONS;
+  }else{
+    // 一覧の順で押されたものを出し、そのあとに
+    // 一覧から外れた絵文字（過去に押されたもの）を続ける。
+    // 絵文字を整理しても、押した記録が画面から消えないようにするため。
+    shown = REACTIONS.filter(function(e){ return (byEmoji[e]||[]).length > 0; });
+    Object.keys(byEmoji).forEach(function(e){
+      if(byEmoji[e].length > 0 && REACTIONS.indexOf(e) < 0) shown.push(e);
+    });
+  }
+
+  var html = shown.map(function(emoji){
+    var who = (byEmoji[emoji]||[]);
+    var cnt = who.length;
+    var isMine = mine.indexOf(emoji)>=0;
+    // 押した人の名前は属性に持たせておき、ホバー／長押し時に
+    // DOM を直接書き換えて出す（後述のとおり render() は呼ばない）
+    var names = who.map(function(mid){ return getM(mid).displayName; }).join("、");
+    return '<button class="react-btn'+(isMine?" react-mine":"")+'"' +
+      ' data-act="react" data-kind="'+kind+'" data-id="'+post.id+'" data-emoji="'+emoji+'"' +
+      ' data-people="'+esc(names)+'"' +
+      ' aria-label="'+emoji+' '+cnt+'人'+(names?'：'+esc(names):'')+'">' +
+      emoji + (cnt>0?'<span class="react-count">'+cnt+'</span>':'') +
+    '</button>';
+  }).join("");
+
+  html += '<button class="react-btn react-add'+(picking?" react-add-on":"")+'"' +
+    ' data-act="react-picker" data-kind="'+kind+'" data-id="'+post.id+'"' +
+    ' aria-label="'+(picking?"リアクションの選択を閉じる":"リアクションを追加")+'">' +
+    (picking ? '×' : '＋') + '</button>';
+
+  return '<div class="post-actions post-actions-'+kind+(picking?" post-actions-picking":"")+'">' +
+    html + (extraHtml || "") +
+    '<div class="react-peek" hidden></div>' +
   '</div>';
 }
 
@@ -2266,9 +2337,19 @@ function renderBoard(){
     ? '<div class="in-strip">' + inChar("satisfied", "全部見ましたね", 64) + '</div>'
     : "";
 
+  // カレンダーは畳んでおく。期日を持つ投稿が1件も無ければ出さない
+  // （空のカレンダーは場所を取るだけ）。
+  var hasTasks = state.board.some(isTask);
+  var calHtml = hasTasks
+    ? '<button class="cal-trigger'+(state.calOpen?" cal-trigger-open":"")+'" data-act="cal-toggle" aria-expanded="'+(state.calOpen?"true":"false")+'">' +
+        '📅 期日をカレンダーで見る<span class="reader-caret">'+(state.calOpen?"▲":"▼")+'</span>' +
+      '</button>' + (state.calOpen ? renderTaskCalendar() : "")
+    : "";
+
   return '<div class="tab-pad">' +
     renderOnboarding() +
     renderMyTasks() +
+    calHtml +
     '<button class="dashed-trigger" data-act="'+(state.boardShowForm?"board-cancel":"board-open-form")+'">'+(state.boardShowForm?"× 閉じる":"+ 掲示板に投稿する")+'</button>' +
     formHtml +
     body +
@@ -2465,6 +2546,99 @@ function renderTaskBlock(post){
 }
 
 /**
+ * 期日の月カレンダー。どの日に何の期日があるかを一目で見せる。
+ *
+ * 掲示板は投稿日時順に並ぶので、「今週なにが締め切りか」は
+ * カードを上から読まないと分からない。日付の枠に置き直すと、
+ * 空いている日と詰まっている日が形として見える。
+ *
+ * 出すのは期日のあるものだけ。ふつうの連絡事項は日付を持たないので
+ * ここには現れない。
+ */
+function renderTaskCalendar(){
+  var tasks = state.board.filter(isTask);
+  if(!tasks.length) return "";
+
+  // 当月から state.calMonth か月ずらした月。new Date(年, 月+n, 1) が
+  // 年をまたぐ繰り上がり・繰り下がりを処理してくれる。
+  var now = new Date();
+  var shown = new Date(now.getFullYear(), now.getMonth() + (state.calMonth || 0), 1);
+  var year = shown.getFullYear(), month = shown.getMonth();
+
+  // 日付 → その日が期日のタスク
+  var byDay = {};
+  tasks.forEach(function(p){
+    var d = ymdToDate(p.dueDate);
+    if(!d || d.getFullYear() !== year || d.getMonth() !== month) return;
+    var k = d.getDate();
+    (byDay[k] = byDay[k] || []).push(p);
+  });
+
+  var todayY = new Date(); todayY.setHours(0,0,0,0);
+  var isThisMonth = todayY.getFullYear() === year && todayY.getMonth() === month;
+
+  var firstDow = new Date(year, month, 1).getDay();
+  var days = new Date(year, month + 1, 0).getDate();
+
+  var cells = "";
+  for(var b = 0; b < firstDow; b++) cells += '<div class="cal-cell cal-blank"></div>';
+  for(var day = 1; day <= days; day++){
+    var list = byDay[day] || [];
+    var isToday = isThisMonth && todayY.getDate() === day;
+    var dow = new Date(year, month, day).getDay();
+    // その日のタスクに自分の未完了があるか。声をかけられる側の視点で色を変える。
+    var mineLeft = list.some(taskNeedsMe);
+    var cls = "cal-cell";
+    if(isToday) cls += " cal-today";
+    if(dow === 0) cls += " cal-sun";
+    if(dow === 6) cls += " cal-sat";
+    if(list.length) cls += mineLeft ? " cal-has cal-has-mine" : " cal-has";
+
+    var pips = list.slice(0, 3).map(function(p){
+      return '<span class="cal-pip'+(taskNeedsMe(p)?" cal-pip-mine":"")+'" title="'+esc(p.title)+'"></span>';
+    }).join("");
+    var more = list.length > 3 ? '<span class="cal-more">+'+(list.length-3)+'</span>' : '';
+
+    cells += '<div class="'+cls+'">' +
+      '<span class="cal-day">'+day+'</span>' +
+      (list.length ? '<span class="cal-pips">'+pips+more+'</span>' : '') +
+    '</div>';
+  }
+
+  // 表示している月の期日を、日付順で下に並べる。
+  // 点だけでは「何の期日か」が分からないため。
+  var listed = tasks.filter(function(p){
+    var d = ymdToDate(p.dueDate);
+    return d && d.getFullYear() === year && d.getMonth() === month;
+  }).sort(function(a,b){ return dueMs(a) - dueMs(b); });
+
+  var rows = listed.map(function(p){
+    var d = ymdToDate(p.dueDate);
+    var pending = taskPendingList(p).length;
+    return '<div class="cal-row">' +
+      '<span class="cal-row-date">'+(d.getMonth()+1)+'/'+d.getDate()+'</span>' +
+      '<span class="cal-row-title'+(taskNeedsMe(p)?" cal-row-mine":"")+'">'+esc(p.title)+'</span>' +
+      '<span class="cal-row-left">'+(pending ? '未完了 '+pending+'名' : '完了')+'</span>' +
+    '</div>';
+  }).join("");
+
+  var dows = ["日","月","火","水","木","金","土"].map(function(w, i){
+    return '<div class="cal-dow'+(i===0?" cal-sun":(i===6?" cal-sat":""))+'">'+w+'</div>';
+  }).join("");
+
+  return '<div class="card cal-card">' +
+    '<div class="cal-head">' +
+      '<button class="cal-nav" data-act="cal-month" data-id="'+((state.calMonth||0)-1)+'" aria-label="前の月">‹</button>' +
+      '<span class="cal-title">'+year+'年'+(month+1)+'月の期日</span>' +
+      '<button class="cal-nav" data-act="cal-month" data-id="'+((state.calMonth||0)+1)+'" aria-label="次の月">›</button>' +
+    '</div>' +
+    '<div class="cal-grid">'+dows+cells+'</div>' +
+    (rows ? '<div class="cal-list">'+rows+'</div>'
+          : '<div class="cal-none">この月に期日はありません</div>') +
+  '</div>';
+}
+
+/**
  * 自分の未完了タスクだけを掲示板の先頭に出す。
  * 掲示板は投稿日時順なので、期日が迫っているものが下に埋もれる。
  * ここには「何を・いつまでに」だけを置き、期日の近い順に並べる。
@@ -2554,22 +2728,35 @@ function renderBoardPost(post){
   var unread  = session.members.filter(function(m){ return !readBy[m.id]; });
   var isOpen  = state.boardOpenReaders === post.id;
 
+  var author = getM(post.authorId);
+
   return '<div class="card board-card" style="border-left:3px solid var(--'+catColor+')"'+(isRead?"":' data-act="board-read" data-id="'+post.id+'"')+'>' +
+    // 投稿者を先頭に、名前をはっきり出す。以前は 18px のアイコンと
+    // 薄い小さな文字でカードの一番下に置いていて、誰の連絡なのかが
+    // 読み終わるまで分からなかった。「誰が言っているか」は
+    // 連絡事項では中身と同じくらい重要な情報。
+    '<div class="board-head">' +
+      avatar(post.authorId, 32) +
+      '<div class="board-head-who">' +
+        '<span class="board-author">'+esc(author.displayName)+'</span>' +
+        (author.jobTitle ? '<span class="board-author-role">'+esc(author.jobTitle)+'</span>' : '') +
+      '</div>' +
+      '<span class="board-time">'+tAgo(post.createdAtMs)+(post.pending?' · 送信中':'')+'</span>' +
+    '</div>' +
     '<div class="board-meta">' +
       (post.pinned?"<span>📌</span>":"") +
       badge(post.category, catColor) +
       (!isRead?badge("NEW","red"):"") +
       taskBadge(post) +
-      '<span class="board-time">'+tAgo(post.createdAtMs)+(post.pending?' · 送信中':'')+'</span>' +
     '</div>' +
     '<div class="board-title">'+esc(post.title)+editedMark(post)+'</div>' +
     // 本文は任意。空のまま出すと、余白だけの行が入って間延びする。
     (post.body ? '<div class="board-body">'+esc(post.body)+'</div>' : "") +
     renderBoardImage(post) +
     renderTaskBlock(post) +
+    renderReactionRow("board", post) +
     renderTools("board", post) +
-    '<div class="board-footer">' + avatar(post.authorId,18) +
-      '<span class="board-footer-text">'+esc(getM(post.authorId).displayName)+'</span>' +
+    '<div class="board-footer">' +
       '<button class="reader-toggle'+(isOpen?" reader-toggle-open":"")+'" data-act="board-readers" data-id="'+post.id+'" aria-expanded="'+(isOpen?"true":"false")+'">' +
         '既読 '+readers.length+'名' +
         (unread.length ? '<span class="reader-toggle-unread">未読 '+unread.length+'</span>' : '') +
@@ -4405,9 +4592,11 @@ function submitFeedPost(){
     });
 }
 
-function toggleReaction(id, emoji){
+function toggleReaction(kind, id, emoji){
   var me = currentUserId();
-  var post = state.feed.filter(function(p){ return p.id===id; })[0];
+  var col = kind === "board" ? "boardPosts" : "feedPosts";
+  var pool = kind === "board" ? state.board : state.feed;
+  var post = pool.filter(function(p){ return p.id===id; })[0];
   if(!post) return;
   var mine = (post.reactions && post.reactions[me]) || [];
   var next = mine.indexOf(emoji)>=0
@@ -4417,7 +4606,7 @@ function toggleReaction(id, emoji){
   // 「reactions の変更キーが自分だけ」であることを検証している。
   var patch = {};
   patch["reactions." + me] = next.length ? next : deleteField();
-  write("リアクション", function(){ return updateDoc(doc(db, "feedPosts", id), patch); });
+  write("リアクション", function(){ return updateDoc(doc(db, col, id), patch); });
 }
 
 function submitComment(postId, text){
@@ -4453,6 +4642,7 @@ function submitBoardPost(){
   // 既読とは違い、作成者も未完了から始める。作った本人が
   // やらなくていいとは限らない（自分にも課すのが普通の運用）。
   payload.doneBy = {};
+  payload.reactions = {};
   payload.imageId = null;
   payload.imageW = null;
   payload.imageH = null;
@@ -4838,10 +5028,11 @@ function bindEvents(){
     else if(act==="react"){
       if(suppressReactClick){ suppressReactClick = false; return; }  // 長押し直後
       state.reactionPickerFor = null;
-      toggleReaction(id, el.getAttribute("data-emoji"));
+      toggleReaction(el.getAttribute("data-kind") || "feed", id, el.getAttribute("data-emoji"));
     }
     else if(act==="react-picker"){
-      state.reactionPickerFor = state.reactionPickerFor===id ? null : id;
+      var rk = (el.getAttribute("data-kind") || "feed") + ":" + id;
+      state.reactionPickerFor = state.reactionPickerFor===rk ? null : rk;
       render();
     }
     else if(act==="comment-toggle"){
@@ -4887,6 +5078,8 @@ function bindEvents(){
       state.boardOpenReaders = state.boardOpenReaders===id ? null : id;
       render();
     }
+    else if(act==="cal-toggle"){ state.calOpen = !state.calOpen; state.calMonth = 0; render(); }
+    else if(act==="cal-month"){ state.calMonth = parseInt(id, 10) || 0; render(); }
     else if(act==="img-clear"){
       if(el.getAttribute("data-which")==="editBoard") state.editImageDraft = null;
       else state.boardImageDraft = null;
