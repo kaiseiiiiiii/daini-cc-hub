@@ -439,6 +439,19 @@ body.wide .tab-pad{padding:0;}
 body.wide .pc-cols:has(.pc-side:empty),
 .pc-cols:not(:has(aside)){grid-template-columns:minmax(0,1fr);}
 
+/* ── アイコン設定 ── */
+.avatar-btn{background:transparent; border:none; padding:0; cursor:pointer; line-height:0;
+  border-radius:var(--radius-pill);}
+.avatar-btn:hover{opacity:.8;}
+.avatar-btn:focus-visible{outline:2px solid var(--color-accent); outline-offset:2px;}
+.avatar-preview{display:flex; flex-direction:column; align-items:center; gap:8px; margin:6px 0 14px;}
+.avatar-hint{font-size:12px; color:var(--color-accent-deep); font-weight:700;}
+.avatar-pick{display:inline-flex; align-items:center; justify-content:center; width:100%;
+  min-height:44px; cursor:pointer; margin-bottom:10px;}
+.avatar-note{font-size:12px; margin-bottom:12px;}
+.avatar-who{display:flex; flex-wrap:wrap; gap:5px; margin:0 0 12px;}
+.avatar-who .chip{cursor:pointer; height:32px; font-size:12px;}
+
 /* 写真・イラストのアバター。頭文字版と同じ寸法・同じ丸みで置き換わる。 */
 .avatar-img{object-fit:cover; border-radius:var(--radius-pill); flex:none;
   border:1px solid rgba(28,42,56,.08); background:var(--color-track);}
@@ -658,7 +671,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, collection, getDocs, query, orderBy, limit,
-  onSnapshot, addDoc, updateDoc, serverTimestamp, increment, deleteField
+  onSnapshot, addDoc, updateDoc, setDoc, deleteDoc, serverTimestamp, increment, deleteField
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 // ── 静的な定義（実データ・個人情報は一切含めない） ──────────────
@@ -772,6 +785,7 @@ var session = {
   authUser: null,      // Firebase Auth のユーザー
   member: null,        // メンバーマスタ上の自分
   members: [],         // メンバー一覧（表示名の解決用）
+  avatars: {},         // memberId → 画像の data URL
   teams: [],           // チーム一覧
   deniedEmail: "",
   errorMessage: "",
@@ -841,6 +855,16 @@ function avatarFile(m){
 function avatar(id,size){
   size = size || 36;
   var m = getM(id);
+
+  // 本人が設定した画像を最優先。次に assets/ に置いたファイル、
+  // どちらも無ければ頭文字。混在していても崩れない順番にしている。
+  var uploaded = session.avatars[id];
+  if(uploaded){
+    return '<img class="avatar avatar-img" src="'+esc(uploaded)+'"' +
+      ' width="'+size+'" height="'+size+'" alt="" decoding="async"' +
+      ' style="width:'+size+'px;height:'+size+'px">';
+  }
+
   var file = avatarFile(m);
   if(file){
     // alt は空にしている。隣に必ず表示名が出るので、
@@ -877,6 +901,8 @@ var state = {
   metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
   feedSort:"new", feedOpenComment:null,
   reactionPickerFor:null,   // リアクションの選択パレットを開いている投稿ID
+  avatarFor:null,           // アイコン設定を開いている memberId
+  avatarDraft:null,         // 保存前の縮小済み画像
   boardShowForm:false,
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
   surveyShowForm:false,
@@ -1216,6 +1242,7 @@ async function onAuthChanged(user){
     render();
     attachAll();
     attachSyncedData();
+    attachAvatars();
     startFreshnessTimer();
   }catch(e){
     if(e && e.code === "permission-denied"){
@@ -1287,6 +1314,25 @@ function subscribeDoc(path, id, onData){
   unsubscribers.push(onSnapshot(doc(db, path, id),
     function(snap){ onData(snap.exists() ? snap.data() : null); render(); },
     function(){ onData(null); render(); }
+  ));
+}
+
+/**
+ * アイコン。memberId をキーにした小さなドキュメントを購読する。
+ * 誰かが変えたら全員の画面ですぐ差し替わる。
+ */
+function attachAvatars(){
+  unsubscribers.push(onSnapshot(collection(db, "avatars"),
+    function(snap){
+      var map = {};
+      snap.docs.forEach(function(d){
+        var v = d.data();
+        if(v && typeof v.dataUrl === "string") map[d.id] = v.dataUrl;
+      });
+      session.avatars = map;
+      render();
+    },
+    function(){ session.avatars = {}; }
   ));
 }
 
@@ -1501,7 +1547,7 @@ function renderHeader(){
         (scheduled !== null ? '<div class="header-online">● 本日 '+scheduled+'名 シフト予定</div>' : '') +
       '</div>' +
       '<div class="header-me">' +
-        avatar(me.id, 28) +
+        '<button class="avatar-btn" data-act="avatar-open" data-id="'+esc(me.id)+'" aria-label="アイコンを変更">'+avatar(me.id, 28)+'</button>' +
         '<div class="header-me-text">' +
           '<div class="header-me-name">'+esc(me.displayName)+'</div>' +
           (isAdmin() ? '<div class="header-me-role">管理者</div>' : '') +
@@ -1627,7 +1673,8 @@ function renderTopbar(){
   return '<div class="pc-topbar">' +
     '<div class="pc-brand">第二CC Hub</div>' +
     '<nav class="pc-tabs">'+tabs+'</nav>' +
-    '<div class="pc-me">' + avatar(me.id, 32) +
+    '<div class="pc-me">' +
+      '<button class="avatar-btn" data-act="avatar-open" data-id="'+esc(me.id)+'" aria-label="アイコンを変更">'+avatar(me.id, 32)+'</button>' +
       '<span class="pc-me-name">'+esc(me.displayName)+'</span>' +
       (isAdmin() ? '<span class="pc-me-role">管理者</span>' : '') +
       '<button class="pc-signout" data-act="signout">サインアウト</button>' +
@@ -2729,6 +2776,125 @@ function inChar(key, line, size){
   '</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  アイコンの設定
+//
+//  選ばれた画像はそのまま送らず、必ずブラウザ側で正方形に切って
+//  128px まで縮めてから保存する。スマホで撮った写真は数MBあり、
+//  そのまま置くと Firestore の1ドキュメント上限に触れるうえ、
+//  全員の読み込みが遅くなるため。
+// ══════════════════════════════════════════════════════════════════
+var AVATAR_PX = 128;
+
+function readAsImage(file){
+  return new Promise(function(resolve, reject){
+    var reader = new FileReader();
+    reader.onerror = function(){ reject(new Error("ファイルを読めませんでした")); };
+    reader.onload = function(){
+      var img = new Image();
+      img.onload = function(){ resolve(img); };
+      img.onerror = function(){ reject(new Error("画像として開けませんでした")); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** 中央を正方形に切り、128px に縮めて data URL にする */
+function squareDataUrl(img){
+  var side = Math.min(img.naturalWidth, img.naturalHeight);
+  var sx = (img.naturalWidth - side) / 2;
+  var sy = (img.naturalHeight - side) / 2;
+  var canvas = document.createElement("canvas");
+  canvas.width = canvas.height = AVATAR_PX;
+  var ctx = canvas.getContext("2d");
+  ctx.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_PX, AVATAR_PX);
+  // webp が使えない環境では jpeg に落ちる
+  var url = canvas.toDataURL("image/webp", 0.85);
+  if(url.indexOf("data:image/webp") !== 0) url = canvas.toDataURL("image/jpeg", 0.85);
+  return url;
+}
+
+async function pickAvatarFile(file, targetId){
+  if(!file) return;
+  if(!/^image\//.test(file.type)){
+    state.notice = "画像ファイルを選んでください"; render(); return;
+  }
+  try{
+    var img = await readAsImage(file);
+    var url = squareDataUrl(img);
+    if(url.length > 110000){
+      state.notice = "画像を小さくできませんでした。別の画像でお試しください";
+      render(); return;
+    }
+    state.avatarDraft = url;
+    render();
+  }catch(e){
+    state.notice = e.message || "画像を読み込めませんでした";
+    render();
+  }
+}
+
+function saveAvatar(targetId){
+  var url = state.avatarDraft;
+  if(!url) return;
+  state.avatarDraft = null;
+  var id = targetId || currentUserId();
+  write("アイコンの保存", function(){
+    return setDoc(doc(db, "avatars", id), { dataUrl: url, updatedAt: serverTimestamp() });
+  }, true);
+  state.avatarFor = null;
+}
+
+function clearAvatar(targetId){
+  var id = targetId || currentUserId();
+  state.avatarDraft = null;
+  state.avatarFor = null;
+  write("アイコンの削除", function(){
+    return deleteDoc(doc(db, "avatars", id));
+  }, true);
+}
+
+/** アイコン設定のダイアログ */
+function renderAvatarDialog(){
+  var id = state.avatarFor;
+  if(!id) return "";
+  var m = getM(id);
+  var mine = id === currentUserId();
+  var current = state.avatarDraft || session.avatars[id] || "";
+  return '<div class="modal-backdrop" data-act="avatar-close">' +
+    '<div class="modal" data-act="modal-body" role="dialog" aria-modal="true">' +
+      '<div class="modal-title">'+(mine ? "自分のアイコン" : esc(m.displayName)+"さんのアイコン")+'</div>' +
+      // admin は他のメンバーの分も設定できる。
+      // 入社時などに本人の操作を待たずに揃えられるようにするため。
+      (isAdmin()
+        ? '<div class="avatar-who">' + session.members.map(function(x){
+            return '<button class="chip'+(x.id===id?" chip--self":"")+'" ' +
+              'data-act="avatar-open" data-id="'+esc(x.id)+'">'+esc(x.displayName)+'</button>';
+          }).join("") + '</div>'
+        : '') +
+      '<div class="avatar-preview">' +
+        (current
+          ? '<img class="avatar-img" src="'+esc(current)+'" width="96" height="96" alt="" style="width:96px;height:96px">'
+          : '<div class="avatar '+teamClass(m.team)+'" style="width:96px;height:96px;font-size:36px">'+esc(m.initial)+'</div>') +
+        (state.avatarDraft ? '<div class="avatar-hint">この内容で保存します</div>' : '') +
+      '</div>' +
+      '<label class="btn-ghost avatar-pick">画像を選ぶ' +
+        '<input type="file" accept="image/*" data-act="avatar-file" data-id="'+esc(id)+'" hidden>' +
+      '</label>' +
+      '<div class="modal-text avatar-note">正方形に切り抜いて128pxに縮小してから保存します。' +
+        (mine ? '' : '管理者として、他のメンバーのアイコンを設定します。') + '</div>' +
+      '<div class="modal-actions">' +
+        (session.avatars[id]
+          ? '<button class="btn-ghost" data-act="avatar-clear" data-id="'+esc(id)+'">削除</button>' : '') +
+        '<button class="btn-ghost" data-act="avatar-close">キャンセル</button>' +
+        '<button class="btn-post" data-act="avatar-save" data-id="'+esc(id)+'"'+
+          (state.avatarDraft?"":" disabled")+'>保存</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 /** 凡例。色だけに頼らないよう、必ず文字を添える（デザイン指定） */
 function renderShiftLegend(){
   return '<div class="shift-legend">' +
@@ -3491,13 +3657,13 @@ function render(){
           renderSidebar() +
         '</div>' +
       '</div>' +
-      renderConfirmDialog();
+      renderConfirmDialog() + renderAvatarDialog();
     return;
   }
 
   app.innerHTML = renderHeader() + noticeHtml +
     '<div class="content" id="content">'+body+'</div>' + renderNav() +
-    renderConfirmDialog();
+    renderConfirmDialog() + renderAvatarDialog();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -3919,6 +4085,10 @@ function bindEvents(){
     else if(act==="legacy-discard"){ discardLegacy(); }
     else if(act==="notice-close"){ state.notice = ""; render(); }
     else if(act==="modal-body"){ return; }   // ダイアログ本体のクリックは背景に伝えない
+    else if(act==="avatar-open"){ state.avatarFor = id; state.avatarDraft = null; render(); }
+    else if(act==="avatar-close"){ state.avatarFor = null; state.avatarDraft = null; render(); }
+    else if(act==="avatar-save"){ saveAvatar(id); }
+    else if(act==="avatar-clear"){ clearAvatar(id); }
     else if(act==="confirm-cancel"){ state.confirm = null; render(); }
     else if(act==="confirm-ok"){ runConfirmedDelete(); }
     else if(act==="trash-toggle"){ state.showTrash = !state.showTrash; render(); }
@@ -3974,6 +4144,14 @@ function bindEvents(){
     else if(act==="kpi-section-toggle"){ state.progressKpiOpen = !state.progressKpiOpen; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
+  });
+
+  // ファイル選択は click ではなく change で拾う
+  app.addEventListener("change", function(e){
+    if(session.status !== "ready") return;
+    var el = e.target.closest && e.target.closest('[data-act="avatar-file"]');
+    if(!el) return;
+    pickAvatarFile(el.files && el.files[0], el.getAttribute("data-id"));
   });
 
   app.addEventListener("keydown", function(e){

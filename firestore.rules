@@ -164,6 +164,41 @@ service cloud.firestore {
 
 
     // ========================================================================
+    // アイコン
+    //   ドキュメントID = memberId
+    //   フィールド: dataUrl（data:image/... の縮小画像）, updatedAt
+    //
+    // メンバーマスタとは別のコレクションにしている。
+    // マスタは許可リストそのもので、本人にすら書かせたくない。
+    // アイコンだけを分けておけば、マスタを閉じたまま
+    // 「自分の分は自分で変えられる」を成立させられる。
+    //
+    // 画像は Storage ではなく Firestore に直接入れる。
+    // 新しいプロジェクトでは Storage に課金プランが必要で、
+    // 15人分のアイコンのためだけに増やす依存としては重いため。
+    // その代わりクライアント側で必ず縮小してから書き込む。
+    // ========================================================================
+    match /avatars/{memberId} {
+      allow read: if isMember();
+
+      // 書けるのは自分の分だけ。admin は他人の分も設定できる
+      // （入社時などに代わりに入れる運用があるため）。
+      // サイズ上限を置いているのは、1MB のドキュメント上限すれすれの
+      // 画像を入れられると、全員の読み込みが目に見えて遅くなるから。
+      allow write: if isMember()
+                   && (memberId == myMemberId() || isAdmin())
+                   && (
+                        request.method == 'delete' ||
+                        (
+                          request.resource.data.dataUrl is string
+                          && request.resource.data.dataUrl.size() < 120000
+                          && request.resource.data.dataUrl.matches('^data:image/(png|jpeg|webp);base64,.*')
+                        )
+                      );
+    }
+
+
+    // ========================================================================
     // チームマスタ
     //   ドキュメントID = チームID（例: "mgmt", "team_a", "team_b"）
     //   フィールド: label, order, colorKey
