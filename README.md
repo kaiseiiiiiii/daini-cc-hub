@@ -117,6 +117,7 @@ GAS のコードは [`gas/sync.gs`](gas/sync.gs) にあります。
 |---|---|
 | `FIREBASE_PROJECT_ID` | Firebase のプロジェクトID |
 | `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵の JSON 全文 |
+| `CHAT_WEBHOOK_URL` | Google Chat の Webhook URL（新着通知を使う場合のみ） |
 
 > ⚠️ サービスアカウント鍵は**本物の秘密鍵**です。apiKey とは違い、
 > これがあればセキュリティルールを無視して全データを読み書きできます。
