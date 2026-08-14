@@ -4292,21 +4292,39 @@ function renderLightbox(){
  * 失敗すれば自動でロールバックされ、ここの catch に来る。
  * 二重管理を避けるため、画面の状態は常に onSnapshot 由来のものだけを使う。
  */
+/** 書き込めたかどうかを返す。フォームを閉じる判断に使う */
 async function write(label, fn, exclusive){
   // exclusive はフォーム送信用の二重送信よけ。
   // リアクションや投票は連打されうるので、ここでは弾かない
   // （弾くと押したのに反映されない、という分かりにくい挙動になる）。
-  if(exclusive && state.busy) return;
+  if(exclusive && state.busy) return false;
   if(exclusive) state.busy = true;
   state.notice = "";
+  var ok = false;
   try{
     await fn();
+    ok = true;
   }catch(e){
     var code = (e && e.code) ? e.code : String(e);
     state.notice = label + "に失敗しました（" + code + "）" +
       (code === "permission-denied" ? " — 権限がないか、ログインが切れています" : "");
   }finally{
     state.busy = false;
+    render();
+  }
+  return ok;
+}
+
+/**
+ * フォームの送信。**成功したときだけ**フォームを閉じる。
+ *
+ * 先に閉じてから書き込むと、失敗したときに入力していた内容ごと消える。
+ * 権限エラーや電波切れは実際に起きるもので、そのたびに書き直させるのは
+ * 許容できない（画像を選び直すところまで巻き戻る）。
+ */
+async function submitForm(label, fn, closeForm){
+  if(await write(label, fn, true)){
+    closeForm();
     render();
   }
 }
@@ -4372,7 +4390,19 @@ function submitFeedPost(){
   payload.text = text;
   payload.reactions = {};
   payload.commentCount = 0;
-  write("投稿", function(){ return addDoc(collection(db, "feedPosts"), payload); }, true);
+  submitForm("投稿",
+    function(){ return addDoc(collection(db, "feedPosts"), payload); },
+    function(){
+      // フィードの入力欄は開閉しないので、消すのはここでやる。
+      // 描き直しで空に戻ることを頼りにはできない（入力は描き直しをまたいで
+      // 引き継ぐようにしてあるため、放っておくと投稿した文章が残る）。
+      ["feedFormText","feedFormType","feedFormTo","feedFormVal"].forEach(function(fid){
+        var el = document.getElementById(fid);
+        if(!el) return;
+        if(el.tagName === "SELECT") el.selectedIndex = 0;
+        else el.value = "";
+      });
+    });
 }
 
 function toggleReaction(id, emoji){
@@ -4427,15 +4457,16 @@ function submitBoardPost(){
   payload.imageW = null;
   payload.imageH = null;
   var img = state.boardImageDraft;
-  state.boardImageDraft = null;
-  state.boardShowForm = false;
-  write("投稿", async function(){
+  submitForm("投稿", async function(){
     // 画像を先に作る。逆順にすると、画像の作成だけ失敗したときに
     // 「画像が出ない投稿」が残ってしまう。こちらの順なら、
     // 最悪でも誰にも見えない画像が1件余るだけで済む。
     if(img) await attachImage(payload, img);
     return addDoc(collection(db, "boardPosts"), payload);
-  }, true);
+  }, function(){
+    state.boardShowForm = false;
+    state.boardImageDraft = null;
+  });
 }
 
 /** 画像を boardImages に作り、投稿側に ID と縦横を書き込む */
@@ -4492,8 +4523,9 @@ function submitSurvey(){
   payload.deadline = document.getElementById("surveyFormDeadline").value || null;
   payload.closed = false;
   payload.votes = {};
-  state.surveyShowForm = false;
-  write("アンケートの作成", function(){ return addDoc(collection(db, "surveys"), payload); }, true);
+  submitForm("アンケートの作成",
+    function(){ return addDoc(collection(db, "surveys"), payload); },
+    function(){ state.surveyShowForm = false; });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -4558,10 +4590,7 @@ function saveBoardEdit(id){
   // 消してしまう事故を、書き込む値の形として起こせなくするため。
   var img = state.editImageDraft;
   var removing = state.editImageRemove;
-  state.editImageDraft = null;
-  state.editImageRemove = false;
-  state.editing = null;
-  write("編集", async function(){
+  submitForm("編集", async function(){
     if(img){
       await attachImage(patch, img);
     }else if(removing){
@@ -4572,7 +4601,11 @@ function saveBoardEdit(id){
       patch.imageH = null;
     }
     return updateDoc(doc(db, "boardPosts", id), patch);
-  }, true);
+  }, function(){
+    state.editing = null;
+    state.editImageDraft = null;
+    state.editImageRemove = false;
+  });
 }
 
 function saveSurveyEdit(id){
