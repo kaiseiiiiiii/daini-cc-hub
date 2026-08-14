@@ -300,6 +300,24 @@ select.input{padding-right:8px;}
   font-family:inherit; font-size:15px; font-weight:700; cursor:pointer;}
 .btn-post:hover{background:var(--color-accent-deep);}
 
+/* ── 本日のシフトサマリー（広い画面） ── */
+.tsum{margin-bottom:14px;}
+.tsum-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px;}
+.tsum-total{font-size:20px; font-weight:700;}
+.tsum-rest{font-size:13px; color:var(--color-text-sub); margin-left:auto;}
+.tsum-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px;
+  align-items:start;}
+.tcard{padding:12px 14px;}
+.tcard-head{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+.tcard-time{font-size:12px; color:var(--color-text-sub);}
+.tcard-num{margin-left:auto; font-size:26px; font-weight:700; line-height:1;}
+.shift-early-card{background:color-mix(in srgb, var(--shift-early-bg) 30%, var(--color-surface));
+  border-color:var(--shift-early-border);}
+.shift-late-card{background:color-mix(in srgb, var(--shift-late-bg) 30%, var(--color-surface));
+  border-color:var(--shift-late-border);}
+.shift-night-card{background:color-mix(in srgb, var(--shift-night-bg) 30%, var(--color-surface));
+  border-color:var(--shift-night-border);}
+
 /* ── アンケート ── */
 .survey-cols{display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start;}
 .survey-main{min-width:0;}
@@ -2528,7 +2546,67 @@ function todayShiftGroups(){
   return { order:order, byKind:byKind, rest:restCount, unsubmitted:unsubmitted };
 }
 
+/**
+ * シフト区分ごとの勤務時間。原本の「運用ルール」シートの定義に合わせている。
+ * 上部サマリーに時間まで出すのは、名前だけだと
+ * 「その人が今いるのか、これから来るのか」が分からないため。
+ */
+var SHIFT_TIME = {
+  "早番":"8:45-18:00", "遅番":"11:55-21:10", "21時":"8:45-21:00",
+  "945":"9:45-19:00", "1045":"10:45-20:00",
+  "AM":"8:45-12:45", "PM":"14:00-18:00",
+  "記念日":"8:45-16:00", "業務外":"8:45-18:00"
+};
+
+/**
+ * 広い画面の本日サマリー。区分ごとにカードを横に並べる。
+ * これだけ見れば今日が回る、という状態を目標にしている。
+ */
+function renderTodayShiftWide(){
+  var sh = state.shiftCurrent;
+  if(!sh || !sh.dates) return "";
+  var idx = sh.dates.indexOf(todayDateLabel());
+  if(idx < 0) return "";
+  var g = shiftGroupsAt(sh, idx);
+  if(!g) return "";
+
+  var d = new Date();
+  var wd = ["日","月","火","水","木","金","土"][d.getDay()];
+  var total = 0;
+  g.order.forEach(function(k){ total += g.byKind[k].length; });
+
+  var cards = g.order.map(function(k){
+    return '<div class="card tcard '+shiftCellClass(k)+'-card">' +
+      '<div class="tcard-head">' +
+        '<span class="shift-today-tag '+shiftCellClass(k)+'">'+esc(k)+'</span>' +
+        (SHIFT_TIME[k] ? '<span class="tcard-time">'+esc(SHIFT_TIME[k])+'</span>' : '') +
+        '<span class="tcard-num">'+g.byKind[k].length+'</span>' +
+      '</div>' +
+      '<div class="shift-names">'+g.byKind[k].map(shiftNameChip).join("")+'</div>' +
+    '</div>';
+  }).join("");
+
+  if(!cards){
+    cards = '<div class="card tcard"><div class="daycard-empty">' +
+      '本日シフトに入っているメンバーはいません</div></div>';
+  }
+
+  var foot = [];
+  if(g.rest.length) foot.push("休み "+g.rest.length+"名");
+  if(g.unsubmitted.length) foot.push("未提出 "+g.unsubmitted.length+"名");
+
+  return '<div class="tsum">' +
+    '<div class="tsum-head">' +
+      '<span class="shift-today-title">本日 '+(d.getMonth()+1)+'月'+d.getDate()+'日（'+wd+'）のシフト</span>' +
+      '<span class="tsum-total">'+total+'名</span>' +
+      (foot.length ? '<span class="tsum-rest">'+esc(foot.join(" ・ "))+'</span>' : '') +
+    '</div>' +
+    '<div class="tsum-grid">'+cards+'</div>' +
+  '</div>';
+}
+
 function renderTodayShiftCard(){
+  if(isWide()) return renderTodayShiftWide();
   var g = todayShiftGroups();
   if(!g) return "";
   var d = new Date();
