@@ -1,25 +1,25 @@
 /**
- * 第二CC Hub — チェックリストの期日を Google カレンダーに出し、期日前後に Chat で促す
+ * 第二CC Hub — チェックリストの期日を Google Chat で促す
  * ============================================================================
  * sync.gs / notify.gs と同じ Apps Script プロジェクトに置いてください。
- * 認証まわり（getAccessToken_ / fsBase_ / requiredProp_ / patchFields_ など）と
- * fsStr_ / fsBool_ / postToChat_ / fetchMemberIdNameMap_ を借りています。
- * 単独では動きません。
+ * 認証まわり（getAccessToken_ / fsBase_ / requiredProp_）と
+ * fsStr_ / fsBool_ / postToChat_ / fetchMemberIdNameMap_ / APP_URL / TZ を
+ * 借りています。単独では動きません。
  *
  * 【扱う対象】
  * 掲示板の投稿（boardPosts）のうち dueDate が入っているもの。
  * dueDate が無い投稿はふつうの連絡事項で、ここでは一切触りません。
  *
- * 【なぜサービスアカウントでカレンダーに書かないか】
- * サービスアカウントは、ドメイン全体の委任を設定しない限り
- * 人のカレンダーに書けません。委任は「全社員のカレンダーを代理操作できる鍵」を
- * 作ることであり、チェックリストのために持つ権限としては過大です。
- * そのため、このスクリプトの所有者（＝実行者）の権限で
- * 専用カレンダー1つに書く方式にしています。
+ * 【Google カレンダー連携は入れていません】
+ * 専用カレンダーに相乗りする方式では、作った側が付けた通知が
+ * 見ている人に届きません（自分が持っていないカレンダーの通知は、
+ * 各自の設定になるのが Google カレンダーの仕様）。
+ * 「期日に全員へ自動で通知」を成立させるには、全員をゲストに入れて
+ * 招待メールを許容するか、各自が1度だけ通知設定を入れる必要があります。
+ * どちらを取るかが決まっていないため、いまは Chat だけで促しています。
  *
  * 【このファイルに書いてはいけないもの】
- *   - カレンダーID（スクリプトプロパティ TASK_CALENDAR_ID に置く）
- *   - Webhook URL（CHAT_WEBHOOK_URL に置く）
+ *   - Webhook URL（スクリプトプロパティ CHAT_WEBHOOK_URL に置く）
  *   - 社員の氏名（Firestore の members から取得する）
  * ============================================================================
  */
@@ -28,7 +28,8 @@
 var REMIND_HOUR = 9;
 
 // 期限切れを何日まで催促し続けるか。
-// 無期限に鳴らすと、諦められたタスクが毎朝ノイズとして残り続ける。
+// 無期限に鳴らすと、諦められたタスクが毎朝ノイズとして残り続け、
+// リマインド自体が読まれなくなる。
 var OVERDUE_REMIND_DAYS = 7;
 
 // 1回のリマインドに並べる未完了者の上限。
@@ -37,7 +38,7 @@ var REMIND_NAME_MAX = 8;
 
 // boardPosts を読むときのページ上限。
 // 上限に当たったらログに残す。黙って打ち切ると
-// 「カレンダーに出ないタスクがある」の原因が追えなくなる。
+// 「催促されないタスクがある」の原因が追えなくなる。
 var TASK_PAGE_MAX = 5;
 var TASK_PAGE_SIZE = 300;
 
@@ -45,40 +46,6 @@ var TASK_PAGE_SIZE = 300;
 // ══════════════════════════════════════════════════════════════════════
 //  エントリポイント
 // ══════════════════════════════════════════════════════════════════════
-
-/** 15分おきのトリガーから呼ばれる。期日をカレンダーに反映する */
-function syncTaskCalendar() {
-  var startedAt = new Date();
-  var counts = { created: 0, updated: 0, deleted: 0, skipped: 0 };
-  try {
-    var calId = requiredProp_("TASK_CALENDAR_ID");
-    var cal = CalendarApp.getCalendarById(calId);
-    if (!cal) {
-      throw new Error("カレンダーが見つかりません（TASK_CALENDAR_ID を確認してください）: " + calId);
-    }
-    var token = getAccessToken_();
-    var projectId = requiredProp_("FIREBASE_PROJECT_ID");
-
-    fetchBoardPosts_(projectId, token).forEach(function (p) {
-      try {
-        reconcileEvent_(cal, projectId, token, p, counts);
-      } catch (e) {
-        // 1件の失敗で残り全部を止めない。
-        // カレンダー側の一時的な失敗はよくあり、次の実行で追いつけばよい。
-        counts.skipped++;
-        Logger.log("予定の同期に失敗（" + p.id + "）: " + ((e && e.message) || e));
-      }
-    });
-
-    taskLog_("ok", "calendar", new Date() - startedAt,
-      "作成 " + counts.created + "・更新 " + counts.updated +
-      "・削除 " + counts.deleted + "・失敗 " + counts.skipped);
-
-  } catch (e) {
-    taskLog_("error", "calendar", new Date() - startedAt, (e && e.message) || String(e));
-    throw e;
-  }
-}
 
 /** 1日1回のトリガーから呼ばれる。期日が近い／過ぎている未完了を Chat で促す */
 function remindDueTasks() {
@@ -92,13 +59,13 @@ function remindDueTasks() {
       return !p.deleted && p.dueDate;
     });
     var names = fetchMemberIdNameMap_(projectId, token);
-    var targetsSource = fetchActiveMemberIds_(projectId, token);
+    var activeIds = fetchActiveMemberIds_(projectId, token);
 
     var buckets = { overdue: [], today: [], tomorrow: [] };
     posts.forEach(function (p) {
       var left = daysLeft_(p.dueDate);
       if (left === null) return;
-      var pending = pendingMemberIds_(p, targetsSource);
+      var pending = pendingMemberIds_(p, activeIds);
       if (!pending.length) return;                       // 全員終わっているものは促さない
       var row = { post: p, pending: pending, left: left };
       if (left === 0) buckets.today.push(row);
@@ -108,7 +75,8 @@ function remindDueTasks() {
 
     var total = buckets.overdue.length + buckets.today.length + buckets.tomorrow.length;
     if (!total) {
-      taskLog_("ok", "remind", new Date() - startedAt, "促す対象はありませんでした");
+      taskLog_("ok", "remind", new Date() - startedAt,
+        "促す対象はありませんでした（チェックリスト " + posts.length + "件を確認）");
       return;
     }
 
@@ -130,7 +98,6 @@ function remindDueTasks() {
 
 /**
  * 掲示板の投稿を全件読む。
- * 「dueDate があるものには予定がある」という状態を保ちたいので、
  * 新着だけでは足りない（過去の投稿に後から期日が付くことがある）。
  */
 function fetchBoardPosts_(projectId, token) {
@@ -157,7 +124,7 @@ function fetchBoardPosts_(projectId, token) {
 
   if (pageToken) {
     Logger.log("boardPosts が " + (TASK_PAGE_MAX * TASK_PAGE_SIZE) +
-      "件を超えています。読み切れていない分の期日はカレンダーに出ません。" +
+      "件を超えています。読み切れていない分の期日は催促されません。" +
       "TASK_PAGE_MAX を上げてください。");
   }
   return out;
@@ -169,11 +136,10 @@ function mapBoardPost_(d) {
   return {
     id: parts[parts.length - 1],
     title: fsStr_(f.title) || "(無題)",
-    dueDate: fsStr_(f.dueDate),                  // 無ければ ""
+    dueDate: fsStr_(f.dueDate),                 // 無ければ ""
     deleted: fsBool_(f.deleted),
-    checkTargets: fsStrList_(f.checkTargets),     // 空配列は「全員」
-    doneBy: fsMapKeys_(f.doneBy),
-    calendarEventId: fsStr_(f.calendarEventId)
+    checkTargets: fsStrList_(f.checkTargets),   // 空配列は「全員」
+    doneBy: fsMapKeys_(f.doneBy)
   };
 }
 
@@ -229,63 +195,6 @@ function pendingMemberIds_(post, activeIds) {
   return targets.filter(function (id) { return !done[id]; });
 }
 
-
-// ══════════════════════════════════════════════════════════════════════
-//  カレンダー
-// ══════════════════════════════════════════════════════════════════════
-
-/**
- * 1件の投稿について、カレンダーの予定をあるべき姿に合わせる。
- *
- *   期日あり・未削除 → 終日予定が1つある
- *   期日なし／削除済 → 予定は無い
- *
- * 予定IDを Firestore 側に持たせているので、実行ごとに作り直す必要はない。
- * 「作ったかどうか」をカレンダーの検索で判定する方式にすると、
- * 同名の予定を人が手で作ったときに取り違える。
- */
-function reconcileEvent_(cal, projectId, token, post, counts) {
-  var wanted = !post.deleted && !!post.dueDate;
-  var date = wanted ? ymdToDate_(post.dueDate) : null;
-  if (wanted && !date) {
-    // ルール側で形を縛っているので通常は起きない。壊れた値を
-    // カレンダーに書かず、記録だけ残して次へ進む。
-    counts.skipped++;
-    Logger.log("期日の形が不正です（" + post.id + "）: " + post.dueDate);
-    return;
-  }
-
-  var ev = post.calendarEventId ? cal.getEventById(post.calendarEventId) : null;
-
-  // 予定が要らないのに残っている → 消す
-  if (!wanted) {
-    if (ev) { ev.deleteEvent(); counts.deleted++; }
-    if (post.calendarEventId) {
-      patchFieldsChecked_(projectId, token, "boardPosts/" + post.id, { calendarEventId: null });
-    }
-    return;
-  }
-
-  var title = "【第二CC】" + post.title;
-  var desc = "第二CC Hub のチェックリストです。完了のチェックはアプリで行ってください。\n" + APP_URL;
-
-  // ID を持っていても予定が無い＝人がカレンダーから消した。作り直す。
-  if (!ev) {
-    var made = cal.createAllDayEvent(title, date);
-    made.setDescription(desc);
-    patchFieldsChecked_(projectId, token, "boardPosts/" + post.id, { calendarEventId: made.getId() });
-    counts.created++;
-    return;
-  }
-
-  // 既にある。題名と日付がずれていたときだけ直す。
-  // 毎回 set すると、更新していないのに更新通知が飛ぶ。
-  var changed = false;
-  if (ev.getTitle() !== title) { ev.setTitle(title); changed = true; }
-  if (!sameDay_(ev.getAllDayStartDate(), date)) { ev.setAllDayDate(date); changed = true; }
-  if (changed) counts.updated++;
-}
-
 /** "YYYY-MM-DD" を、その日の 0時の Date にする */
 function ymdToDate_(s) {
   var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
@@ -294,40 +203,12 @@ function ymdToDate_(s) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function sameDay_(a, b) {
-  if (!a || !b) return false;
-  return Utilities.formatDate(a, TZ, "yyyy-MM-dd") === Utilities.formatDate(b, TZ, "yyyy-MM-dd");
-}
-
 /** 期日までの残り日数。0 は本日、負なら過ぎている */
 function daysLeft_(ymd) {
   var due = ymdToDate_(ymd);
   if (!due) return null;
   var today = ymdToDate_(Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd"));
   return Math.round((due.getTime() - today.getTime()) / 86400000);
-}
-
-/**
- * 一部のフィールドだけ更新する。sync.gs の patchFields_ と同じことをするが、
- * 失敗したら必ず例外にする。
- * 予定IDの書き戻しが黙って失敗すると、次の実行でまた予定を作り、
- * カレンダーに同じ予定が積み上がっていく。
- */
-function patchFieldsChecked_(projectId, token, path, obj) {
-  var keys = Object.keys(obj);
-  var mask = keys.map(function (k) {
-    return "updateMask.fieldPaths=" + encodeURIComponent(k);
-  }).join("&");
-  var res = UrlFetchApp.fetch(fsBase_(projectId) + path + "?" + mask, {
-    method: "patch",
-    contentType: "application/json",
-    headers: { Authorization: "Bearer " + token },
-    payload: JSON.stringify({ fields: toFsFields_(obj) }),
-    muteHttpExceptions: true
-  });
-  if (res.getResponseCode() >= 300) {
-    throw new Error(path + " の " + keys.join(",") + " を書けませんでした: " + res.getContentText());
-  }
 }
 
 
@@ -391,43 +272,33 @@ function taskLog_(result, kind, durationMs, note) {
 /** トリガーを作り直す。1度だけ実行すればよい */
 function installTaskTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    var fn = t.getHandlerFunction();
-    if (fn === "syncTaskCalendar" || fn === "remindDueTasks") ScriptApp.deleteTrigger(t);
+    if (t.getHandlerFunction() === "remindDueTasks") ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger("syncTaskCalendar").timeBased().everyMinutes(15).create();
   ScriptApp.newTrigger("remindDueTasks").timeBased().atHour(REMIND_HOUR).everyDays(1).create();
-  Logger.log("カレンダー同期（15分おき）と期日リマインド（毎日 " + REMIND_HOUR + "時台）を設定しました");
+  Logger.log("期日リマインド（毎日 " + REMIND_HOUR + "時台）を設定しました");
 }
 
 /** 設定確認。セットアップ直後に実行する */
 function checkTaskSetup() {
   var out = [];
   var props = PropertiesService.getScriptProperties();
-  var calId = props.getProperty("TASK_CALENDAR_ID");
-  out.push((calId ? "OK   " : "未設定") + "  スクリプトプロパティ TASK_CALENDAR_ID");
   out.push((props.getProperty("CHAT_WEBHOOK_URL") ? "OK   " : "未設定") + "  スクリプトプロパティ CHAT_WEBHOOK_URL");
-
-  if (calId) {
-    var cal = CalendarApp.getCalendarById(calId);
-    out.push(cal
-      ? "OK      カレンダー「" + cal.getName() + "」に書けます"
-      : "失敗    カレンダーが見つかりません（IDが違う、または共有されていません）");
-  }
+  out.push((props.getProperty("FIREBASE_PROJECT_ID") ? "OK   " : "未設定") + "  スクリプトプロパティ FIREBASE_PROJECT_ID");
 
   try {
     var token = getAccessToken_();
     var pid = requiredProp_("FIREBASE_PROJECT_ID");
     var posts = fetchBoardPosts_(pid, token);
     var tasks = posts.filter(function (p) { return !p.deleted && p.dueDate; });
-    var linked = tasks.filter(function (p) { return p.calendarEventId; });
+    var activeIds = fetchActiveMemberIds_(pid, token);
+    var open = tasks.filter(function (p) { return pendingMemberIds_(p, activeIds).length; });
     out.push("OK      掲示板 " + posts.length + "件／チェックリスト " + tasks.length +
-      "件（カレンダー連携済み " + linked.length + "件）");
+      "件（未完了が残っているもの " + open.length + "件）");
   } catch (e) {
     out.push("失敗    Firestore 接続: " + e.message);
   }
 
   var installed = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
-  out.push((installed.indexOf("syncTaskCalendar") >= 0 ? "OK   " : "未設定") + "  トリガー syncTaskCalendar");
   out.push((installed.indexOf("remindDueTasks") >= 0 ? "OK   " : "未設定") + "  トリガー remindDueTasks");
 
   Logger.log(out.join("\n"));
@@ -435,52 +306,43 @@ function checkTaskSetup() {
 }
 
 /**
- * 「カレンダーに出ない」を切り分ける。
- * チェックリストの一覧と、予定IDを持っているかどうかを並べて出す。
+ * 「催促が来ない」を切り分ける。
+ * チェックリストの一覧と、それぞれが催促の対象かどうかを並べて出す。
  */
-function whyNoCalendar() {
+function whyNoRemind() {
   var token = getAccessToken_();
   var pid = requiredProp_("FIREBASE_PROJECT_ID");
-  var calId = PropertiesService.getScriptProperties().getProperty("TASK_CALENDAR_ID");
-  var cal = calId ? CalendarApp.getCalendarById(calId) : null;
+  var posts = fetchBoardPosts_(pid, token);
+  var activeIds = fetchActiveMemberIds_(pid, token);
+  var names = fetchMemberIdNameMap_(pid, token);
+  var tasks = posts.filter(function (p) { return p.dueDate; });
   var out = [];
 
-  out.push("カレンダー: " + (cal ? cal.getName() : "未設定または見つかりません"));
+  out.push("本日: " + Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd") +
+    "／催促は毎日 " + REMIND_HOUR + "時台、期限切れは " + OVERDUE_REMIND_DAYS + "日まで");
   out.push("");
 
-  var posts = fetchBoardPosts_(pid, token);
-  var tasks = posts.filter(function (p) { return p.dueDate; });
   if (!tasks.length) {
     out.push("期日が入っている投稿が1件もありません。");
     out.push("（アプリの掲示板で「期日」を入れて投稿すると、ここに出ます）");
   }
+
   tasks.forEach(function (p) {
+    var left = daysLeft_(p.dueDate);
+    var pending = pendingMemberIds_(p, activeIds);
     var mark;
-    if (p.deleted) mark = "削除済みのため予定なし";
-    else if (!p.calendarEventId) mark = "★ 未連携（次の syncTaskCalendar で作られます）";
-    else if (!cal) mark = "ID あり（カレンダーが読めないため確認できません）";
-    else mark = cal.getEventById(p.calendarEventId) ? "連携済み" : "IDはあるが予定が無い（作り直されます）";
-    out.push("  " + p.dueDate + "  " + p.title + "  → " + mark);
+    if (p.deleted) mark = "削除済みのため対象外";
+    else if (!pending.length) mark = "全員完了のため対象外";
+    else if (left === 0) mark = "★ 本日まで";
+    else if (left === 1) mark = "★ 明日まで";
+    else if (left < 0 && left >= -OVERDUE_REMIND_DAYS) mark = "★ 期限切れ（" + (-left) + "日超過）";
+    else if (left < 0) mark = (-left) + "日超過。" + OVERDUE_REMIND_DAYS + "日を過ぎたため対象外";
+    else mark = "まだ " + left + "日あるため対象外";
+    var who = pending.map(function (id) { return names[id] || id; }).join("・");
+    out.push("  " + p.dueDate + "  " + p.title + "  → " + mark +
+      (pending.length ? "（未完了 " + pending.length + "名: " + who + "）" : ""));
   });
 
   Logger.log(out.join("\n"));
   return out.join("\n");
-}
-
-/** 予定をすべて外して作り直す。取り違えが起きたときの最後の手段 */
-function relinkAllTaskEvents() {
-  var token = getAccessToken_();
-  var pid = requiredProp_("FIREBASE_PROJECT_ID");
-  var cal = CalendarApp.getCalendarById(requiredProp_("TASK_CALENDAR_ID"));
-  if (!cal) throw new Error("カレンダーが見つかりません");
-
-  var n = 0;
-  fetchBoardPosts_(pid, token).forEach(function (p) {
-    if (!p.calendarEventId) return;
-    var ev = cal.getEventById(p.calendarEventId);
-    if (ev) ev.deleteEvent();
-    patchFieldsChecked_(pid, token, "boardPosts/" + p.id, { calendarEventId: null });
-    n++;
-  });
-  Logger.log(n + "件の紐付けを外しました。syncTaskCalendar を実行すると作り直されます");
 }

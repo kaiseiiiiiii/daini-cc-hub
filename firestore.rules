@@ -384,11 +384,6 @@ service cloud.firestore {
     //               checkTargets    … 対象者の memberId 配列。
     //                                 null は「全員」を意味する
     //               doneBy{memberId: 完了した日時}
-    //               calendarEventId … GAS が作った Google カレンダー予定のID。
-    //                                 サービスアカウント経由でのみ書かれる
-    //                                 （下の update ルールのどの枝にも
-    //                                   含まれていないので、クライアントからは
-    //                                   一切書けない）
     // ========================================================================
     match /boardPosts/{postId} {
 
