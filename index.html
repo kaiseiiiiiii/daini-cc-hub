@@ -238,6 +238,21 @@ select.input{padding-right:8px;}
 .reader-chip-unread{border-color:color-mix(in srgb, var(--red) 35%, transparent); background:color-mix(in srgb, var(--red) 8%, var(--surface)); color:var(--text); font-weight:600;}
 .reader-chips-muted .reader-chip{opacity:0.6; font-size:11px;}
 
+/* ── 公開範囲（非公開の投稿） ─────────────────────────── */
+.sbadge-private{background:color-mix(in srgb, var(--color-dusk) 18%, transparent);
+  color:var(--color-dusk-ink);}
+.vis-wrap{display:flex; flex-direction:column; gap:6px;}
+.vis-toggle-label{font-weight:700;}
+/* チェックが入っているときだけメンバー選択を出す。JS を挟まないので
+   描き直しが起きず、入力途中の本文が消えない。 */
+.vis-members{display:none; flex-direction:column; gap:6px;
+  padding:8px; border-radius:var(--radius-md);
+  background:var(--color-bg); border:1px solid var(--color-border);}
+.vis-wrap:has(.vis-toggle:checked) .vis-members{display:flex;}
+.vis-note{font-size:11px; color:var(--color-text-sub); line-height:1.6;}
+.vis-note b{color:var(--red);}
+.target-chip-fixed{opacity:0.7; cursor:default;}
+
 /* ── 期日カレンダー ──────────────────────────────────── */
 .cal-trigger{display:flex; align-items:center; justify-content:center; gap:6px;
   width:100%; min-height:40px; margin-bottom:10px; padding:0 12px;
@@ -865,7 +880,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, collection, getDocs, query, orderBy, limit,
+  getFirestore, doc, getDoc, collection, getDocs, query, where, orderBy, limit,
   onSnapshot, addDoc, updateDoc, setDoc, deleteDoc, serverTimestamp, increment, deleteField
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
@@ -1240,8 +1255,12 @@ function detachShiftOther(){
   state.shiftOtherLoading = false;
 }
 
-function subscribe(colName, orderField, onData){
-  var q = query(collection(db, colName), orderBy(orderField, "desc"), limit(200));
+function subscribe(colName, orderField, onData, extraWhere){
+  var parts = [collection(db, colName)];
+  if(extraWhere) parts.push(extraWhere);
+  parts.push(orderBy(orderField, "desc"));
+  parts.push(limit(200));
+  var q = query.apply(null, parts);
   unsubscribers.push(onSnapshot(q,
     function(snap){
       // orderBy はサーバー側の順序。未確定の serverTimestamp は null 扱いで
@@ -1252,7 +1271,16 @@ function subscribe(colName, orderField, onData){
       render();
     },
     function(err){
-      state.notice = colName + " の購読に失敗しました（" + err.code + "）";
+      // 索引が無いときは「権限がない」と区別が付かないので、専用の案内を出す。
+      // 公開範囲で絞りつつ日時で並べるには複合索引が要る（作成は一度だけ）。
+      if(err.code === "failed-precondition"){
+        state.notice = colName + " を読むための索引がまだありません。" +
+          "Firebase コンソール → Firestore Database → インデックス で、" +
+          "コレクション boardPosts に「visibleTo（配列に含む）＋ createdAt（降順）」の" +
+          "複合インデックスを作成してください（ブラウザの開発者ツールに作成用のリンクも出ています）";
+      }else{
+        state.notice = colName + " の購読に失敗しました（" + err.code + "）";
+      }
       render();
     }
   ));
@@ -1261,7 +1289,15 @@ function subscribe(colName, orderField, onData){
 function attachAll(){
   detachAll();   // 二重アタッチ防止
   subscribe("feedPosts",  "createdAt", function(live, gone){ state.feed = live;    state.trash.feed = gone; });
-  subscribe("boardPosts", "createdAt", function(live, gone){ state.board = live;   state.trash.board = gone; });
+  // 掲示板だけは公開範囲で絞る。ルール側は1件ずつ visibleTo を見て許否を決めるため、
+  // クエリ側でも同じ条件で絞っておかないと、読めない文書が候補に入って
+  // 購読そのものが拒否される（Firestore は「結果に1件でも違反があれば全体を拒否」する）。
+  subscribe("boardPosts", "createdAt", function(live, gone){
+    // 二重の絞り込み。実際の防御はルールとクエリで済んでいるが、
+    // 将来どちらかを触ったときに、画面へ出る側で必ず止まるようにしておく。
+    state.board = live.filter(canSeeHere);
+    state.trash.board = gone.filter(canSeeHere);
+  }, where("visibleTo", "array-contains-any", [VISIBLE_ALL, currentUserId()]));
   subscribe("surveys",    "createdAt", function(live, gone){ state.surveys = live; state.trash.surveys = gone; });
 }
 
@@ -2419,6 +2455,7 @@ function renderBoardForm(){
         '<label class="checkbox-label nowrap"><input type="checkbox" id="boardFormPinned"> 📌 固定</label>' +
       '</div>' +
       '<textarea id="boardFormBody" class="input textarea" placeholder="内容（任意）..." rows="3"></textarea>' +
+      renderVisibilityField("boardForm", null) +
       renderImageField("boardForm", null) +
       renderTaskFields("boardForm", null) +
       errorSlot("boardFormError") +
@@ -2440,6 +2477,45 @@ function readCount(post){ return Object.keys(post.readBy || {}).length; }
 //  「無い」場合を通常の状態として扱うこと（過去データを壊さない）。
 // ══════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════
+//  公開範囲（非公開の掲示板投稿）
+//
+//  visibleTo は文字列の配列。
+//    ["*"]                        … 全員が見られる（既定）
+//    [作成者, ...指定されたID]     … その人たちだけが見られる
+//
+//  「見えないように隠す」ではなく、Firestore のルールで**読み取り自体を
+//  拒否**している。リポジトリが公開されているので、画面に出さないだけでは
+//  開発者ツールから取得できてしまう。
+//
+//  管理者（admin）も対象外の投稿は読めない。人事や健康面のように
+//  上長にも見せたくない話を扱えるようにするため、という合意による。
+//  代償として、作成者が退職した非公開投稿は誰も開けなくなる。
+//
+//  配列にしているのは、ルールで「自分が入っているか」を1行で書けて、
+//  かつクエリ側で array-contains-any で同じ条件を表現できる形が
+//  これしかないため（マップだと動的キーの照合ができない）。
+// ══════════════════════════════════════════════════════════════════
+var VISIBLE_ALL = "*";
+
+function isPrivatePost(post){
+  var v = post.visibleTo;
+  return !!(v && v.length && v.indexOf(VISIBLE_ALL) < 0);
+}
+
+/** 自分がこの投稿を見てよいか。ルール側の canSeeBoardPost と同じ条件 */
+function canSeeHere(post){
+  return !isPrivatePost(post)
+      || (post.visibleTo || []).indexOf(currentUserId()) >= 0;
+}
+
+/** その投稿を見られるメンバー。公開なら全員 */
+function visibleMembers(post){
+  if(!isPrivatePost(post)) return session.members.slice();
+  var v = post.visibleTo || [];
+  return session.members.filter(function(m){ return v.indexOf(m.id) >= 0; });
+}
+
 /**
  * チェックリストとして扱う投稿か。
  * 期日が入っているものをチェックリストとみなす。フラグを別に持たないのは、
@@ -2454,11 +2530,16 @@ function isTask(post){ return !!post.dueDate; }
  * 過去のタスクの対象者が自動で追いつかないから。
  */
 function taskTargets(post){
+  // 非公開の投稿では、見られる人だけが対象になりうる。
+  // 見られない人を未完了として並べると、声のかけようがない相手が
+  // 名簿に出続けることになる。
+  var pool = visibleMembers(post);
   var t = post.checkTargets;
-  if(!t || !t.length) return session.members.slice();
-  return session.members.filter(function(m){ return t.indexOf(m.id) >= 0; });
+  if(!t || !t.length) return pool;
+  return pool.filter(function(m){ return t.indexOf(m.id) >= 0; });
 }
 function isTaskTarget(post, memberId){
+  if(isPrivatePost(post) && (post.visibleTo||[]).indexOf(memberId) < 0) return false;
   var t = post.checkTargets;
   if(!t || !t.length) return true;
   return t.indexOf(memberId) >= 0;
@@ -2583,6 +2664,52 @@ function renderTaskFields(prefix, post){
       '<div class="perdue-list">'+perRows+'</div>' +
     '</details>' +
   '</div>';
+}
+
+/**
+ * 公開範囲の入力欄。投稿フォームと編集フォームで共用する。
+ *
+ * チェックボックスと :has() で出し入れしていて JS を挟んでいない。
+ * 描き直さずに済むので、入力途中の本文が消える心配がない。
+ */
+function renderVisibilityField(prefix, post){
+  var priv = post ? isPrivatePost(post) : false;
+  var v = (post && post.visibleTo) || [];
+  var me = currentUserId();
+  var chips = session.members.map(function(m){
+    // 作成者は必ず見られる（自分の投稿が自分から見えなくなるのを防ぐ）
+    var isAuthor = post ? (m.id === post.authorId) : (m.id === me);
+    var on = isAuthor || (priv && v.indexOf(m.id) >= 0);
+    return '<label class="target-chip'+(isAuthor?" target-chip-fixed":"")+'">' +
+      '<input type="checkbox" class="'+prefix+'Vis" value="'+esc(m.id)+'"'+
+        (on?" checked":"")+(isAuthor?" disabled":"")+'>' +
+      avatar(m.id, 18) + '<span>'+esc(m.displayName)+(isAuthor?"（作成者）":"")+'</span>' +
+    '</label>';
+  }).join("");
+
+  return '<div class="vis-wrap">' +
+    '<label class="checkbox-label vis-toggle-label">' +
+      '<input type="checkbox" class="vis-toggle '+prefix+'Private"'+(priv?" checked":"")+'>' +
+      ' 🔒 非公開にする（指定した人だけが見られます）' +
+    '</label>' +
+    '<div class="vis-members">' +
+      '<div class="vis-note">ここで選んだ人以外は、この投稿を<b>一切読めません</b>。' +
+        '管理者も対象外なら読めません。</div>' +
+      '<div class="target-chips">'+chips+'</div>' +
+    '</div>' +
+  '</div>';
+}
+
+/** 公開範囲を読み出す。非公開でなければ ["*"] */
+function readVisibility(prefix, post){
+  var toggle = document.querySelector("." + prefix + "Private");
+  if(!toggle || !toggle.checked) return [VISIBLE_ALL];
+  var authorId = post ? post.authorId : currentUserId();
+  var out = [authorId];
+  Array.prototype.forEach.call(document.querySelectorAll("." + prefix + "Vis"), function(b){
+    if(b.checked && out.indexOf(b.value) < 0) out.push(b.value);
+  });
+  return out;
 }
 
 /** 入力欄から値を取り出す。期日が空ならチェックリストにしない */
@@ -2870,6 +2997,7 @@ function renderBoardEditForm(post){
         '<label class="checkbox-label nowrap"><input type="checkbox" id="editPinned"'+(post.pinned?" checked":"")+'> 📌 固定</label>' +
       '</div>' +
       '<textarea id="editBody" class="input textarea" rows="3">'+esc(post.body)+'</textarea>' +
+      renderVisibilityField("editBoard", post) +
       renderImageField("editBoard", post) +
       renderTaskFields("editBoard", post) +
       errorSlot("editFormError") +
@@ -2912,6 +3040,11 @@ function renderBoardPost(post){
       (post.pinned?"<span>📌</span>":"") +
       badge(post.category, catColor) +
       (!isRead?badge("NEW","red"):"") +
+      // 非公開であることは書いた側にも読んだ側にも見えている必要がある。
+      // 「全員に流れていると思って書いた」を防ぐため、人数まで出す。
+      (isPrivatePost(post)
+        ? '<span class="sbadge sbadge-private">🔒 非公開 '+visibleMembers(post).length+'名</span>'
+        : "") +
       taskBadge(post) +
     '</div>' +
     '<div class="board-title">'+esc(post.title)+editedMark(post)+'</div>' +
@@ -4805,6 +4938,7 @@ function submitBoardPost(){
   payload.dueDate = task.dueDate;
   payload.checkTargets = task.checkTargets;
   payload.dueBy = task.dueBy;
+  payload.visibleTo = readVisibility("boardForm", null);
   // 既読とは違い、作成者も未完了から始める。作った本人が
   // やらなくていいとは限らない（自分にも課すのが普通の運用）。
   payload.doneBy = {};
@@ -4925,6 +5059,7 @@ function saveFeedEdit(id){
 }
 
 function saveBoardEdit(id){
+  var post = state.board.filter(function(p){ return p.id===id; })[0];
   var title = document.getElementById("editTitle").value.trim();
   var body  = document.getElementById("editBody").value.trim();
   if(!refuse("editFormError", !title, "タイトルを入れてください")) return;
@@ -4939,6 +5074,7 @@ function saveBoardEdit(id){
     dueDate: task.dueDate,
     checkTargets: task.checkTargets,
     dueBy: task.dueBy,
+    visibleTo: readVisibility("editBoard", post),
     edited: true,
     updatedAt: serverTimestamp()
   };

@@ -56,7 +56,11 @@ function remindDueTasks() {
     var projectId = requiredProp_("FIREBASE_PROJECT_ID");
 
     var posts = fetchBoardPosts_(projectId, token).filter(function (p) {
-      return !p.deleted && p.dueDate;
+      // 非公開の投稿は Chat に出さない。スペースは全員が読めるので、
+      // 題名を流した時点で非公開の意味がなくなる。
+      // サービスアカウントはルールを迂回して読めてしまうため、
+      // ここで明示的に外す必要がある（読めないから安全、にはならない）。
+      return !p.deleted && p.dueDate && !isPrivatePost_(p);
     });
     var names = fetchMemberIdNameMap_(projectId, token);
     var activeIds = fetchActiveMemberIds_(projectId, token);
@@ -154,8 +158,18 @@ function mapBoardPost_(d) {
     deleted: fsBool_(f.deleted),
     checkTargets: fsStrList_(f.checkTargets),   // 空配列は「全員」
     doneBy: fsMapKeys_(f.doneBy),
-    dueBy: fsStrMap_(f.dueBy)                   // 人ごとの期日（例外だけ）
+    dueBy: fsStrMap_(f.dueBy),                  // 人ごとの期日（例外だけ）
+    visibleTo: fsStrList_(f.visibleTo)          // 読める人。["*"] は全員
   };
+}
+
+/**
+ * 非公開の投稿か。visibleTo に "*" が無く、中身がある場合。
+ * visibleTo そのものが無い（移行前）投稿は公開扱い。
+ */
+function isPrivatePost_(post) {
+  var v = post.visibleTo || [];
+  return v.length > 0 && v.indexOf("*") < 0;
 }
 
 /** マップフィールドを {キー: 文字列} にする。dueBy の取り出しに使う */
@@ -312,6 +326,87 @@ function taskLog_(result, kind, durationMs, note) {
   }
 }
 
+/**
+ * 【移行用・一度だけ実行】既存の掲示板投稿すべてに visibleTo: ["*"]（全員公開）を入れる。
+ *
+ * 非公開タスクの仕組みは、アプリ側が
+ *   where("visibleTo", "array-contains-any", ["*", 自分のID])
+ * で絞り込む前提になっている。visibleTo を持たない投稿はこの条件に
+ * 引っかからないため、入れておかないと**既存の投稿が一覧から消える**。
+ *
+ * 消す操作は一切していない。すでに visibleTo を持つ投稿には触らない。
+ * 何度実行しても結果は同じ（べき等）。
+ *
+ * 順番: これを実行 → 複合インデックスを作成 → 新しいコードを反映 → ルールを公開
+ */
+function backfillVisibility() {
+  var token = getAccessToken_();
+  var pid = requiredProp_("FIREBASE_PROJECT_ID");
+  var posts = fetchBoardPosts_(pid, token);
+
+  var already = 0, wrote = 0, failed = 0;
+  posts.forEach(function (p) {
+    if (p.visibleTo.length > 0) { already++; return; }
+    try {
+      patchFieldsChecked_(pid, token, "boardPosts/" + p.id, { visibleTo: ["*"] });
+      wrote++;
+    } catch (e) {
+      failed++;
+      Logger.log("失敗 " + p.id + " (" + p.title + "): " + ((e && e.message) || e));
+    }
+  });
+
+  var msg = "掲示板 " + posts.length + "件のうち、" +
+    wrote + "件に「全員公開」を入れました（既に設定済み " + already + "件・失敗 " + failed + "件）";
+  taskLog_(failed ? "error" : "ok", "backfill", 0, msg);
+  Logger.log(msg);
+  if (failed) {
+    Logger.log("失敗が残っています。もう一度実行してから次の手順に進んでください。");
+  } else {
+    Logger.log("次は複合インデックスの作成です。docs/checklist-setup.md を参照してください。");
+  }
+  return msg;
+}
+
+/**
+ * 一部のフィールドだけ更新する。失敗したら必ず例外にする。
+ * 移行で黙って失敗すると、その投稿だけ一覧から消えたまま気づけない。
+ */
+function patchFieldsChecked_(projectId, token, path, obj) {
+  var keys = Object.keys(obj);
+  var mask = keys.map(function (k) {
+    return "updateMask.fieldPaths=" + encodeURIComponent(k);
+  }).join("&");
+  var res = UrlFetchApp.fetch(fsBase_(projectId) + path + "?" + mask, {
+    method: "patch",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + token },
+    payload: JSON.stringify({ fields: toFsFields_(obj) }),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() >= 300) {
+    throw new Error(path + " の " + keys.join(",") + " を書けませんでした: " + res.getContentText());
+  }
+}
+
+/** 移行の結果を確認する。非公開の投稿が何件あるかも出す */
+function checkVisibility() {
+  var token = getAccessToken_();
+  var pid = requiredProp_("FIREBASE_PROJECT_ID");
+  var posts = fetchBoardPosts_(pid, token);
+  var missing = posts.filter(function (p) { return p.visibleTo.length === 0; });
+  var priv = posts.filter(isPrivatePost_);
+  var out = [];
+  out.push("掲示板 " + posts.length + "件");
+  out.push((missing.length ? "要移行  " : "OK      ") +
+    "visibleTo が無い投稿 " + missing.length + "件" +
+    (missing.length ? "（backfillVisibility を実行してください）" : ""));
+  out.push("        非公開の投稿 " + priv.length + "件（Chat には流しません）");
+  missing.slice(0, 10).forEach(function (p) { out.push("        未設定: " + p.title); });
+  Logger.log(out.join("\n"));
+  return out.join("\n");
+}
+
 /** トリガーを作り直す。1度だけ実行すればよい */
 function installTaskTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -373,6 +468,7 @@ function whyNoRemind() {
   tasks.forEach(function (p) {
     var pending = pendingMemberIds_(p, activeIds);
     if (p.deleted) { out.push("  " + p.dueDate + "  " + p.title + "  → 削除済みのため対象外"); return; }
+    if (isPrivatePost_(p)) { out.push("  " + p.dueDate + "  " + p.title + "  → 非公開のため Chat には出しません"); return; }
     if (!pending.length) { out.push("  " + p.dueDate + "  " + p.title + "  → 全員完了のため対象外"); return; }
 
     // 人ごとに期日が違う場合は、期日ごとに分けて出す

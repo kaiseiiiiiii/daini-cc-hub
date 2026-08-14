@@ -160,7 +160,7 @@ GAS のコードは [`gas/sync.gs`](gas/sync.gs) にあります。
 | `syncStatus` | `spreadsheet` | GAS のみ | 最終同期時刻・同期結果 |
 | `feedPosts` | 自動ID | メンバー | フィード投稿（Phase 2） |
 | `feedPosts/{id}/comments` | 自動ID | メンバー | コメント（Phase 2） |
-| `boardPosts` | 自動ID | メンバー | 掲示板（Phase 2）＋チェックリスト |
+| `boardPosts` | 自動ID | メンバー | 掲示板（Phase 2）＋チェックリスト。`visibleTo` で読める人を絞れる |
 | `boardImages` | 自動ID | メンバー（作成のみ） | 掲示板の添付画像（縮小した data URL） |
 | `surveys` | 自動ID | メンバー | アンケート（Phase 2） |
 

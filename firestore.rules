@@ -126,6 +126,33 @@ service cloud.firestore {
     //
     // フィールドが無い場合を許しているのは、チェックリストにしない
     // ふつうの連絡事項と、この機能より前に作られた投稿があるため。
+    // 公開範囲の番人。"*" が入っていれば全員、無ければ列挙された人だけ。
+    //
+    // 配列にしているのは、ルールで「自分が入っているか」を1行で書けて、
+    // クエリ側でも array-contains-any で同じ条件を表現できる形がこれしか
+    // ないため。マップだと動的キーの照合ができない。
+    function VISIBLE_ALL() { return '*'; }
+
+    // この機能より前に作られた投稿には visibleTo が無い。
+    // 移行（GAS の backfillVisibility）で全件に ["*"] を入れる前提だが、
+    // 万一漏れていた場合に投稿が読めなくなるより、公開扱いで読めるほうが
+    // 事故として軽い。**非公開にしたい投稿は必ず visibleTo を持つ**ので、
+    // ここを緩めても非公開が漏れることはない。
+    function canSeeBoardPost() {
+      return !resource.data.keys().hasAny(['visibleTo'])
+          || !(resource.data.visibleTo is list)
+          || VISIBLE_ALL() in resource.data.visibleTo
+          || myMemberId() in resource.data.visibleTo;
+    }
+
+    // 書き込み時の形の検証。
+    // 空配列を禁じているのは、「誰も読めない投稿」を作らせないため。
+    function validVisibility() {
+      return request.resource.data.visibleTo is list
+          && request.resource.data.visibleTo.size() > 0
+          && request.resource.data.visibleTo.size() <= 200;
+    }
+
     function validChecklist() {
       return ( !request.resource.data.keys().hasAny(['dueDate'])
                || request.resource.data.dueDate == null
@@ -435,6 +462,8 @@ service cloud.firestore {
     //               dueBy{memberId: "YYYY-MM-DD"}
     //                               … 人ごとの期日。**全体と違う人の分だけ**
     //                                 入れる。入っていない人は dueDate に従う
+    //               visibleTo       … 読める人。["*"] は全員。
+    //                                 それ以外は memberId の列挙（作成者を含む）
     //               doneBy{memberId: 完了した日時}
     //
     //   添付画像を付けた場合のみ:
@@ -445,9 +474,27 @@ service cloud.firestore {
     // ========================================================================
     match /boardPosts/{postId} {
 
-      allow read: if isMember();
+      // 【ここが非公開タスクの防御線】
+      //
+      // 「画面に出さない」では守れない。このリポジトリは公開されており、
+      // コレクション名もクエリの書き方も攻撃者に既知である前提で書いている。
+      // 読み取りそのものを拒否するのはこの1行だけ。
+      //
+      // admin の例外は意図的に置いていない。人事や健康面のように
+      // 上長にも見せたくない話を扱えるようにするため、という合意による。
+      // 代償として、作成者が退職した非公開投稿は誰も開けなくなる。
+      //
+      // クエリ（list）でもこの条件が1件ずつ評価される。Firestore は
+      // 「結果に1件でも違反があれば全体を拒否」するため、アプリ側も
+      // 同じ条件で絞り込む必要がある（index.html の attachAll を参照）。
+      allow read: if isMember() && canSeeBoardPost();
 
       allow create: if validNewPost()
+                    && validVisibility()
+                    // 自分が読めない投稿は作らせない。作った瞬間に
+                    // 自分から見えなくなり、直すことも消すこともできなくなる。
+                    && ( VISIBLE_ALL() in request.resource.data.visibleTo
+                         || myMemberId() in request.resource.data.visibleTo )
                     && request.resource.data.edited == false
                     && validChecklist()
                     // 作成と同時に誰かを完了済みにするのを禁じる。
@@ -461,6 +508,14 @@ service cloud.firestore {
 
       allow update: if isMember()
                     && immutableOrigin()
+                    // 読めない投稿には書かせない。
+                    // 本文は読めないままでも、既読やリアクションだけは
+                    // 付けられる——という穴を残さないため。
+                    // ドキュメントIDは自動生成で列挙もできないので実際に
+                    // 到達するのは難しいが、条件として塞いでおく。
+                    // これにより admin は非公開投稿を削除もできなくなる
+                    // （「管理者も見えない」という選択の帰結）。
+                    && canSeeBoardPost()
                     && (
                          // ① 既読の記録は全メンバーに許可。
                          //    ただし「自分の分だけ」を足せること。
@@ -500,8 +555,14 @@ service cloud.firestore {
                            && resource.data.deleted == false
                            && request.resource.data.edited == true
                            && validChecklist()
+                           && validVisibility()
+                           // 公開範囲を変えるときも、自分は残しておかせる。
+                           // 自分を外すと直すことも消すこともできなくなる。
+                           && ( VISIBLE_ALL() in request.resource.data.visibleTo
+                                || myMemberId() in request.resource.data.visibleTo )
                            && onlyChanged(['title','body','category','pinned',
                                            'dueDate','checkTargets','dueBy',
+                                           'visibleTo',
                                            'imageId','imageW','imageH',
                                            'edited','updatedAt']) )
                        );

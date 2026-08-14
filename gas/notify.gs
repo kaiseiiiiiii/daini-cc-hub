@@ -173,6 +173,10 @@ function collectNew_(projectId, token, col, sinceMs, seen) {
   docs.forEach(function (d) {
     var f = d.fields || {};
     if (fsBool_(f.deleted)) return;
+    // 非公開の掲示板投稿は通知しない。スペースは全員が読めるので、
+    // 題名を流した時点で非公開の意味がなくなる。サービスアカウントは
+    // ルールを迂回して読めてしまうため、ここで明示的に外す。
+    if (isPrivateFields_(f)) return;
     var createdAt = f.createdAt && f.createdAt.timestampValue;
     if (!createdAt) return;
     var ms = new Date(createdAt).getTime();
@@ -195,6 +199,20 @@ function collectNew_(projectId, token, col, sinceMs, seen) {
 
 function fsStr_(v) { return (v && v.stringValue) ? v.stringValue : ""; }
 function fsBool_(v) { return !!(v && v.booleanValue); }
+
+/**
+ * 非公開の投稿か（Firestore の生フィールドから判定）。
+ * visibleTo に "*" が無く、中身がある場合。
+ * visibleTo そのものが無い（移行前）投稿は公開扱い。
+ */
+function isPrivateFields_(f) {
+  var v = f.visibleTo && f.visibleTo.arrayValue && f.visibleTo.arrayValue.values;
+  if (!v || !v.length) return false;
+  for (var i = 0; i < v.length; i++) {
+    if (v[i] && v[i].stringValue === "*") return false;
+  }
+  return true;
+}
 
 /** memberId → 表示名 */
 function fetchMemberIdNameMap_(projectId, token) {
