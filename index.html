@@ -1271,13 +1271,21 @@ function subscribe(colName, orderField, onData, extraWhere){
       render();
     },
     function(err){
+      // 生のエラーも必ずコンソールに出す。
+      // 索引が足りない場合、Firestore は「この索引を作れ」というURLを
+      // エラーの本文に入れて返してくる。画面用の文言だけを出して
+      // これを捨てると、一番使える情報が手元に残らない。
+      try{ console.error("[第二CC Hub] " + colName + " の購読に失敗", err); }catch(e){}
+
       // 索引が無いときは「権限がない」と区別が付かないので、専用の案内を出す。
       // 公開範囲で絞りつつ日時で並べるには複合索引が要る（作成は一度だけ）。
       if(err.code === "failed-precondition"){
         state.notice = colName + " を読むための索引がまだありません。" +
-          "Firebase コンソール → Firestore Database → インデックス で、" +
-          "コレクション boardPosts に「visibleTo（配列に含む）＋ createdAt（降順）」の" +
-          "複合インデックスを作成してください（ブラウザの開発者ツールに作成用のリンクも出ています）";
+          "F12（開発者ツール）→ Console に出ているエラーの中に、" +
+          "索引を作るためのリンク（console.firebase.google.com … create_composite）があります。" +
+          "それを開いて作成してください。手で作る場合は、コレクション boardPosts に" +
+          "「visibleTo は【配列に含む】＋ createdAt は【降順】」の複合インデックスです。" +
+          "作成後、状態が「有効」になるまで数分かかります";
       }else{
         state.notice = colName + " の購読に失敗しました（" + err.code + "）";
       }
