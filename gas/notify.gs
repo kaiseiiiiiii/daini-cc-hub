@@ -185,7 +185,8 @@ function collectNew_(projectId, token, col, sinceMs, seen) {
       category: fsStr_(f.category),
       pinned: fsBool_(f.pinned),
       multi: fsBool_(f.multi),
-      deadline: fsStr_(f.deadline)
+      deadline: fsStr_(f.deadline),
+      dueDate: fsStr_(f.dueDate)     // 掲示板のチェックリストの期日（無ければ ""）
     });
   });
   return out;
@@ -229,7 +230,10 @@ function buildMessage_(items, names, overflow) {
     boards.forEach(function (b) {
       var head = b.pinned ? "📌 " : "";
       var cat = b.category ? "［" + b.category + "］" : "";
-      lines.push("• " + head + cat + b.title + "  — " + (names[b.authorId] || "?"));
+      // 期日が入っていればチェックリスト。連絡事項と区別が付かないと
+      // 「読むだけのもの」と思われて手が動かない。
+      var due = b.dueDate ? "  ✅ 期日 " + b.dueDate : "";
+      lines.push("• " + head + cat + b.title + due + "  — " + (names[b.authorId] || "?"));
     });
   }
 

@@ -221,6 +221,57 @@ select.input{padding-right:8px;}
 .reader-chip-unread{border-color:color-mix(in srgb, var(--red) 35%, transparent); background:color-mix(in srgb, var(--red) 8%, var(--surface)); color:var(--text); font-weight:600;}
 .reader-chips-muted .reader-chip{opacity:0.6; font-size:11px;}
 
+/* ── チェックリスト ──────────────────────────────────── */
+/* 連絡事項の本文と地続きに見えないよう、面を一段落として囲む。
+   「読むところ」と「押すところ」を目で分けるため。 */
+.task-block{margin:10px 0; padding:10px; border-radius:var(--radius-md);
+  background:var(--color-bg); border:1px solid var(--color-border);}
+.task-head{display:flex; align-items:center; gap:8px; margin-bottom:8px;}
+.task-head-label{font-size:11px; font-weight:700; color:var(--color-text-sub); letter-spacing:0.04em;}
+.task-head .reader-toggle{margin-left:auto;}
+/* 押し間違いが起きると他人の未完了リストが狂うので、指1本で確実に
+   押せる高さを確保する（44px は tokens.css の最小タップ領域と同じ） */
+.task-check{display:flex; align-items:center; gap:10px; width:100%; min-height:44px;
+  padding:0 12px; border:1px solid var(--color-border-strong); border-radius:var(--radius-md);
+  background:var(--color-surface); color:var(--color-text); font-family:inherit;
+  font-size:14px; font-weight:700; cursor:pointer; text-align:left;}
+.task-check-done{border-color:var(--green); color:var(--color-text-sub); font-weight:400;}
+.task-box{flex:none; width:22px; height:22px; border-radius:var(--radius-sm);
+  border:1px solid var(--color-border-strong); background:var(--color-surface);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:14px; font-weight:700;}
+.task-check-done .task-box{background:var(--green); border-color:var(--green); color:#fff;}
+.task-note{font-size:12px; color:var(--color-text-mute); padding:6px 2px;}
+.sbadge-late{background:color-mix(in srgb, var(--red) 14%, transparent); color:var(--red);}
+
+/* 入力欄（投稿フォーム・編集フォーム共用） */
+.task-fields{display:flex; flex-direction:column; gap:6px; padding-top:10px;
+  border-top:1px dashed var(--color-border);}
+.task-fields-label{font-size:12px; font-weight:700; color:var(--color-text-sub);}
+.target-picker{font-size:12px;}
+.target-picker>summary{cursor:pointer; color:var(--color-text-sub); padding:4px 0;
+  display:flex; align-items:center; gap:6px;}
+.target-hint{color:var(--color-text-mute); font-weight:400;}
+.target-chips{display:flex; flex-wrap:wrap; gap:5px; padding:6px 0 2px;}
+.target-chip{display:inline-flex; align-items:center; gap:5px; cursor:pointer;
+  border:1px solid var(--color-border); border-radius:var(--radius-pill);
+  padding:3px 9px 3px 5px; font-size:12px; color:var(--color-text-sub);
+  background:var(--color-surface); min-height:32px;}
+.target-chip:has(input:checked){border-color:var(--color-accent);
+  background:var(--color-accent-tint); color:var(--color-accent-ink); font-weight:600;}
+
+/* 自分の未完了だけを掲示板の先頭に出す小さな一覧 */
+.mytask-card{padding:12px; border-color:color-mix(in srgb, var(--color-accent) 45%, transparent);}
+.mytask-head{font-size:12px; font-weight:700; color:var(--color-accent-ink); margin-bottom:8px;}
+.mytask-row{display:flex; align-items:center; gap:10px; width:100%; min-height:44px;
+  padding:0 4px; background:transparent; border:none; border-top:1px solid var(--color-border);
+  font-family:inherit; font-size:14px; color:var(--color-text); cursor:pointer; text-align:left;}
+.mytask-row:first-of-type{border-top:none;}
+.mytask-title{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.mytask-due{flex:none; font-size:11px; font-weight:700; color:var(--color-text-mute);}
+.mytask-due-soon{color:var(--color-dusk-ink);}
+.mytask-due-late{color:var(--red);}
+
 .survey-head{display:flex; gap:8px; margin-bottom:10px; align-items:flex-start;}
 .survey-title{font-weight:700; font-size:17px; color:var(--text);}
 .survey-meta{font-size:11px; color:var(--text-4);}
@@ -830,6 +881,33 @@ function tAgo(ts){ var d=Date.now()-ts; if(d<60000) return "たった今"; if(d<
 function reactCount(post){ var t=0, r=post.reactions||{}; for(var k in r) t += (r[k]||[]).length; return t; }
 function badge(text,colorVar){ return '<span class="badge" style="--bc:var(--'+colorVar+')">'+esc(text)+'</span>'; }
 function todayDateLabel(){ var d=new Date(); return (d.getMonth()+1)+"/"+d.getDate(); }
+
+// ── 日付（"YYYY-MM-DD"）の共通処理 ──────────────────────────
+// アンケートの締切とチェックリストの期日で同じ計算を使う。
+// 保存形式はどちらも <input type="date"> の値そのままにしてある。
+// 文字列のまま持つのは、時刻もタイムゾーンも意味を持たない「日付」で、
+// Timestamp にすると時差で1日ずれる事故が起きるため。
+function ymdToDate(s){
+  if(!s) return null;
+  var p = String(s).split("-");
+  if(p.length !== 3) return null;
+  var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  return isNaN(d.getTime()) ? null : d;
+}
+/** 残り日数。0 は本日、負なら過ぎている、null は日付なし */
+function ymdDaysLeft(s){
+  var end = ymdToDate(s);
+  if(!end) return null;
+  end.setHours(0,0,0,0);
+  var today = new Date(); today.setHours(0,0,0,0);
+  return Math.round((end.getTime() - today.getTime()) / 86400000);
+}
+/** "8/16（土）" の形に */
+function ymdLabel(s){
+  var d = ymdToDate(s);
+  if(!d) return "";
+  return (d.getMonth()+1)+"/"+d.getDate()+"（"+["日","月","火","水","木","金","土"][d.getDay()]+"）";
+}
 function currentMonthId(){ var d=new Date(); return d.getFullYear()+"_"+(d.getMonth()+1); }
 
 /**
@@ -926,6 +1004,7 @@ var state = {
   avatarDraft:null,         // 保存前の縮小済み画像
   boardShowForm:false,
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
+  boardOpenTask:null,       // 完了状況パネルを開いているチェックリストのID
   surveyShowForm:false,
   surveyOpenStatus:null,    // 回答状況パネルを開いているアンケートのID
   surveyDraft:{},           // 送信前の選択。{surveyId: [optionId]}
@@ -1069,6 +1148,7 @@ function reconcileOpenState(){
     detachComments();
   }
   if(state.boardOpenReaders && !has(state.board, state.boardOpenReaders)) state.boardOpenReaders = null;
+  if(state.boardOpenTask && !has(state.board, state.boardOpenTask)) state.boardOpenTask = null;
   if(state.surveyOpenStatus && !has(state.surveys, state.surveyOpenStatus)) state.surveyOpenStatus = null;
 
   if(state.confirm && state.confirm.targetId){
@@ -2128,6 +2208,7 @@ function renderBoard(){
 
   return '<div class="tab-pad">' +
     renderOnboarding() +
+    renderMyTasks() +
     '<button class="dashed-trigger" data-act="'+(state.boardShowForm?"board-cancel":"board-open-form")+'">'+(state.boardShowForm?"× 閉じる":"+ 掲示板に投稿する")+'</button>' +
     formHtml +
     body +
@@ -2165,12 +2246,185 @@ function renderBoardForm(){
         '<label class="checkbox-label nowrap"><input type="checkbox" id="boardFormPinned"> 📌 固定</label>' +
       '</div>' +
       '<textarea id="boardFormBody" class="input textarea" placeholder="内容..." rows="3"></textarea>' +
+      renderTaskFields("boardForm", null) +
       '<button class="btn-primary full" data-act="board-submit">投稿する</button>' +
     '</div>' +
   '</div>';
 }
 
 function readCount(post){ return Object.keys(post.readBy || {}).length; }
+
+// ══════════════════════════════════════════════════════════════════
+//  チェックリスト（掲示板投稿に期日と完了チェックを付けたもの）
+//
+//  独立したタブやコレクションにはしていない。連絡事項と「やること」は
+//  現場では同じ流れで出てくるもので、置き場所を分けると
+//  「掲示板に書いたのに気づかれない／タスクに入れ忘れた」が起きる。
+//
+//  既存の投稿には dueDate も doneBy も無い。読む側は必ず
+//  「無い」場合を通常の状態として扱うこと（過去データを壊さない）。
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * チェックリストとして扱う投稿か。
+ * 期日が入っているものをチェックリストとみなす。フラグを別に持たないのは、
+ * 「フラグは立っているが期日が無い」ようなずれた状態を作らないため。
+ */
+function isTask(post){ return !!post.dueDate; }
+
+/**
+ * チェックの対象になるメンバー。
+ * checkTargets が空（または無い）なら全員が対象。
+ * 「全員」を memberId の列挙で保存しないのは、あとから人が増えたときに
+ * 過去のタスクの対象者が自動で追いつかないから。
+ */
+function taskTargets(post){
+  var t = post.checkTargets;
+  if(!t || !t.length) return session.members.slice();
+  return session.members.filter(function(m){ return t.indexOf(m.id) >= 0; });
+}
+function isTaskTarget(post, memberId){
+  var t = post.checkTargets;
+  if(!t || !t.length) return true;
+  return t.indexOf(memberId) >= 0;
+}
+function taskDone(post, memberId){ return !!(post.doneBy && post.doneBy[memberId]); }
+function taskPendingList(post){
+  return taskTargets(post).filter(function(m){ return !taskDone(post, m.id); });
+}
+function taskDoneList(post){
+  return taskTargets(post).filter(function(m){ return taskDone(post, m.id); });
+}
+
+/** 自分がまだ終わっていないタスクか。期限切れも「未完了」として残す */
+function taskNeedsMe(post){
+  return isTask(post)
+      && isTaskTarget(post, currentUserId())
+      && !taskDone(post, currentUserId());
+}
+
+/** 期日の近い順に並べるためのキー。日付が壊れているものは末尾へ */
+function dueMs(post){
+  var d = ymdToDate(post.dueDate);
+  return d ? d.getTime() : 8.64e15;
+}
+
+/** 期日のバッジ。残り2日以内は色を変える（当日に初めて気づく事態を避ける） */
+function taskBadge(post){
+  var d = ymdDaysLeft(post.dueDate);
+  if(d === null) return "";
+  var label = ymdLabel(post.dueDate);
+  var cls = "", text;
+  if(d < 0){        cls = " sbadge-late"; text = "期限切れ"; }
+  else if(d === 0){ cls = " sbadge-soon"; text = "本日まで"; }
+  else {            cls = (d <= 2 ? " sbadge-soon" : ""); text = "残り"+d+"日"; }
+  return '<span class="sbadge'+cls+'">📅 '+text+' · '+esc(label)+'</span>';
+}
+
+/**
+ * 期日と対象者の入力欄。投稿フォームと編集フォームで共用する。
+ *
+ * <details> と素の <input type="checkbox"> で組んでいるのは、開閉と
+ * チェックの状態をブラウザ側に持たせるため。state に持たせると
+ * 1つ押すたびに全体を描き直すことになり、入力途中の本文が消える。
+ */
+function renderTaskFields(prefix, post){
+  var due = (post && post.dueDate) || "";
+  var sel = (post && post.checkTargets) || null;
+  var all = !sel || !sel.length;
+  var chips = session.members.map(function(m){
+    var on = all || sel.indexOf(m.id) >= 0;
+    return '<label class="target-chip">' +
+      '<input type="checkbox" class="'+prefix+'Target" value="'+esc(m.id)+'"'+(on?" checked":"")+'>' +
+      avatar(m.id, 18) + '<span>'+esc(m.displayName)+'</span>' +
+    '</label>';
+  }).join("");
+  return '<div class="task-fields">' +
+    '<label class="task-fields-label" for="'+prefix+'Due">📅 期日（入れるとチェックリストになります）</label>' +
+    '<input type="date" id="'+prefix+'Due" class="input" value="'+esc(due)+'">' +
+    '<details class="target-picker"'+(all?"":" open")+'>' +
+      '<summary>対象者を選ぶ<span class="target-hint">既定は全員</span></summary>' +
+      '<div class="target-chips">'+chips+'</div>' +
+    '</details>' +
+  '</div>';
+}
+
+/** 入力欄から値を取り出す。期日が空ならチェックリストにしない */
+function readTaskFields(prefix){
+  var el = document.getElementById(prefix + "Due");
+  var due = (el && el.value ? el.value : "").trim() || null;
+  var picked = [], total = 0;
+  Array.prototype.forEach.call(document.querySelectorAll("." + prefix + "Target"), function(b){
+    total++;
+    if(b.checked) picked.push(b.value);
+  });
+  // 全員選ばれている／誰も選ばれていないときは null（＝全員）で保存する。
+  // 全員を列挙して残すと、あとから入った人が過去のタスクの対象から抜け落ちる。
+  var targets = (picked.length === 0 || picked.length === total) ? null : picked;
+  return { dueDate: due, checkTargets: due ? targets : null };
+}
+
+/** 投稿カードの中のチェックリスト部分 */
+function renderTaskBlock(post){
+  if(!isTask(post)) return "";
+  var me = currentUserId();
+  var targets = taskTargets(post);
+  var pending = taskPendingList(post);
+  var done    = taskDoneList(post);
+  var isOpen  = state.boardOpenTask === post.id;
+  var iAmDone = taskDone(post, me);
+
+  var mine = isTaskTarget(post, me)
+    ? '<button class="task-check'+(iAmDone?" task-check-done":"")+'" ' +
+        'data-act="task-toggle" data-id="'+post.id+'" ' +
+        'role="checkbox" aria-checked="'+(iAmDone?"true":"false")+'">' +
+        '<span class="task-box">'+(iAmDone?"✓":"")+'</span>' +
+        '<span>'+(iAmDone?"完了しました（取り消す）":"完了にする")+'</span>' +
+      '</button>'
+    : '<div class="task-note">あなたはこのチェックリストの対象者ではありません</div>';
+
+  return '<div class="task-block">' +
+    '<div class="task-head">' +
+      '<span class="task-head-label">✅ チェックリスト</span>' +
+      '<button class="reader-toggle'+(isOpen?" reader-toggle-open":"")+'" ' +
+        'data-act="task-status" data-id="'+post.id+'" aria-expanded="'+(isOpen?"true":"false")+'">' +
+        '完了 '+done.length+'/'+targets.length+'名' +
+        (pending.length ? '<span class="reader-toggle-unread">未完了 '+pending.length+'</span>' : '') +
+        '<span class="reader-caret">'+(isOpen?"▲":"▼")+'</span>' +
+      '</button>' +
+    '</div>' +
+    mine +
+    (isOpen ? renderPeoplePanel({
+      pendingLabel:"未完了", pending:pending,
+      doneLabel:"完了",     done:done,
+      allDoneText:"全員が完了しました"
+    }) : "") +
+  '</div>';
+}
+
+/**
+ * 自分の未完了タスクだけを掲示板の先頭に出す。
+ * 掲示板は投稿日時順なので、期日が迫っているものが下に埋もれる。
+ * ここには「何を・いつまでに」だけを置き、期日の近い順に並べる。
+ */
+function renderMyTasks(){
+  var mine = state.board.filter(taskNeedsMe).sort(function(a,b){ return dueMs(a) - dueMs(b); });
+  if(!mine.length) return "";
+  var rows = mine.map(function(p){
+    var d = ymdDaysLeft(p.dueDate);
+    var cls = d === null ? "" : (d < 0 ? " mytask-due-late" : (d <= 2 ? " mytask-due-soon" : ""));
+    var text = d === null ? "" : (d < 0 ? "期限切れ" : (d === 0 ? "本日" : "残り"+d+"日"));
+    return '<button class="mytask-row" data-act="task-toggle" data-id="'+p.id+'">' +
+      '<span class="task-box"></span>' +
+      '<span class="mytask-title">'+esc(p.title)+'</span>' +
+      '<span class="mytask-due'+cls+'">'+esc(text)+'</span>' +
+    '</button>';
+  }).join("");
+  return '<div class="card mytask-card">' +
+    '<div class="mytask-head">✅ あなたの未完了 '+mine.length+'件</div>' +
+    rows +
+  '</div>';
+}
 
 /** 名前チップ1つ。未読側は色を強めて目に入るようにする */
 function memberChip(m, emphasize){
@@ -2215,6 +2469,7 @@ function renderBoardEditForm(post){
         '<label class="checkbox-label nowrap"><input type="checkbox" id="editPinned"'+(post.pinned?" checked":"")+'> 📌 固定</label>' +
       '</div>' +
       '<textarea id="editBody" class="input textarea" rows="3">'+esc(post.body)+'</textarea>' +
+      renderTaskFields("editBoard", post) +
       '<div class="form-row">' +
         '<button class="btn-primary" data-act="edit-save" data-kind="board" data-id="'+post.id+'">保存する</button>' +
         '<button class="btn-ghost" data-act="edit-cancel">キャンセル</button>' +
@@ -2240,10 +2495,12 @@ function renderBoardPost(post){
       (post.pinned?"<span>📌</span>":"") +
       badge(post.category, catColor) +
       (!isRead?badge("NEW","red"):"") +
+      taskBadge(post) +
       '<span class="board-time">'+tAgo(post.createdAtMs)+(post.pending?' · 送信中':'')+'</span>' +
     '</div>' +
     '<div class="board-title">'+esc(post.title)+editedMark(post)+'</div>' +
     '<div class="board-body">'+esc(post.body)+'</div>' +
+    renderTaskBlock(post) +
     renderTools("board", post) +
     '<div class="board-footer">' + avatar(post.authorId,18) +
       '<span class="board-footer-text">'+esc(getM(post.authorId).displayName)+'</span>' +
@@ -2264,29 +2521,13 @@ function renderBoardPost(post){
 // ══════════════════════════════════════════════════════════════════
 //  RENDER: SURVEY
 // ══════════════════════════════════════════════════════════════════
-function deadlineDate(sv){
-  if(!sv.deadline) return null;
-  var p = String(sv.deadline).split("-");
-  if(p.length !== 3) return null;
-  var d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
-  return isNaN(d.getTime()) ? null : d;
-}
+function deadlineDate(sv){ return ymdToDate(sv.deadline); }
 
 /** 締切までの残り日数。0 は本日締切、null は期限なし */
-function surveyDaysLeft(sv){
-  var end = deadlineDate(sv);
-  if(!end) return null;
-  end.setHours(0,0,0,0);
-  var today = new Date(); today.setHours(0,0,0,0);
-  return Math.round((end.getTime() - today.getTime()) / 86400000);
-}
+function surveyDaysLeft(sv){ return ymdDaysLeft(sv.deadline); }
 
 /** 期限を "8/16（土）" の形に */
-function deadlineLabel(sv){
-  var d = deadlineDate(sv);
-  if(!d) return "";
-  return (d.getMonth()+1)+"/"+d.getDate()+"（"+["日","月","火","水","木","金","土"][d.getDay()]+"）";
-}
+function deadlineLabel(sv){ return ymdLabel(sv.deadline); }
 
 /** 期限と選択方式のバッジ。締切が近いものは色を変える */
 function surveyBadges(sv){
@@ -3792,8 +4033,31 @@ function submitBoardPost(){
   // 自分が未読者リストに並び、声かけ対象が水増しされる。
   payload.readBy = {};
   payload.readBy[currentUserId()] = serverTimestamp();
+  // 期日が入っていればチェックリストになる。入っていなければ
+  // dueDate は null で、これまでどおりの連絡事項として扱われる。
+  var task = readTaskFields("boardForm");
+  payload.dueDate = task.dueDate;
+  payload.checkTargets = task.checkTargets;
+  // 既読とは違い、作成者も未完了から始める。作った本人が
+  // やらなくていいとは限らない（自分にも課すのが普通の運用）。
+  payload.doneBy = {};
   state.boardShowForm = false;
   write("投稿", function(){ return addDoc(collection(db, "boardPosts"), payload); }, true);
+}
+
+/**
+ * 自分の完了チェックを付け外しする。
+ * 「完了にする」を押した時点で読んだことは確実なので、既読も一緒に付ける
+ * （ボタンを押すとカード全体の board-read は発火しないため）。
+ */
+function toggleTaskDone(id){
+  var me = currentUserId();
+  var post = state.board.filter(function(p){ return p.id===id; })[0];
+  if(!post || !isTask(post) || !isTaskTarget(post, me)) return;
+  var patch = {};
+  patch["doneBy." + me] = taskDone(post, me) ? deleteField() : serverTimestamp();
+  write("完了の記録", function(){ return updateDoc(doc(db, "boardPosts", id), patch); });
+  markBoardRead(id);
 }
 
 function markBoardRead(id){
@@ -3859,11 +4123,16 @@ function saveBoardEdit(id){
   var title = document.getElementById("editTitle").value.trim();
   var body  = document.getElementById("editBody").value.trim();
   if(!title || !body) return;
+  var task = readTaskFields("editBoard");
   var patch = {
     title: title,
     body: body,
     category: document.getElementById("editCat").value,
     pinned: document.getElementById("editPinned").checked,
+    // 期日を消すとチェックリストではなくなるが、doneBy は残す。
+    // 誰が終わらせたかの記録を、期日の消し忘れの直しで失わせない。
+    dueDate: task.dueDate,
+    checkTargets: task.checkTargets,
     edited: true,
     updatedAt: serverTimestamp()
   };
@@ -4146,6 +4415,11 @@ function bindEvents(){
     else if(act==="board-read"){ markBoardRead(id); }
     else if(act==="board-readers"){
       state.boardOpenReaders = state.boardOpenReaders===id ? null : id;
+      render();
+    }
+    else if(act==="task-toggle"){ toggleTaskDone(id); }
+    else if(act==="task-status"){
+      state.boardOpenTask = state.boardOpenTask===id ? null : id;
       render();
     }
     else if(act==="survey-open-form"){ state.surveyShowForm = true; render(); }

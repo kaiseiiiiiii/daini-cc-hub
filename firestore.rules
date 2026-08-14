@@ -100,6 +100,43 @@ service cloud.firestore {
                .affectedKeys().hasOnly([myMemberId()]);
     }
 
+    // 上と同じ検証だが、既存ドキュメントにそのフィールドがまだ無い場合も許す。
+    //
+    // doneBy（チェックリストの完了記録）で必要になる。この機能より前に
+    // 作られた掲示板の投稿には doneBy が無く、あとから期日を足して
+    // チェックリストにすると「最初の1人」が空のマップに書き込むことになる。
+    // onlyMyKeyIn は resource.data[field] を参照するため、その場合に
+    // 評価エラーで拒否されてしまう。
+    //
+    // フィールドが無い場合は diff の相手がいないので、
+    // 「新しく作るマップに自分のキーしか入っていないこと」を直接見る。
+    function onlyMyKeyInOrNew(field) {
+      return ( !resource.data.keys().hasAny([field])
+               && request.resource.data[field].keys().hasOnly([myMemberId()]) )
+          || ( resource.data.keys().hasAny([field])
+               && onlyMyKeyIn(field) );
+    }
+
+    // チェックリストの期日と対象者の形を検証する。
+    //
+    // 期日は "YYYY-MM-DD" の文字列に限る。Timestamp にしないのは、
+    // 時刻もタイムゾーンも意味を持たない「日付」であり、
+    // 時差で1日ずれる事故を避けるため（GAS 側のカレンダー連携も
+    // この文字列をそのまま終日予定の日付として使う）。
+    //
+    // フィールドが無い場合を許しているのは、チェックリストにしない
+    // ふつうの連絡事項と、この機能より前に作られた投稿があるため。
+    function validChecklist() {
+      return ( !request.resource.data.keys().hasAny(['dueDate'])
+               || request.resource.data.dueDate == null
+               || ( request.resource.data.dueDate is string
+                    && request.resource.data.dueDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') ) )
+          && ( !request.resource.data.keys().hasAny(['checkTargets'])
+               || request.resource.data.checkTargets == null
+               || ( request.resource.data.checkTargets is list
+                    && request.resource.data.checkTargets.size() <= 200 ) );
+    }
+
     // 作成者IDと作成日時は、いかなる更新でも変更させない。
     // これを許すと、他人の投稿を自分のものに書き換えたり、
     // 投稿日時を偽装したりできてしまう。
@@ -335,18 +372,36 @@ service cloud.firestore {
 
 
     // ========================================================================
-    // 掲示板
+    // 掲示板（チェックリストを兼ねる）
     //   フィールド: authorId, title, body, category, pinned,
     //               readBy{memberId: 読んだ日時},
     //               createdAt, updatedAt, edited,
     //               deleted, deletedBy, deletedAt
+    //
+    //   チェックリストとして使う場合のみ付く（無い投稿が正常にある）:
+    //               dueDate         … "YYYY-MM-DD"。これが入っていると
+    //                                 チェックリストとして扱われる
+    //               checkTargets    … 対象者の memberId 配列。
+    //                                 null は「全員」を意味する
+    //               doneBy{memberId: 完了した日時}
+    //               calendarEventId … GAS が作った Google カレンダー予定のID。
+    //                                 サービスアカウント経由でのみ書かれる
+    //                                 （下の update ルールのどの枝にも
+    //                                   含まれていないので、クライアントからは
+    //                                   一切書けない）
     // ========================================================================
     match /boardPosts/{postId} {
 
       allow read: if isMember();
 
       allow create: if validNewPost()
-                    && request.resource.data.edited == false;
+                    && request.resource.data.edited == false
+                    && validChecklist()
+                    // 作成と同時に誰かを完了済みにするのを禁じる。
+                    // 「配ったときには既に終わっていた」という記録を作れると、
+                    // 完了状況そのものが信用できなくなる。
+                    && ( !request.resource.data.keys().hasAny(['doneBy'])
+                         || request.resource.data.doneBy.size() == 0 );
 
       allow update: if isMember()
                     && immutableOrigin()
@@ -358,20 +413,32 @@ service cloud.firestore {
                          //    信用できなくなるため）。
                          ( onlyChanged(['readBy']) && onlyMyKeyIn('readBy') )
 
-                         // ② 論理削除は作成者本人、または admin。
+                         // ② 完了チェックも同じ考え方で、触れるのは自分のキーだけ。
+                         //    他人を勝手に完了にできると、未完了者への声かけという
+                         //    この機能の目的そのものが成立しない。
+                         //    admin も他人の分は変えられない（本人が終わったことは
+                         //    本人しか知らないため。代わりに押す運用が必要になったら、
+                         //    誰が代行したかを残せる形で別に設計する）。
+                      || ( onlyChanged(['doneBy']) && onlyMyKeyInOrNew('doneBy') )
+
+                         // ③ 論理削除は作成者本人、または admin。
                       || ( isLogicalDelete()
                            && (isAuthor() || isAdmin())
                            && request.resource.data.deletedBy == myMemberId()
                            && request.resource.data.deletedAt == request.time
                            && onlyChanged(['deleted','deletedBy','deletedAt']) )
 
-                         // ③ 本文の編集は作成者本人のみ。
+                         // ④ 本文・期日・対象者の編集は作成者本人のみ。
+                         //    doneBy を含めていないので、期日を直すついでに
+                         //    他人の完了記録を消すことはできない。
                       || ( isAuthor()
                            && !isLogicalDelete()
                            && !isUndelete()
                            && resource.data.deleted == false
                            && request.resource.data.edited == true
+                           && validChecklist()
                            && onlyChanged(['title','body','category','pinned',
+                                           'dueDate','checkTargets',
                                            'edited','updatedAt']) )
                        );
 

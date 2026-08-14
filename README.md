@@ -109,6 +109,18 @@ Firebase のウェブ向け設定値（`apiKey` / `authDomain` / `projectId` な
 シフト・生産性KPI・目標／実績を1時間おきに取り込みます。
 手順は [`docs/sync-setup.md`](docs/sync-setup.md) を参照してください。
 
+### 3.6 チェックリストとカレンダー連携（任意）
+
+掲示板の投稿に期日とメンバーごとの完了チェックを付けられます。
+**アプリ側の機能はこの設定なしで使えます。** 期日を Google カレンダーに出し、
+未完了を毎朝 Chat に流すところだけ設定が必要です。
+手順は [`docs/checklist-setup.md`](docs/checklist-setup.md) を参照してください。
+
+GAS のコードは [`gas/tasks.gs`](gas/tasks.gs) にあります。
+カレンダーへの書き込みだけはサービスアカウントではなく**スクリプト所有者の権限**で
+行います（サービスアカウントで人のカレンダーに書くには「ドメイン全体の委任」が必要で、
+チェックリストのために持つ権限としては過大なため）。
+
 GAS のコードは [`gas/sync.gs`](gas/sync.gs) にあります。
 **鍵も原本のファイルIDもコードには含まれていません。**
 以下の2つをスクリプトプロパティに設定します。
@@ -118,6 +130,7 @@ GAS のコードは [`gas/sync.gs`](gas/sync.gs) にあります。
 | `FIREBASE_PROJECT_ID` | Firebase のプロジェクトID |
 | `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵の JSON 全文 |
 | `CHAT_WEBHOOK_URL` | Google Chat の Webhook URL（新着通知を使う場合のみ） |
+| `TASK_CALENDAR_ID` | チェックリストの期日を出す専用カレンダーのID（カレンダー連携を使う場合のみ） |
 
 > ⚠️ サービスアカウント鍵は**本物の秘密鍵**です。apiKey とは違い、
 > これがあればセキュリティルールを無視して全データを読み書きできます。
@@ -148,7 +161,7 @@ GAS のコードは [`gas/sync.gs`](gas/sync.gs) にあります。
 | `syncStatus` | `spreadsheet` | GAS のみ | 最終同期時刻・同期結果 |
 | `feedPosts` | 自動ID | メンバー | フィード投稿（Phase 2） |
 | `feedPosts/{id}/comments` | 自動ID | メンバー | コメント（Phase 2） |
-| `boardPosts` | 自動ID | メンバー | 掲示板（Phase 2） |
+| `boardPosts` | 自動ID | メンバー | 掲示板（Phase 2）＋チェックリスト |
 | `surveys` | 自動ID | メンバー | アンケート（Phase 2） |
 
 フィールドの詳細は `firestore.rules` のコメントを参照してください。
