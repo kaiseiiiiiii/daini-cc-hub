@@ -377,6 +377,13 @@ select.input{padding-right:8px;}
 .react-add{border-style:dashed; color:var(--color-text-mute); min-width:38px; justify-content:center;}
 .react-add-on{border-style:solid; border-color:var(--color-accent); color:var(--color-accent);}
 
+/* パレットを開いている間。数が多いので詰めて並べ、
+   選ぶための面であることが分かるよう地を敷く。 */
+.post-actions-picking{background:var(--color-bg); border:1px solid var(--color-border);
+  border-radius:var(--radius-md); padding:8px; margin-left:48px; gap:4px;}
+.post-actions-picking .react-btn{padding:3px 8px; font-size:16px; min-height:36px;}
+.post-actions-picking .comment-toggle-btn{margin-left:auto;}
+
 /* ══════════════════════════════════════════════════════════════════
    PC レイアウト（900px 以上）
    狭い画面は下部タブの1カラムのまま。ここは広い画面専用の骨組み。
@@ -677,7 +684,21 @@ import {
 // ── 静的な定義（実データ・個人情報は一切含めない） ──────────────
 // メンバー・チームのマスタは Firestore から取得する。
 // 公開リポジトリに社員のメールアドレスや氏名を置かないため。
-var REACTIONS = ["👍","🔥","💎","🎉","💪"];
+/**
+ * リアクションに使える絵文字。
+ *
+ * 並び順がそのままパレットの並びになる。よく使うものを先頭に置き、
+ * 「ありがとう」「おつかれ」まわりを厚めにしている。
+ *
+ * 増やすのは安全だが、減らすときは注意。ここから外した絵文字も
+ * 過去の投稿には残っているので、表示側では一覧に無いものも
+ * 押された分は出すようにしてある（renderFeedPost 参照）。
+ */
+var REACTIONS = [
+  "👍","🔥","💎","🎉","💪",
+  "👏","🙏","😊","✨","🚀",
+  "❤️","😂","🙌","☕","📈","👀"
+];
 var POST_TYPES = ["Thanks","お知らせ","雑談","質問","報告"];
 // ══════════════════════════════════════════════════════════════════
 //  第二CC の Mission / Vision / Value
@@ -2000,9 +2021,18 @@ function renderFeedPost(post){
   // 5種を常時並べると、0件のボタンが場所を取って
   // 「何件付いているか」が読み取りにくくなる。
   var picking = state.reactionPickerFor === post.id;
-  var shown = picking ? REACTIONS : REACTIONS.filter(function(e){
-    return (byEmoji[e]||[]).length > 0;
-  });
+  var shown;
+  if(picking){
+    shown = REACTIONS;
+  }else{
+    // 一覧の順で押されたものを出し、そのあとに
+    // 一覧から外れた絵文字（過去に押されたもの）を続ける。
+    // 絵文字を整理しても、押した記録が画面から消えないようにするため。
+    shown = REACTIONS.filter(function(e){ return (byEmoji[e]||[]).length > 0; });
+    Object.keys(byEmoji).forEach(function(e){
+      if(byEmoji[e].length > 0 && REACTIONS.indexOf(e) < 0) shown.push(e);
+    });
+  }
 
   var reactHtml = shown.map(function(emoji){
     var who = (byEmoji[emoji]||[]);
@@ -2064,7 +2094,7 @@ function renderFeedPost(post){
       renderTools("feed", post) +
     '</div>' +
     '<div class="post-text">'+esc(post.text)+'</div>' +
-    '<div class="post-actions">' + reactHtml +
+    '<div class="post-actions'+(picking?" post-actions-picking":"")+'">' + reactHtml +
       '<button class="comment-toggle-btn" data-act="comment-toggle" data-id="'+post.id+'">💬 '+(post.commentCount||0)+'</button>' +
       '<div class="react-peek" hidden></div>' +
     '</div>' +
