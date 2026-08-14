@@ -221,6 +221,13 @@ select.input{padding-right:8px;}
 .reader-chip-unread{border-color:color-mix(in srgb, var(--red) 35%, transparent); background:color-mix(in srgb, var(--red) 8%, var(--surface)); color:var(--text); font-weight:600;}
 .reader-chips-muted .reader-chip{opacity:0.6; font-size:11px;}
 
+/* 送信できない理由。ボタンの直前に出して、押した場所の近くで読ませる */
+.form-error{font-size:12px; font-weight:700; color:var(--red);
+  background:color-mix(in srgb, var(--red) 8%, transparent);
+  border:1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  border-radius:var(--radius-sm); padding:8px 10px;}
+.form-error[hidden]{display:none;}
+
 /* ── チェックリスト ──────────────────────────────────── */
 /* 連絡事項の本文と地続きに見えないよう、面を一段落として囲む。
    「読むところ」と「押すところ」を目で分けるため。 */
@@ -2027,6 +2034,7 @@ function renderComposer(){
       '<select id="feedFormTo" class="pickchip">'+toOpts+'</select>' +
       '<select id="feedFormVal" class="pickchip">'+valOpts+'</select>' +
       '<select id="feedFormType" class="pickchip pickchip-type">'+typeOpts+'</select>' +
+      errorSlot("feedFormError") +
       '<button class="btn-post" data-act="feed-submit">投稿</button>' +
     '</div>' +
   '</div>';
@@ -2078,6 +2086,7 @@ function renderFeedEditForm(post){
       '</div>' +
       '<select id="editVal" class="input">'+valOpts+'</select>' +
       '<textarea id="editText" class="input textarea" rows="3">'+esc(post.text)+'</textarea>' +
+      errorSlot("editFormError") +
       '<div class="form-row">' +
         '<button class="btn-primary" data-act="edit-save" data-kind="feed" data-id="'+post.id+'">保存する</button>' +
         '<button class="btn-ghost" data-act="edit-cancel">キャンセル</button>' +
@@ -2245,8 +2254,9 @@ function renderBoardForm(){
         '<select id="boardFormCat" class="input" style="flex:1">'+catOpts+'</select>' +
         '<label class="checkbox-label nowrap"><input type="checkbox" id="boardFormPinned"> 📌 固定</label>' +
       '</div>' +
-      '<textarea id="boardFormBody" class="input textarea" placeholder="内容..." rows="3"></textarea>' +
+      '<textarea id="boardFormBody" class="input textarea" placeholder="内容（任意）..." rows="3"></textarea>' +
       renderTaskFields("boardForm", null) +
+      errorSlot("boardFormError") +
       '<button class="btn-primary full" data-act="board-submit">投稿する</button>' +
     '</div>' +
   '</div>';
@@ -2470,6 +2480,7 @@ function renderBoardEditForm(post){
       '</div>' +
       '<textarea id="editBody" class="input textarea" rows="3">'+esc(post.body)+'</textarea>' +
       renderTaskFields("editBoard", post) +
+      errorSlot("editFormError") +
       '<div class="form-row">' +
         '<button class="btn-primary" data-act="edit-save" data-kind="board" data-id="'+post.id+'">保存する</button>' +
         '<button class="btn-ghost" data-act="edit-cancel">キャンセル</button>' +
@@ -2499,7 +2510,8 @@ function renderBoardPost(post){
       '<span class="board-time">'+tAgo(post.createdAtMs)+(post.pending?' · 送信中':'')+'</span>' +
     '</div>' +
     '<div class="board-title">'+esc(post.title)+editedMark(post)+'</div>' +
-    '<div class="board-body">'+esc(post.body)+'</div>' +
+    // 本文は任意。空のまま出すと、余白だけの行が入って間延びする。
+    (post.body ? '<div class="board-body">'+esc(post.body)+'</div>' : "") +
     renderTaskBlock(post) +
     renderTools("board", post) +
     '<div class="board-footer">' + avatar(post.authorId,18) +
@@ -2669,6 +2681,7 @@ function renderSurveyForm(){
         '<label class="checkbox-label nowrap"><input type="checkbox" id="surveyFormMulti"> 複数選択可</label>' +
         '<input type="date" id="surveyFormDeadline" class="input" style="flex:1">' +
       '</div>' +
+      errorSlot("surveyFormError") +
       '<button class="btn-primary" data-act="survey-submit">作成する</button>' +
     '</div>' +
   '</div>';
@@ -2706,6 +2719,7 @@ function renderSurveyEditForm(sv){
         '<input type="date" id="editDeadline" class="input" style="flex:1" value="'+esc(sv.deadline||"")+'">' +
       '</div>' +
       '<label class="checkbox-label"><input type="checkbox" id="editClosed"'+(sv.closed?" checked":"")+'> 締め切る（投票を止める）</label>' +
+      errorSlot("editFormError") +
       '<div class="form-row">' +
         '<button class="btn-primary" data-act="edit-save" data-kind="survey" data-id="'+sv.id+'">保存する</button>' +
         '<button class="btn-ghost" data-act="edit-cancel">キャンセル</button>' +
@@ -3967,6 +3981,41 @@ async function write(label, fn, exclusive){
 }
 
 /** 投稿・コメントに共通で載せるフィールド（Phase 4 の編集・削除で使う） */
+/**
+ * 送信をやめる理由をフォームの中に出す。返り値は「続けてよいか」。
+ *
+ *   if(!refuse("boardFormError", !title, "タイトルを入れてください")) return;
+ *
+ * 以前は入力が足りないと黙って return していた。押しても何も起きず、
+ * 何が足りないのかも分からないので、壊れているのと区別が付かなかった。
+ *
+ * ここで render() を呼ばないのは、フォームの入力欄が state ではなく
+ * DOM に値を持っているため。描き直すと、理由を出すために
+ * 入力途中の本文を消してしまう。差し込み先だけを直接書き換える。
+ *
+ * 差し込み先のIDをフォームごとに分けているのは、投稿フォームと編集フォームが
+ * 同時に開いていることがあり、共通のIDだと違うフォームに理由が出るため。
+ */
+function refuse(slotId, bad, message){
+  if(!bad) return true;
+  var slot = document.getElementById(slotId);
+  if(slot){
+    slot.textContent = message;
+    slot.hidden = false;
+    slot.scrollIntoView({ block:"nearest" });
+  }else{
+    // 差し込み先が無いフォームからの呼び出し。消えるものが無いので描き直してよい。
+    state.notice = message;
+    render();
+  }
+  return false;
+}
+
+/** refuse() が書き込む空の差し込み先 */
+function errorSlot(slotId){
+  return '<div class="form-error" id="'+slotId+'" role="alert" hidden></div>';
+}
+
 function baseFields(){
   return {
     authorId: currentUserId(),
@@ -3981,7 +4030,7 @@ function baseFields(){
 
 function submitFeedPost(){
   var text = document.getElementById("feedFormText").value.trim();
-  if(!text) return;
+  if(!refuse("feedFormError", !text, "内容を入れてください")) return;
   var type = document.getElementById("feedFormType").value;
   var to = document.getElementById("feedFormTo").value;
   var val = document.getElementById("feedFormVal").value;
@@ -4023,7 +4072,9 @@ function submitComment(postId, text){
 function submitBoardPost(){
   var title = document.getElementById("boardFormTitle").value.trim();
   var body = document.getElementById("boardFormBody").value.trim();
-  if(!title || !body) return;
+  // 本文は任意。「8月アップデート・8/21」のように、タイトルと期日だけで
+  // 用が済むタスクがある（もとのスプレッドシートも項目と期日だけだった）。
+  if(!refuse("boardFormError", !title, "タイトルを入れてください")) return;
   var payload = baseFields();
   payload.title = title;
   payload.body = body;
@@ -4072,7 +4123,8 @@ function markBoardRead(id){
 function submitSurvey(){
   var title = document.getElementById("surveyFormTitle").value.trim();
   var labels = Array.prototype.map.call(document.querySelectorAll(".survey-opt"), function(i){ return i.value.trim(); }).filter(Boolean);
-  if(!title || labels.length<2) return;
+  if(!refuse("surveyFormError", !title, "質問内容を入れてください")) return;
+  if(!refuse("surveyFormError", labels.length < 2, "選択肢を2つ以上入れてください")) return;
   // 選択肢は id と label に分ける。label を直しても投票が失われないようにするため。
   var options = labels.map(function(label, i){ return { id: "o" + (i+1), label: label }; });
   var payload = baseFields();
@@ -4106,7 +4158,7 @@ function cancelEdit(){ state.editing = null; render(); }
 
 function saveFeedEdit(id){
   var text = document.getElementById("editText").value.trim();
-  if(!text) return;
+  if(!refuse("editFormError", !text, "内容を入れてください")) return;
   var patch = {
     text: text,
     type: document.getElementById("editType").value,
@@ -4122,7 +4174,7 @@ function saveFeedEdit(id){
 function saveBoardEdit(id){
   var title = document.getElementById("editTitle").value.trim();
   var body  = document.getElementById("editBody").value.trim();
-  if(!title || !body) return;
+  if(!refuse("editFormError", !title, "タイトルを入れてください")) return;
   var task = readTaskFields("editBoard");
   var patch = {
     title: title,
@@ -4144,7 +4196,7 @@ function saveSurveyEdit(id){
   var sv = state.surveys.filter(function(s){ return s.id===id; })[0];
   if(!sv) return;
   var title = document.getElementById("editTitle").value.trim();
-  if(!title) return;
+  if(!refuse("editFormError", !title, "質問内容を入れてください")) return;
   // 選択肢は id を保ったままラベルだけ差し替える。
   // 追加・削除を許すと、既に入っている票の行き場が無くなるため。
   var labels = Array.prototype.map.call(document.querySelectorAll(".edit-opt"), function(i){ return i.value.trim(); });
