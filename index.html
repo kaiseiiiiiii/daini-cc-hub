@@ -300,6 +300,28 @@ select.input{padding-right:8px;}
   font-family:inherit; font-size:15px; font-weight:700; cursor:pointer;}
 .btn-post:hover{background:var(--color-accent-deep);}
 
+/* ── 目標進捗（広い画面） ── */
+.prog-cols{display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:20px; align-items:start;}
+.prog-main{min-width:0;}
+.prog-side{display:flex; flex-direction:column; gap:12px;}
+.prog-bar-marked{position:relative; overflow:visible;}
+.prog-marker{position:absolute; top:-5px; width:2px; height:20px;
+  background:var(--color-text); border-radius:1px;}
+.prog-plan{margin-top:6px; font-size:12px; color:var(--color-text-sub);}
+
+.wk-card{padding:14px 16px;}
+.wk-grid{display:flex; align-items:flex-end; gap:8px; margin:10px 0 6px;}
+.wk{flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:4px;}
+.wk-col{position:relative; width:100%; height:110px; display:flex; align-items:flex-end;
+  background:var(--color-track); border-radius:var(--radius-sm); overflow:visible;}
+.wk-bar{width:100%; background:var(--color-accent); border-radius:var(--radius-sm); min-height:2px;}
+.wk-bar-none{background:var(--color-border);}
+.wk-target{position:absolute; left:-2px; right:-2px; height:2px; background:var(--color-text);
+  opacity:.55;}
+.wk-label{font-size:11px; color:var(--color-text-sub); white-space:nowrap;}
+.wk-val{font-size:12px; font-weight:700;}
+.wk-legend{font-size:11px; color:var(--color-text-mute); line-height:1.7;}
+
 /* ── 本日のシフトサマリー（広い画面） ── */
 .tsum{margin-bottom:14px;}
 .tsum-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px;}
@@ -3146,9 +3168,35 @@ function computeProgress(){
   var enough   = totalHours > 0 && doneHours >= totalHours * 0.1;
   var forecast = (enough && nowPerHour !== null) ? nowPerHour * totalHours : null;
 
+  // 想定ライン＝確定している最終日までの目標の積み上げ。
+  // 「いま何%か」だけだと月初なら低くて当然で、遅れているのか判断できない。
+  // 同じ日までの目標と並べて初めて、進み具合の意味が出る。
+  var planned = 0;
+  days.forEach(function(d, i){
+    if(lastActualIdx >= 0 && i <= lastActualIdx) planned += (d.dailyTarget || 0);
+  });
+
+  // 週ごとの実績。月曜起点で、日付ラベルから週を切り出す。
+  var weeks = [], cur = null;
+  days.forEach(function(d, i){
+    var wd = d.weekday;
+    if(cur === null || wd === "月"){
+      cur = { label: d.date, actual: 0, target: 0, hasActual: false };
+      weeks.push(cur);
+    }
+    cur.target += (d.dailyTarget || 0);
+    if(d.dailyActual !== null && d.dailyActual !== undefined){
+      cur.actual += d.dailyActual;
+      cur.hasActual = true;
+    }
+  });
+
   return {
     monthTarget: monthTarget,
     actual: actual,
+    planned: planned,
+    plannedPct: monthTarget > 0 ? (planned / monthTarget * 100) : 0,
+    weeks: weeks,
     remaining: remaining,
     pct: monthTarget > 0 ? (actual / monthTarget * 100) : 0,
     lastActualDate: lastActualIdx >= 0 ? days[lastActualIdx].date : null,
@@ -3239,9 +3287,7 @@ function renderProgress(){
     p.monthMatches ? hoursText(p.leftHours) : "—",
     p.monthMatches ? "残り "+p.leftDays+"日" : "シフトの月が一致しません");
 
-  return '<div class="tab-pad">' +
-    renderSyncBar() +
-    confirmNote +
+  var main = '' +
     '<div class="card prog-head">' +
       '<div class="prog-head-lead">'+esc(h.lead)+'</div>' +
       '<div class="prog-head-main">'+esc(h.main)+'</div>' +
@@ -3252,7 +3298,18 @@ function renderProgress(){
         '<span class="prog-bar-name">手配粗利額</span>' +
         '<span class="prog-bar-pct">'+(Math.round(p.pct*10)/10)+'%</span>' +
       '</div>' +
-      '<div class="prog-bar-bg"><div class="prog-bar" style="width:'+pct+'%"></div></div>' +
+      // 想定ラインのマーカー。確定日までの目標の位置を重ねる。
+      '<div class="prog-bar-bg prog-bar-marked">' +
+        '<div class="prog-bar" style="width:'+pct+'%"></div>' +
+        (p.lastActualDate && p.plannedPct > 0 && p.plannedPct < 100
+          ? '<span class="prog-marker" style="left:'+Math.min(100, p.plannedPct)+'%" ' +
+            'title="'+esc(p.lastActualDate)+' 時点の想定ライン"></span>' : '') +
+      '</div>' +
+      (p.lastActualDate && p.plannedPct > 0
+        ? '<div class="prog-plan">想定ライン '+(Math.round(p.plannedPct*10)/10)+'%'+
+          '（'+esc(p.lastActualDate)+' 時点）・実績との差 '+
+          (p.pct - p.plannedPct >= 0 ? "+" : "−")+
+          (Math.round(Math.abs(p.pct - p.plannedPct)*10)/10)+'pt</div>' : '') +
       '<div class="prog-bar-labels">' +
         '<span>実績 '+esc(yen(p.actual))+'</span>' +
         '<span>目標 '+esc(yen(p.monthTarget))+'</span>' +
@@ -3264,8 +3321,55 @@ function renderProgress(){
     (p.monthTarget > 0 && p.actual >= p.monthTarget
       ? '<div class="in-strip in-strip-happy">' + inChar("happy", "達成です！", 88) + '</div>'
       : "") +
-    renderKpiSection() +
+    renderKpiSection();
+
+  if(isWide()){
+    return '<div class="prog-cols">' +
+      '<div class="prog-main">' + renderSyncBar() + confirmNote + main + '</div>' +
+      '<div class="prog-side">' + renderWeeklyChart(p) + '</div>' +
+    '</div>';
+  }
+  return '<div class="tab-pad">' + renderSyncBar() + confirmNote + main +
+    renderWeeklyChart(p) + '</div>';
+}
+
+/**
+ * 週ごとの積み上げ。棒の高さは実績、細い線がその週の目標。
+ * 月の合計だけだと「どこで落ちたか」が分からないので、週単位で並べる。
+ * 実績が入っていない週は薄いままにして、0件と未確定を混同させない。
+ */
+function renderWeeklyChart(p){
+  var weeks = p.weeks || [];
+  if(!weeks.length) return "";
+  var max = 0;
+  weeks.forEach(function(w){ max = Math.max(max, w.actual, w.target); });
+  if(max <= 0) return "";
+
+  var bars = weeks.map(function(w, i){
+    var ah = Math.round(w.actual / max * 100);
+    var th = Math.round(w.target / max * 100);
+    return '<div class="wk">' +
+      '<div class="wk-col">' +
+        (w.target > 0 ? '<span class="wk-target" style="bottom:'+th+'%"></span>' : '') +
+        '<div class="wk-bar'+(w.hasActual?"":" wk-bar-none")+'" style="height:'+ah+'%"></div>' +
+      '</div>' +
+      '<div class="wk-label">'+esc(w.label)+'〜</div>' +
+      '<div class="wk-val">'+(w.hasActual ? esc(yenShort(w.actual)) : "—")+'</div>' +
+    '</div>';
+  }).join("");
+
+  return '<div class="card wk-card">' +
+    '<div class="side-title">週ごとの積み上げ</div>' +
+    '<div class="wk-grid">'+bars+'</div>' +
+    '<div class="wk-legend">棒＝実績　／　横線＝その週の目標</div>' +
   '</div>';
+}
+
+/** グラフの脇に置く短い金額表記 */
+function yenShort(n){
+  if(n === null || n === undefined) return "—";
+  if(Math.abs(n) >= 10000) return Math.round(n/10000*10)/10 + "万";
+  return String(Math.round(n));
 }
 
 // ══════════════════════════════════════════════════════════════════
