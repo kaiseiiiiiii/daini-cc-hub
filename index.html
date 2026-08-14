@@ -347,6 +347,38 @@ select.input{padding-right:8px;}
   font-size:14px; font-weight:700;}
 .task-check-done .task-box{background:var(--green); border-color:var(--green); color:#fff;}
 .task-note{font-size:12px; color:var(--color-text-mute); padding:6px 2px;}
+
+/* 人ごとの期日（カード内の「誰がいつまでに」） */
+.perdue-summary{margin-top:10px; padding-top:10px; border-top:1px solid var(--color-border);}
+.perdue-summary-label{font-size:11px; font-weight:700; color:var(--color-text-mute);
+  letter-spacing:0.04em; margin-bottom:6px;}
+.perdue-line{display:flex; gap:8px; align-items:flex-start; padding:3px 0;}
+.perdue-date{flex:none; font-size:12px; font-weight:700; color:var(--color-text-sub);
+  min-width:92px;}
+.perdue-soon{color:var(--color-dusk-ink);}
+.perdue-late{color:var(--red);}
+.perdue-who{display:flex; flex-wrap:wrap; gap:4px;}
+.perdue-chip{display:inline-flex; align-items:center; gap:4px; font-size:12px;
+  border:1px solid var(--color-border); border-radius:var(--radius-pill);
+  padding:1px 8px 1px 3px; background:var(--color-surface); color:var(--color-text-sub);}
+.perdue-chip-me{border-color:var(--color-accent); font-weight:700; color:var(--color-accent-ink);}
+.perdue-chip-done{opacity:0.55;}
+.perdue-check{color:var(--green); font-weight:700;}
+
+/* 人ごとの期日の入力欄 */
+.perdue-list{display:flex; flex-direction:column; gap:4px; padding:6px 0 2px;}
+.perdue-row{display:flex; align-items:center; gap:8px;}
+.perdue-name{flex:1; min-width:0; font-size:12px; color:var(--color-text-sub);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.perdue-input{flex:none; width:150px; height:36px; font-size:12px;}
+
+/* カレンダー一覧の名前 */
+.cal-row-who{flex:none; display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end;
+  max-width:52%;}
+.cal-who{font-size:11px; color:var(--color-text-sub); background:var(--color-track);
+  border-radius:var(--radius-pill); padding:0 6px;}
+.cal-who-me{background:var(--color-accent-tint); color:var(--color-accent-ink); font-weight:700;}
+.cal-who-done{opacity:0.5;}
 .sbadge-late{background:color-mix(in srgb, var(--red) 14%, transparent); color:var(--red);}
 
 /* 入力欄（投稿フォーム・編集フォーム共用） */
@@ -2446,22 +2478,64 @@ function taskNeedsMe(post){
       && !taskDone(post, currentUserId());
 }
 
-/** 期日の近い順に並べるためのキー。日付が壊れているものは末尾へ */
+/**
+ * その人の期日。
+ *
+ * dueBy に本人の分が入っていればそれ、無ければ全体の期日（dueDate）。
+ * 「全員 8/18、ただし1人だけ 8/21」のような割り振りを、
+ * 例外だけ持つ形で表す。全員分を dueBy に並べると、あとから
+ * 全体の期日を直したときに誰にも反映されない。
+ */
+function memberDue(post, memberId){
+  var by = post.dueBy || {};
+  return by[memberId] || post.dueDate || null;
+}
+
+/** 人ごとの期日が1件でも入っているか */
+function hasPerMemberDue(post){
+  var by = post.dueBy;
+  if(!by) return false;
+  for(var k in by) if(by[k]) return true;
+  return false;
+}
+
+/**
+ * 期日ごとに、その日が締め切りの対象者をまとめる。
+ * カレンダーは「日付 → 誰」で見るものなので、この向きに直しておく。
+ */
+function taskDueGroups(post){
+  var byDate = {};
+  taskTargets(post).forEach(function(m){
+    var d = memberDue(post, m.id);
+    if(!d) return;
+    (byDate[d] = byDate[d] || []).push(m);
+  });
+  return byDate;
+}
+
+/** 自分の期日の近い順に並べるためのキー。日付が壊れているものは末尾へ */
 function dueMs(post){
-  var d = ymdToDate(post.dueDate);
+  var d = ymdToDate(memberDue(post, currentUserId()));
   return d ? d.getTime() : 8.64e15;
 }
 
-/** 期日のバッジ。残り2日以内は色を変える（当日に初めて気づく事態を避ける） */
+/**
+ * 期日のバッジ。残り2日以内は色を変える（当日に初めて気づく事態を避ける）。
+ * 人ごとに期日が違う場合は自分の期日を出す。全体の期日を出しても
+ * 自分が動く日付が分からず、判断の材料にならない。
+ */
 function taskBadge(post){
-  var d = ymdDaysLeft(post.dueDate);
+  var mine = memberDue(post, currentUserId());
+  var d = ymdDaysLeft(mine);
   if(d === null) return "";
-  var label = ymdLabel(post.dueDate);
+  var label = ymdLabel(mine);
   var cls = "", text;
   if(d < 0){        cls = " sbadge-late"; text = "期限切れ"; }
   else if(d === 0){ cls = " sbadge-soon"; text = "本日まで"; }
   else {            cls = (d <= 2 ? " sbadge-soon" : ""); text = "残り"+d+"日"; }
-  return '<span class="sbadge'+cls+'">📅 '+text+' · '+esc(label)+'</span>';
+  // 自分の分だけ別日になっているときは、そうと分かるようにしておく
+  var own = hasPerMemberDue(post) && (post.dueBy||{})[currentUserId()] ? "あなたの期日 " : "";
+  return '<span class="sbadge'+cls+'">📅 '+own+text+' · '+esc(label)+'</span>';
 }
 
 /**
@@ -2482,12 +2556,31 @@ function renderTaskFields(prefix, post){
       avatar(m.id, 18) + '<span>'+esc(m.displayName)+'</span>' +
     '</label>';
   }).join("");
+  // 人ごとの期日。空欄なら全体の期日に従う。
+  // 全員分の欄を出すのは、対象者のチェックを触っても描き直さない作りのため
+  // （対象者に合わせて欄を出し入れすると、状態がずれる）。
+  var by = (post && post.dueBy) || {};
+  var perRows = session.members.map(function(m){
+    return '<label class="perdue-row">' +
+      avatar(m.id, 20) +
+      '<span class="perdue-name">'+esc(m.displayName)+'</span>' +
+      '<input type="date" class="input perdue-input '+prefix+'PerDue" ' +
+        'data-member="'+esc(m.id)+'" value="'+esc(by[m.id] || "")+'" ' +
+        'aria-label="'+esc(m.displayName)+'の期日">' +
+    '</label>';
+  }).join("");
+  var anyPer = Object.keys(by).length > 0;
+
   return '<div class="task-fields">' +
     '<label class="task-fields-label" for="'+prefix+'Due">📅 期日（入れるとチェックリストになります）</label>' +
     '<input type="date" id="'+prefix+'Due" class="input" value="'+esc(due)+'">' +
     '<details class="target-picker"'+(all?"":" open")+'>' +
       '<summary>対象者を選ぶ<span class="target-hint">既定は全員</span></summary>' +
       '<div class="target-chips">'+chips+'</div>' +
+    '</details>' +
+    '<details class="target-picker"'+(anyPer?" open":"")+'>' +
+      '<summary>人ごとに期日を変える<span class="target-hint">空欄なら上の期日</span></summary>' +
+      '<div class="perdue-list">'+perRows+'</div>' +
     '</details>' +
   '</div>';
 }
@@ -2504,7 +2597,49 @@ function readTaskFields(prefix){
   // 全員選ばれている／誰も選ばれていないときは null（＝全員）で保存する。
   // 全員を列挙して残すと、あとから入った人が過去のタスクの対象から抜け落ちる。
   var targets = (picked.length === 0 || picked.length === total) ? null : picked;
-  return { dueDate: due, checkTargets: due ? targets : null };
+
+  // 人ごとの期日は「全体と違うものだけ」を残す。全体と同じ値まで書き込むと、
+  // あとから全体の期日を直したときに、その人だけ古い日付のまま取り残される。
+  var dueBy = {};
+  Array.prototype.forEach.call(document.querySelectorAll("." + prefix + "PerDue"), function(inp){
+    var v = (inp.value || "").trim();
+    if(v && v !== due) dueBy[inp.getAttribute("data-member")] = v;
+  });
+
+  return {
+    dueDate: due,
+    checkTargets: due ? targets : null,
+    dueBy: due ? dueBy : {}
+  };
+}
+
+/**
+ * 「誰がいつまでか」の一覧。期日の早い順に並べる。
+ * 終わった人は薄くするだけで消さない（割り振り自体は残す）。
+ */
+function renderPerDueList(post){
+  var groups = taskDueGroups(post);
+  var dates = Object.keys(groups).sort();
+  var me = currentUserId();
+  var rows = dates.map(function(ymd){
+    var left = ymdDaysLeft(ymd);
+    var cls = left === null ? "" : (left < 0 ? " perdue-late" : (left <= 2 ? " perdue-soon" : ""));
+    var who = groups[ymd].map(function(m){
+      var isDone = taskDone(post, m.id);
+      return '<span class="perdue-chip'+(isDone?" perdue-chip-done":"")+
+        (m.id===me?" perdue-chip-me":"")+'">' +
+        avatar(m.id, 16) + '<span>'+esc(m.displayName)+'</span>' +
+        (isDone ? '<span class="perdue-check">✓</span>' : '') +
+      '</span>';
+    }).join("");
+    return '<div class="perdue-line">' +
+      '<span class="perdue-date'+cls+'">'+esc(ymdLabel(ymd))+'まで</span>' +
+      '<span class="perdue-who">'+who+'</span>' +
+    '</div>';
+  }).join("");
+  return '<div class="perdue-summary">' +
+    '<div class="perdue-summary-label">誰がいつまでに</div>' + rows +
+  '</div>';
 }
 
 /** 投稿カードの中のチェックリスト部分 */
@@ -2537,6 +2672,10 @@ function renderTaskBlock(post){
       '</button>' +
     '</div>' +
     mine +
+    // 人ごとに期日が違うときは、誰がいつまでなのかを並べる。
+    // カードの中で分かるようにしておかないと、割り振った本人以外は
+    // カレンダーを開くまで自分の日付を知る手段がない。
+    (hasPerMemberDue(post) ? renderPerDueList(post) : "") +
     (isOpen ? renderPeoplePanel({
       pendingLabel:"未完了", pending:pending,
       doneLabel:"完了",     done:done,
@@ -2565,14 +2704,27 @@ function renderTaskCalendar(){
   var shown = new Date(now.getFullYear(), now.getMonth() + (state.calMonth || 0), 1);
   var year = shown.getFullYear(), month = shown.getMonth();
 
-  // 日付 → その日が期日のタスク
-  var byDay = {};
+  // 「タスク×その日が期日の人」を1件として集める。
+  // タスク単位にすると、人ごとに期日が違うときに1つの日付しか置けない。
+  var entries = [];
   tasks.forEach(function(p){
-    var d = ymdToDate(p.dueDate);
-    if(!d || d.getFullYear() !== year || d.getMonth() !== month) return;
-    var k = d.getDate();
-    (byDay[k] = byDay[k] || []).push(p);
+    var groups = taskDueGroups(p);
+    Object.keys(groups).forEach(function(ymd){
+      var d = ymdToDate(ymd);
+      if(!d || d.getFullYear() !== year || d.getMonth() !== month) return;
+      var who = groups[ymd];
+      entries.push({
+        post: p, ymd: ymd, day: d.getDate(), who: who,
+        pending: who.filter(function(m){ return !taskDone(p, m.id); }),
+        // 人ごとの期日が入っていれば名前を出す。全員同じ期日なら人数で足りる。
+        named: hasPerMemberDue(p),
+        mine: who.some(function(m){ return m.id === currentUserId(); }) && taskNeedsMe(p)
+      });
+    });
   });
+
+  var byDay = {};
+  entries.forEach(function(e){ (byDay[e.day] = byDay[e.day] || []).push(e); });
 
   var todayY = new Date(); todayY.setHours(0,0,0,0);
   var isThisMonth = todayY.getFullYear() === year && todayY.getMonth() === month;
@@ -2586,16 +2738,16 @@ function renderTaskCalendar(){
     var list = byDay[day] || [];
     var isToday = isThisMonth && todayY.getDate() === day;
     var dow = new Date(year, month, day).getDay();
-    // その日のタスクに自分の未完了があるか。声をかけられる側の視点で色を変える。
-    var mineLeft = list.some(taskNeedsMe);
+    // その日に自分の締め切りがあるか。声をかけられる側の視点で色を変える。
+    var mineLeft = list.some(function(e){ return e.mine; });
     var cls = "cal-cell";
     if(isToday) cls += " cal-today";
     if(dow === 0) cls += " cal-sun";
     if(dow === 6) cls += " cal-sat";
     if(list.length) cls += mineLeft ? " cal-has cal-has-mine" : " cal-has";
 
-    var pips = list.slice(0, 3).map(function(p){
-      return '<span class="cal-pip'+(taskNeedsMe(p)?" cal-pip-mine":"")+'" title="'+esc(p.title)+'"></span>';
+    var pips = list.slice(0, 3).map(function(e){
+      return '<span class="cal-pip'+(e.mine?" cal-pip-mine":"")+'" title="'+esc(e.post.title)+'"></span>';
     }).join("");
     var more = list.length > 3 ? '<span class="cal-more">+'+(list.length-3)+'</span>' : '';
 
@@ -2605,20 +2757,31 @@ function renderTaskCalendar(){
     '</div>';
   }
 
-  // 表示している月の期日を、日付順で下に並べる。
-  // 点だけでは「何の期日か」が分からないため。
-  var listed = tasks.filter(function(p){
-    var d = ymdToDate(p.dueDate);
-    return d && d.getFullYear() === year && d.getMonth() === month;
-  }).sort(function(a,b){ return dueMs(a) - dueMs(b); });
-
-  var rows = listed.map(function(p){
-    var d = ymdToDate(p.dueDate);
-    var pending = taskPendingList(p).length;
+  // 表示している月の期日を日付順で下に並べる。点だけでは何の期日か分からない。
+  // 人ごとに期日を割り振ってあるものは「誰が」まで出す
+  //（「◯◯さんは8/21まで」が読み取れる形にする）。
+  var rows = entries.slice().sort(function(a, b){
+    if(a.ymd !== b.ymd) return a.ymd < b.ymd ? -1 : 1;
+    return a.post.title < b.post.title ? -1 : 1;
+  }).map(function(e){
+    var d = ymdToDate(e.ymd);
+    var right;
+    if(e.named){
+      // 終わった人は薄く、残っている人はそのまま出す
+      right = '<span class="cal-row-who">' + e.who.map(function(m){
+        var isDone = taskDone(e.post, m.id);
+        return '<span class="cal-who'+(isDone?" cal-who-done":"")+
+          (m.id===currentUserId()?" cal-who-me":"")+'">'+esc(m.displayName)+
+          (isDone?"✓":"")+'</span>';
+      }).join("") + '</span>';
+    }else{
+      right = '<span class="cal-row-left">' +
+        (e.pending.length ? '未完了 '+e.pending.length+'名' : '完了') + '</span>';
+    }
     return '<div class="cal-row">' +
       '<span class="cal-row-date">'+(d.getMonth()+1)+'/'+d.getDate()+'</span>' +
-      '<span class="cal-row-title'+(taskNeedsMe(p)?" cal-row-mine":"")+'">'+esc(p.title)+'</span>' +
-      '<span class="cal-row-left">'+(pending ? '未完了 '+pending+'名' : '完了')+'</span>' +
+      '<span class="cal-row-title'+(e.mine?" cal-row-mine":"")+'">'+esc(e.post.title)+'</span>' +
+      right +
     '</div>';
   }).join("");
 
@@ -2647,7 +2810,9 @@ function renderMyTasks(){
   var mine = state.board.filter(taskNeedsMe).sort(function(a,b){ return dueMs(a) - dueMs(b); });
   if(!mine.length) return "";
   var rows = mine.map(function(p){
-    var d = ymdDaysLeft(p.dueDate);
+    // 自分の期日で数える。全体の期日で出すと、自分だけ別日を割り振られた人に
+    // 間違った残り日数を見せることになる。
+    var d = ymdDaysLeft(memberDue(p, currentUserId()));
     var cls = d === null ? "" : (d < 0 ? " mytask-due-late" : (d <= 2 ? " mytask-due-soon" : ""));
     var text = d === null ? "" : (d < 0 ? "期限切れ" : (d === 0 ? "本日" : "残り"+d+"日"));
     return '<button class="mytask-row" data-act="task-toggle" data-id="'+p.id+'">' +
@@ -4639,6 +4804,7 @@ function submitBoardPost(){
   var task = readTaskFields("boardForm");
   payload.dueDate = task.dueDate;
   payload.checkTargets = task.checkTargets;
+  payload.dueBy = task.dueBy;
   // 既読とは違い、作成者も未完了から始める。作った本人が
   // やらなくていいとは限らない（自分にも課すのが普通の運用）。
   payload.doneBy = {};
@@ -4772,6 +4938,7 @@ function saveBoardEdit(id){
     // 誰が終わらせたかの記録を、期日の消し忘れの直しで失わせない。
     dueDate: task.dueDate,
     checkTargets: task.checkTargets,
+    dueBy: task.dueBy,
     edited: true,
     updatedAt: serverTimestamp()
   };

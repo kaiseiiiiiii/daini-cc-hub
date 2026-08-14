@@ -61,16 +61,30 @@ function remindDueTasks() {
     var names = fetchMemberIdNameMap_(projectId, token);
     var activeIds = fetchActiveMemberIds_(projectId, token);
 
+    // 「タスク×期日」を1件として組み立てる。人ごとに期日が違う場合、
+    // タスク単位で判定すると、別日を割り振られた人を間違った日に催促する。
     var buckets = { overdue: [], today: [], tomorrow: [] };
     posts.forEach(function (p) {
-      var left = daysLeft_(p.dueDate);
-      if (left === null) return;
       var pending = pendingMemberIds_(p, activeIds);
       if (!pending.length) return;                       // 全員終わっているものは促さない
-      var row = { post: p, pending: pending, left: left };
-      if (left === 0) buckets.today.push(row);
-      else if (left === 1) buckets.tomorrow.push(row);
-      else if (left < 0 && left >= -OVERDUE_REMIND_DAYS) buckets.overdue.push(row);
+
+      // 期日ごとに未完了者をまとめる
+      var byDate = {};
+      pending.forEach(function (id) {
+        var ymd = memberDue_(p, id);
+        if (!ymd) return;
+        (byDate[ymd] = byDate[ymd] || []).push(id);
+      });
+
+      Object.keys(byDate).forEach(function (ymd) {
+        var left = daysLeft_(ymd);
+        if (left === null) return;
+        var row = { post: p, pending: byDate[ymd], left: left,
+                    ymd: ymd, named: hasPerMemberDue_(p) };
+        if (left === 0) buckets.today.push(row);
+        else if (left === 1) buckets.tomorrow.push(row);
+        else if (left < 0 && left >= -OVERDUE_REMIND_DAYS) buckets.overdue.push(row);
+      });
     });
 
     var total = buckets.overdue.length + buckets.today.length + buckets.tomorrow.length;
@@ -139,8 +153,33 @@ function mapBoardPost_(d) {
     dueDate: fsStr_(f.dueDate),                 // 無ければ ""
     deleted: fsBool_(f.deleted),
     checkTargets: fsStrList_(f.checkTargets),   // 空配列は「全員」
-    doneBy: fsMapKeys_(f.doneBy)
+    doneBy: fsMapKeys_(f.doneBy),
+    dueBy: fsStrMap_(f.dueBy)                   // 人ごとの期日（例外だけ）
   };
+}
+
+/** マップフィールドを {キー: 文字列} にする。dueBy の取り出しに使う */
+function fsStrMap_(v) {
+  var out = {};
+  if (!v || !v.mapValue || !v.mapValue.fields) return out;
+  var f = v.mapValue.fields;
+  Object.keys(f).forEach(function (k) {
+    var s = f[k] && f[k].stringValue;
+    if (s) out[k] = s;
+  });
+  return out;
+}
+
+/**
+ * その人の期日。dueBy に本人の分があればそれ、無ければ全体の期日。
+ * アプリ側の memberDue と同じ規則。
+ */
+function memberDue_(post, memberId) {
+  return post.dueBy[memberId] || post.dueDate || "";
+}
+
+function hasPerMemberDue_(post) {
+  return Object.keys(post.dueBy).length > 0;
 }
 
 /** 配列フィールドを文字列配列にする。null / 未設定は空配列 */
@@ -241,7 +280,11 @@ function appendRemindGroup_(lines, label, rows, names, showDays) {
     var rest = r.pending.length - REMIND_NAME_MAX;
     if (rest > 0) who += " ほか" + rest + "名";
     var suffix = showDays ? "（" + (-r.left) + "日超過）" : "";
-    lines.push("• " + r.post.title + suffix + " — 未完了 " + r.pending.length + "名: " + who);
+    // 人ごとに期日を割り振ってある場合は、その日付も出す。
+    // 同じタスクが別の日付で何度も並ぶので、日付が無いと区別が付かない。
+    var when = r.named ? "［" + r.ymd + "］" : "";
+    lines.push("• " + r.post.title + when + suffix +
+      " — 未完了 " + r.pending.length + "名: " + who);
   });
 }
 
@@ -328,19 +371,30 @@ function whyNoRemind() {
   }
 
   tasks.forEach(function (p) {
-    var left = daysLeft_(p.dueDate);
     var pending = pendingMemberIds_(p, activeIds);
-    var mark;
-    if (p.deleted) mark = "削除済みのため対象外";
-    else if (!pending.length) mark = "全員完了のため対象外";
-    else if (left === 0) mark = "★ 本日まで";
-    else if (left === 1) mark = "★ 明日まで";
-    else if (left < 0 && left >= -OVERDUE_REMIND_DAYS) mark = "★ 期限切れ（" + (-left) + "日超過）";
-    else if (left < 0) mark = (-left) + "日超過。" + OVERDUE_REMIND_DAYS + "日を過ぎたため対象外";
-    else mark = "まだ " + left + "日あるため対象外";
-    var who = pending.map(function (id) { return names[id] || id; }).join("・");
-    out.push("  " + p.dueDate + "  " + p.title + "  → " + mark +
-      (pending.length ? "（未完了 " + pending.length + "名: " + who + "）" : ""));
+    if (p.deleted) { out.push("  " + p.dueDate + "  " + p.title + "  → 削除済みのため対象外"); return; }
+    if (!pending.length) { out.push("  " + p.dueDate + "  " + p.title + "  → 全員完了のため対象外"); return; }
+
+    // 人ごとに期日が違う場合は、期日ごとに分けて出す
+    var byDate = {};
+    pending.forEach(function (id) {
+      var ymd = memberDue_(p, id);
+      (byDate[ymd || "(期日なし)"] = byDate[ymd || "(期日なし)"] || []).push(id);
+    });
+
+    Object.keys(byDate).sort().forEach(function (ymd) {
+      var left = daysLeft_(ymd);
+      var mark;
+      if (left === null) mark = "期日の形が不正なため対象外";
+      else if (left === 0) mark = "★ 本日まで";
+      else if (left === 1) mark = "★ 明日まで";
+      else if (left < 0 && left >= -OVERDUE_REMIND_DAYS) mark = "★ 期限切れ（" + (-left) + "日超過）";
+      else if (left < 0) mark = (-left) + "日超過。" + OVERDUE_REMIND_DAYS + "日を過ぎたため対象外";
+      else mark = "まだ " + left + "日あるため対象外";
+      var who = byDate[ymd].map(function (id) { return names[id] || id; }).join("・");
+      out.push("  " + ymd + "  " + p.title + "  → " + mark +
+        "（未完了 " + byDate[ymd].length + "名: " + who + "）");
+    });
   });
 
   Logger.log(out.join("\n"));

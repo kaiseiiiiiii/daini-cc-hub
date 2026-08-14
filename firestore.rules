@@ -134,7 +134,17 @@ service cloud.firestore {
           && ( !request.resource.data.keys().hasAny(['checkTargets'])
                || request.resource.data.checkTargets == null
                || ( request.resource.data.checkTargets is list
-                    && request.resource.data.checkTargets.size() <= 200 ) );
+                    && request.resource.data.checkTargets.size() <= 200 ) )
+          // 人ごとの期日。{memberId: "YYYY-MM-DD"} の例外だけを持つ。
+          //
+          // 中の値の形はここでは検証できない（ルール言語にマップの値を
+          // 走査する手段が無い）。書けるのは作成者だけなので、なりすましや
+          // 他人による書き換えは別の条件で止まっている。壊れた日付が入った
+          // 場合は、アプリと GAS の両方が「日付なし」として無視する。
+          && ( !request.resource.data.keys().hasAny(['dueBy'])
+               || request.resource.data.dueBy == null
+               || ( request.resource.data.dueBy is map
+                    && request.resource.data.dueBy.size() <= 200 ) );
     }
 
     // 作成者IDと作成日時は、いかなる更新でも変更させない。
@@ -422,6 +432,9 @@ service cloud.firestore {
     //                                 チェックリストとして扱われる
     //               checkTargets    … 対象者の memberId 配列。
     //                                 null は「全員」を意味する
+    //               dueBy{memberId: "YYYY-MM-DD"}
+    //                               … 人ごとの期日。**全体と違う人の分だけ**
+    //                                 入れる。入っていない人は dueDate に従う
     //               doneBy{memberId: 完了した日時}
     //
     //   添付画像を付けた場合のみ:
@@ -488,7 +501,7 @@ service cloud.firestore {
                            && request.resource.data.edited == true
                            && validChecklist()
                            && onlyChanged(['title','body','category','pinned',
-                                           'dueDate','checkTargets',
+                                           'dueDate','checkTargets','dueBy',
                                            'imageId','imageW','imageH',
                                            'edited','updatedAt']) )
                        );
