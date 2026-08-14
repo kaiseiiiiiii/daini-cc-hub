@@ -151,12 +151,6 @@ select.input{padding-right:8px;}
 .chip-active{background:var(--color-accent-tint); color:var(--color-accent-ink); border-color:var(--color-accent);}
 .kpi-filter{display:flex; gap:8px; overflow-x:auto; margin-bottom:14px; padding-bottom:2px;}
 
-.composer-trigger{width:100%; display:flex; align-items:center; gap:10px; padding:0 14px; min-height:52px;
-  background:var(--color-surface); border:1px solid var(--color-border-strong);
-  border-radius:var(--radius-md); cursor:pointer; margin-bottom:12px; text-align:left; font-family:inherit;}
-.composer-trigger:hover{background:var(--color-bg);}
-.composer-placeholder{color:var(--color-text-sub); font-size:15px;}
-.composer-cta{margin-left:auto; color:var(--color-accent-deep); font-size:13px; font-weight:700; white-space:nowrap;}
 
 .avatar{border-radius:var(--radius-pill); display:flex; align-items:center; justify-content:center;
   font-weight:700; flex-shrink:0; line-height:1;}
@@ -287,6 +281,33 @@ select.input{padding-right:8px;}
 .shift-count-early{color:#1F6E96;}
 .shift-count-late{color:#A85A1C;}
 .shift-legend{display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-4); flex-wrap:wrap;}
+
+/* ── 投稿フォーム ── */
+.composer{padding:14px 16px;}
+.composer-row{display:flex; gap:12px; align-items:flex-start;}
+.composer-input{flex:1; min-width:0; border:none; background:transparent; resize:none;
+  font-family:inherit; font-size:15px; line-height:1.8; color:var(--color-text);
+  padding:8px 0; outline:none;}
+.composer-input::placeholder{color:var(--color-text-mute);}
+.composer-foot{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:8px;}
+.pickchip{height:36px; max-width:190px; padding:0 12px; border-radius:var(--radius-pill);
+  border:1px dashed var(--color-border-strong); background:var(--color-surface);
+  color:var(--color-text-sub); font-family:inherit; font-size:13px; cursor:pointer;}
+.pickchip:focus-visible{outline:2px solid var(--color-accent); outline-offset:1px;}
+.pickchip-type{border-style:solid;}
+.btn-post{margin-left:auto; min-height:44px; padding:0 26px; border:none;
+  border-radius:var(--radius-md); background:var(--color-accent); color:#fff;
+  font-family:inherit; font-size:15px; font-weight:700; cursor:pointer;}
+.btn-post:hover{background:var(--color-accent-deep);}
+
+/* バリュータグ。#付きの短い表記にする（デザイン指定） */
+.tag-value{display:inline-flex; align-items:center; height:26px; padding:0 10px;
+  border-radius:var(--radius-sm); background:var(--color-plum-tint);
+  color:var(--color-plum-ink); font-size:13px; font-weight:700;}
+
+/* リアクション追加ボタン */
+.react-add{border-style:dashed; color:var(--color-text-mute); min-width:38px; justify-content:center;}
+.react-add-on{border-style:solid; border-color:var(--color-accent); color:var(--color-accent);}
 
 /* ══════════════════════════════════════════════════════════════════
    PC レイアウト（900px 以上）
@@ -786,7 +807,8 @@ var state = {
   shiftDayIdx:null,         // 日表示で選んでいる日。null なら本日
   shiftTeam:"all",
   metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
-  feedShowForm:false, feedSort:"new", feedOpenComment:null,
+  feedSort:"new", feedOpenComment:null,
+  reactionPickerFor:null,   // リアクションの選択パレットを開いている投稿ID
   boardShowForm:false,
   boardOpenReaders:null,    // 未読者パネルを開いている掲示板投稿のID
   surveyShowForm:false,
@@ -1674,13 +1696,7 @@ function renderFeed(){
   var sortHtml = sortDefs.map(function(sd){
     return '<button class="chip'+(state.feedSort===sd[0]?" chip-active":"")+'" data-act="feed-sort" data-id="'+sd[0]+'">'+sd[1]+'</button>';
   }).join("");
-  var formHtml = state.feedShowForm ? renderFeedForm() : (
-    '<button class="composer-trigger" data-act="feed-open-form">' +
-      avatar(currentUserId(),28) +
-      '<span class="composer-placeholder">感謝や報告を投稿する...</span>' +
-      '<span class="composer-cta">+投稿</span>' +
-    '</button>'
-  );
+  var formHtml = renderComposer();
   var body = sorted.length
     ? sorted.map(renderFeedPost).join("")
     : emptyStateIn("lonely","まだ何もないですね","まだ投稿がありません","最初の投稿をしてみましょう");
@@ -1769,25 +1785,35 @@ function renderLegacyCard(){
   '</div>';
 }
 
-function renderFeedForm(){
-  var toOpts = '<option value="">全体へ</option>' + memberOptionsGrouped(true);
-  var typeOpts = POST_TYPES.map(function(t){ return '<option'+(t==="Thanks"?" selected":"")+'>'+t+'</option>'; }).join("");
-  var valOpts = valueOptionsHtml(null);
-  return '<div class="card form-card">' +
-    '<div class="form-col">' +
-      '<div class="form-row">' +
-        '<select id="feedFormType" class="input" data-act="feed-type-change">'+typeOpts+'</select>' +
-        '<select id="feedFormTo" class="input">'+toOpts+'</select>' +
-      '</div>' +
-      '<select id="feedFormVal" class="input">'+valOpts+'</select>' +
-      '<textarea id="feedFormText" class="input textarea" placeholder="内容を入力..." rows="3"></textarea>' +
-      '<div class="form-row">' +
-        '<button class="btn-primary" data-act="feed-submit">投稿する</button>' +
-        '<button class="btn-ghost" data-act="feed-cancel">キャンセル</button>' +
-      '</div>' +
+/**
+ * 投稿フォーム。開閉させず常に開いておく。
+ * 「書こう」と思ってから1タップ挟むと、それだけで書かれなくなるため。
+ *
+ * 宛先・バリュー・種別は select をチップの見た目にしている。
+ * 独自のドロップダウンを作るより、キーボード操作も読み上げも
+ * 標準のまま使えるほうが確実。
+ */
+function renderComposer(){
+  var toOpts = '<option value="">＋ 宛先を選ぶ</option>' + memberOptionsGrouped(true);
+  var valOpts = '<option value="">＋ バリュータグ</option>' + valueOptionsHtml(null).replace(
+    /^<option value="">[^<]*<\/option>/, "");
+  var typeOpts = POST_TYPES.map(function(t){
+    return '<option'+(t==="Thanks"?" selected":"")+'>'+t+'</option>';
+  }).join("");
+  return '<div class="card composer">' +
+    '<div class="composer-row">' + avatar(currentUserId(), 40) +
+      '<textarea id="feedFormText" class="composer-input" rows="2" ' +
+        'placeholder="誰に、何をありがとう？"></textarea>' +
+    '</div>' +
+    '<div class="composer-foot">' +
+      '<select id="feedFormTo" class="pickchip">'+toOpts+'</select>' +
+      '<select id="feedFormVal" class="pickchip">'+valOpts+'</select>' +
+      '<select id="feedFormType" class="pickchip pickchip-type">'+typeOpts+'</select>' +
+      '<button class="btn-post" data-act="feed-submit">投稿</button>' +
     '</div>' +
   '</div>';
 }
+
 
 /** reactions は {memberId: [emoji]} なので、絵文字ごとの人数はここで数える */
 function reactionsByEmoji(post){
@@ -1853,7 +1879,15 @@ function renderFeedPost(post){
   var mine = (post.reactions && post.reactions[me]) || [];
   var isOpen = state.feedOpenComment===post.id;
 
-  var reactHtml = REACTIONS.map(function(emoji){
+  // 押された絵文字だけ出し、追加は「＋」から。
+  // 5種を常時並べると、0件のボタンが場所を取って
+  // 「何件付いているか」が読み取りにくくなる。
+  var picking = state.reactionPickerFor === post.id;
+  var shown = picking ? REACTIONS : REACTIONS.filter(function(e){
+    return (byEmoji[e]||[]).length > 0;
+  });
+
+  var reactHtml = shown.map(function(emoji){
     var who = (byEmoji[emoji]||[]);
     var cnt = who.length;
     var isMine = mine.indexOf(emoji)>=0;
@@ -1867,6 +1901,11 @@ function renderFeedPost(post){
       emoji + (cnt>0?'<span class="react-count">'+cnt+'</span>':'') +
     '</button>';
   }).join("");
+
+  reactHtml += '<button class="react-btn react-add'+(picking?" react-add-on":"")+'"' +
+    ' data-act="react-picker" data-id="'+post.id+'"' +
+    ' aria-label="'+(picking?"リアクションの選択を閉じる":"リアクションを追加")+'">' +
+    (picking ? '×' : '＋') + '</button>';
 
   var commentsHtml = "";
   if(isOpen){
@@ -1901,7 +1940,7 @@ function renderFeedPost(post){
           '<span class="post-name">'+esc(from.displayName)+'</span>' +
           (to ? '<span class="post-arrow">→</span><span class="post-to">'+esc(to.displayName)+'</span>' : '') +
           badge(post.type, CT[post.type]||"blue") +
-          (post.valueTag ? badge(post.valueTag,"purple") : "") +
+          (post.valueTag ? '<span class="tag-value">#'+esc(post.valueTag)+'</span>' : "") +
         '</div>' +
         '<div class="post-time">'+tAgo(post.createdAtMs)+editedMark(post)+(post.pending?' <span class="pending-mark">送信中</span>':'')+'</div>' +
       '</div>' +
@@ -3154,7 +3193,6 @@ function submitFeedPost(){
   payload.text = text;
   payload.reactions = {};
   payload.commentCount = 0;
-  state.feedShowForm = false;
   write("投稿", function(){ return addDoc(collection(db, "feedPosts"), payload); }, true);
 }
 
@@ -3473,7 +3511,7 @@ function bindEvents(){
 
     if(act==="tab"){
       state.tab = id;
-      state.feedShowForm=false; state.boardShowForm=false; state.surveyShowForm=false;
+      state.boardShowForm=false; state.surveyShowForm=false;
       // タブを離れたらコメントの購読だけ落とす。
       // 一覧の3本はログイン中つなぎっぱなし（張り直すと全件読み直しになるため）。
       state.feedOpenComment = null;
@@ -3499,12 +3537,15 @@ function bindEvents(){
       render();
     }
     else if(act==="feed-sort"){ state.feedSort = id; render(); }
-    else if(act==="feed-open-form"){ state.feedShowForm = true; render(); }
-    else if(act==="feed-cancel"){ state.feedShowForm = false; render(); }
     else if(act==="feed-submit"){ submitFeedPost(); }
     else if(act==="react"){
       if(suppressReactClick){ suppressReactClick = false; return; }  // 長押し直後
+      state.reactionPickerFor = null;
       toggleReaction(id, el.getAttribute("data-emoji"));
+    }
+    else if(act==="react-picker"){
+      state.reactionPickerFor = state.reactionPickerFor===id ? null : id;
+      render();
     }
     else if(act==="comment-toggle"){
       // コメントは投稿ごとのサブコレクション。開いている1件だけ購読する。
@@ -3564,16 +3605,6 @@ function bindEvents(){
     else if(act==="kpi-section-toggle"){ state.progressKpiOpen = !state.progressKpiOpen; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
-  });
-
-  app.addEventListener("change", function(e){
-    if(session.status !== "ready") return;
-    var el = e.target.closest("[data-act]");
-    if(!el) return;
-    if(el.getAttribute("data-act")==="feed-type-change"){
-      var valSel = document.getElementById("feedFormVal");
-      if(valSel) valSel.style.display = el.value==="Thanks" ? "block" : "none";
-    }
   });
 
   app.addEventListener("keydown", function(e){
