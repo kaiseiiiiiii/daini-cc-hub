@@ -247,7 +247,7 @@ select.input{padding-right:8px;}
   padding:10px 12px; background:var(--color-bg); border:1px solid var(--color-border);
   border-radius:var(--radius-md);}
 .task-plan-label{font-size:12px; font-weight:700; color:var(--color-text-sub);}
-.task-plan-input{flex:1; min-width:140px; font-size:13px;}
+.task-plan-input{flex:0 1 auto; font-size:13px;}
 .task-plan-clear{background:none; border:none; padding:4px 6px; font-size:12px;
   color:var(--color-text-sub); text-decoration:underline; cursor:pointer; font-family:inherit;}
 .task-plan-late{border-color:color-mix(in srgb, var(--amber) 50%, transparent);
@@ -443,7 +443,16 @@ select.input{padding-right:8px;}
 .perdue-row{display:flex; align-items:center; gap:8px;}
 .perdue-name{flex:1; min-width:0; font-size:12px; color:var(--color-text-sub);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-.perdue-input{flex:none; width:150px; height:36px; font-size:12px;}
+.perdue-input{flex:none; height:36px; font-size:12px;}
+
+/* 日付欄は中身の幅にとどめる。
+   .input は width:100% なので、日付欄も欄いっぱいに伸びていた。
+   その結果、日付の文字は左端、カレンダーを開くアイコンは右端に離れ、
+   開くために毎回カードの端まで指を運ぶことになっていた（利用者からの指摘）。
+   幅を内容に合わせると、アイコンが日付のすぐ隣に来る。 */
+.input[type="date"]{width:auto; max-width:100%; min-width:0;}
+/* 押せる幅を確保する。内容幅だけだと端末によっては窮屈になる */
+.task-fields>.input[type="date"]{min-width:190px; align-self:flex-start;}
 
 /* カレンダー一覧の名前 */
 .cal-row-who{flex:none; display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end;
@@ -459,8 +468,17 @@ select.input{padding-right:8px;}
   border-top:1px dashed var(--color-border);}
 .task-fields-label{font-size:12px; font-weight:700; color:var(--color-text-sub);}
 .target-picker{font-size:12px;}
-.target-picker>summary{cursor:pointer; color:var(--color-text-sub); padding:4px 0;
-  display:flex; align-items:center; gap:6px;}
+/* summary に display:flex を当てると、ブラウザ既定の開閉マーク（▶）が消える。
+   その結果「対象者を選ぶ」「人ごとに期日を変える」が、押せると分からない
+   ただの薄い文字になっていた。マークを自前で描いて押せることを示す。 */
+.target-picker>summary{cursor:pointer; color:var(--color-text-sub); padding:6px 0;
+  display:flex; align-items:center; gap:6px; min-height:32px;}
+.target-picker>summary::-webkit-details-marker{display:none;}
+.target-picker>summary::before{content:"▶"; font-size:9px; color:var(--color-text-mute);
+  transition:transform 0.15s; flex:none;}
+.target-picker[open]>summary::before{transform:rotate(90deg);}
+.target-picker>summary:hover{color:var(--color-accent-ink);}
+@media (prefers-reduced-motion: reduce){ .target-picker>summary::before{transition:none;} }
 .target-hint{color:var(--color-text-mute); font-weight:400;}
 .target-chips{display:flex; flex-wrap:wrap; gap:5px; padding:6px 0 2px;}
 .target-chip{display:inline-flex; align-items:center; gap:5px; cursor:pointer;
@@ -855,9 +873,13 @@ body.wide .pc-cols:has(.pc-side:empty),
 .prog-head{background:color-mix(in srgb, var(--accent) 8%, var(--surface));
   border-color:color-mix(in srgb, var(--accent) 30%, var(--border)); margin-bottom:10px;}
 .prog-head-lead{font-size:12px; color:var(--text-3); margin-bottom:2px;}
-.prog-head-main{font-size:19px; font-weight:700; color:var(--text); line-height:1.5;
+/* 見出しは文章から金額1つに変わったので、その分だけ大きくする。
+   このタブでいちばん見てほしい数字はこれ、と迷わせないため。 */
+.prog-head-main{font-size:30px; font-weight:700; color:var(--text); line-height:1.3;
   text-wrap:balance; font-variant-numeric:tabular-nums;}
-.prog-head-sub{font-size:11px; color:var(--text-4); margin-top:4px;}
+.prog-head-sub{font-size:12px; color:var(--text-3); margin-top:4px;}
+/* 達成時は「超過 ¥X」と文字が付くぶん長くなるので、少し落とす */
+.prog-head-done .prog-head-main{font-size:24px;}
 
 .prog-bar-card{margin-bottom:10px;}
 .prog-bar-top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
@@ -870,6 +892,9 @@ body.wide .pc-cols:has(.pc-side:empty),
   font-size:11px; color:var(--text-4); font-variant-numeric:tabular-nums;}
 
 .prog-grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-bottom:14px;}
+/* カードが奇数枚のときは最後の1枚を横いっぱいに伸ばす。
+   3枚のとき、右下だけ空いた不揃いな並びになるのを避けるため。 */
+.prog-grid>.prog-cell:last-child:nth-child(odd){grid-column:1 / -1;}
 .prog-cell{padding:10px 12px; margin-bottom:0;}
 .prog-cell-label{font-size:11px; color:var(--text-4); margin-bottom:3px;}
 .prog-cell-value{font-size:16px; font-weight:700; color:var(--text);
@@ -4682,7 +4707,9 @@ function shiftHours(val){
 }
 
 function yen(n){ return Math.round(n).toLocaleString("ja-JP") + "円"; }
-function hoursText(h){ return (Math.round(h * 10) / 10).toLocaleString("ja-JP") + "時間"; }
+// hoursText（「1,424時間」の表記）は目標進捗の整理で表示から外した。
+// 稼働時間そのものは needPerHour の計算に使い続けているが、
+// 画面には出さない（読んだ人が自分の行動に結び付けられない数字のため）。
 
 /** 目標進捗の計算。画面はこの戻り値だけを見る。 */
 function computeProgress(){
@@ -4796,22 +4823,23 @@ function computeProgress(){
  * 見出しの一文。
  * 未達でも煽らず、必要な数字だけを出す（責める文言は入れない）。
  */
+/**
+ * 画面の先頭に出す1行。
+ *
+ * 以前は「あと 1,424時間 で／1時間あたり ¥X のペースが必要」を主役にしていたが、
+ * 「1,424時間」はメンバー全員の残シフトを合計した数で、読んだ人が自分の行動に
+ * 結び付けられない（見なくてよい数字だという指摘があった）。
+ * 主役は「目標までいくら残っているか」の1つに絞り、
+ * ペースの話は下のカードへ落としてある。
+ */
 function progressHeadline(p){
   if(p.remaining <= 0){
     return { lead:"月間目標を達成しています", main:"超過 " + yen(-p.remaining),
              sub:"残りは上積みになります" };
   }
-  if(!p.monthMatches || p.leftHours <= 0){
-    var why = !p.monthMatches
-      ? "シフトが同じ月の分でないため、残り稼働時間を計算できません"
-      : "残りのシフトに稼働予定がありません";
-    return { lead:"目標まで", main:yen(p.remaining), sub:why };
-  }
-  return {
-    lead: "あと " + hoursText(p.leftHours) + " で",
-    main: "1時間あたり " + yen(p.needPerHour) + " のペースが必要",
-    sub:  "残り " + yen(p.remaining) + " ／ 残り " + p.leftDays + "日"
-  };
+  var sub = "達成 " + (Math.round(p.pct*10)/10) + "%";
+  if(p.monthMatches && p.leftDays > 0) sub += " ・ 残り " + p.leftDays + "日";
+  return { lead:"目標まで", main:yen(p.remaining), sub:sub };
 }
 
 function renderProgress(){
@@ -4831,9 +4859,10 @@ function renderProgress(){
   // 実績がどこまで確定しているかを必ず出す。
   // 日中に見ている数字が当日を含まないことが分からないと、
   // 未達に見えて誤った判断につながる。
+  // 3行あった説明を1行に詰めた。読み飛ばされる長さになると、
+  // 肝心の「当日分が入っていない」が伝わらなくなる。
   var confirmNote = p.lastActualDate
-    ? '<div class="prog-note">📌 実績は <b>'+esc(p.lastActualDate)+'</b> 分まで確定しています。'+
-      'それ以降（本日分を含む）は集計中のため、この数字には入っていません。</div>'
+    ? '<div class="prog-note">📌 実績は <b>'+esc(p.lastActualDate)+'</b> 分まで。本日分は未集計です。</div>'
     : '<div class="prog-note">📌 今月はまだ実績が入っていません。</div>';
 
   function cell(label, value, sub, color){
@@ -4844,12 +4873,10 @@ function renderProgress(){
     '</div>';
   }
 
+  // カードは3枚まで。以前は4枚あり、そのうち「残り稼働時間」は
+  // 見出しと同じ数字の繰り返しだった。並べる数を減らして、
+  // 着地見込みが最初に目に入るようにしてある。
   var cells = "";
-  cells += cell("現ペース",
-    p.nowPerHour !== null ? yen(p.nowPerHour)+" / 時" : "—",
-    p.doneHours > 0 ? "消化 "+hoursText(p.doneHours)+"（"+p.doneDays+"日）"
-      : (!p.monthMatches ? "シフトの月が一致しません" : "確定分がありません"));
-
   if(p.forecast !== null){
     cells += cell("着地見込み", yen(p.forecast), "現ペースが続いた場合");
     // 不足側を赤で出さない（デザイン指定）。
@@ -4863,12 +4890,21 @@ function renderProgress(){
       "消化稼働が総稼働の1割に届くまでは出しません");
   }
 
-  cells += cell("残り稼働時間",
-    p.monthMatches ? hoursText(p.leftHours) : "—",
-    p.monthMatches ? "残り "+p.leftDays+"日" : "シフトの月が一致しません");
+  // 現ペースと必要ペースは1枚にまとめる。別々のカードに離すと、
+  // 比べるために視線を往復させることになる（この2つは並べて初めて意味を持つ）。
+  // 計算できない事情もここに集約する。以前は「残り稼働時間」のカードに
+  // 出していたが、そのカードごと畳んだため。
+  var paceSub;
+  if(p.remaining <= 0)            paceSub = "目標は達成済みです";
+  else if(!p.monthMatches)        paceSub = "シフトの月が一致せず算出できません";
+  else if(p.needPerHour === null) paceSub = "残りのシフトに稼働予定がありません";
+  else                            paceSub = "必要 " + yen(p.needPerHour) + " / 時";
+  cells += cell("現ペース",
+    p.nowPerHour !== null ? yen(p.nowPerHour)+" / 時" : "—",
+    paceSub);
 
   var main = '' +
-    '<div class="card prog-head">' +
+    '<div class="card prog-head'+(p.remaining <= 0 ? " prog-head-done" : "")+'">' +
       '<div class="prog-head-lead">'+esc(h.lead)+'</div>' +
       '<div class="prog-head-main">'+esc(h.main)+'</div>' +
       '<div class="prog-head-sub">'+esc(h.sub)+'</div>' +
@@ -4886,8 +4922,7 @@ function renderProgress(){
             'title="'+esc(p.lastActualDate)+' 時点の想定ライン"></span>' : '') +
       '</div>' +
       (p.lastActualDate && p.plannedPct > 0
-        ? '<div class="prog-plan">想定ライン '+(Math.round(p.plannedPct*10)/10)+'%'+
-          '（'+esc(p.lastActualDate)+' 時点）・実績との差 '+
+        ? '<div class="prog-plan">想定 '+(Math.round(p.plannedPct*10)/10)+'% ・ '+
           (p.pct - p.plannedPct >= 0 ? "+" : "−")+
           (Math.round(Math.abs(p.pct - p.plannedPct)*10)/10)+'pt</div>' : '') +
       '<div class="prog-bar-labels">' +
