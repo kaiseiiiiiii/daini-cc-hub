@@ -109,6 +109,21 @@ Firebase のウェブ向け設定値（`apiKey` / `authDomain` / `projectId` な
 シフト・生産性KPI・目標／実績を1時間おきに取り込みます。
 手順は [`docs/sync-setup.md`](docs/sync-setup.md) を参照してください。
 
+### 3.55 座席表の取り込み（任意）
+
+座席表の原本から「その日の座席」を読み取り、シフトタブの先頭に出します。
+夜23時台に翌日分を先取りし、朝8時台に当日分を取り直して変更の有無を確認します。
+手順は [`docs/seat-setup.md`](docs/seat-setup.md) を参照してください。
+
+GAS のコードは [`gas/seats.gs`](gas/seats.gs) にあります。
+
+> ⚠️ **この機能だけ、原本を直接開きます**（`SpreadsheetApp.openById`）。
+> 座席表は「※遅番グレー」「※青PCなし」と色が意味を持つ表で、IMPORTRANGE は
+> 背景色を運ばないためです。その代わり `seats.gs` は原本に対して読み取りしか
+> 行いません（`getValues` と `getBackgrounds` のみ）。変更時に書き込み系の
+> メソッドを足さないでください。ファイルIDはスクリプトプロパティ `SEAT_FILE_ID`
+> に置き、コードには入れません。
+
 ### 3.6 チェックリストの期日リマインド（任意）
 
 掲示板の投稿に期日とメンバーごとの完了チェックを付けられます。
@@ -130,6 +145,7 @@ GAS のコードは [`gas/sync.gs`](gas/sync.gs) にあります。
 | `FIREBASE_PROJECT_ID` | Firebase のプロジェクトID |
 | `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵の JSON 全文 |
 | `CHAT_WEBHOOK_URL` | Google Chat の Webhook URL（新着通知・期日リマインドを使う場合のみ） |
+| `SEAT_FILE_ID` | 座席表の原本のファイルID（座席表の取り込みを使う場合のみ） |
 
 新着通知（[`gas/notify.gs`](gas/notify.gs)）が拾うのは **掲示板・アンケート・フィード** の3つです。
 対象を増減するときは `NOTIFY_COLLECTIONS` を書き換えてください。
@@ -160,6 +176,7 @@ GAS のコードは [`gas/sync.gs`](gas/sync.gs) にあります。
 | `members` | 小文字のメールアドレス | 不可（コンソールのみ） | 許可リスト兼メンバーマスタ |
 | `teams` | チームID | 不可（コンソールのみ） | チーム名・表示順・配色 |
 | `shifts` | `YYYY_M`（例 `2026_8`） | GAS のみ | 月別シフト表 |
+| `seats` | `YYYY-MM-DD` | GAS のみ | その日の座席表（文字＋背景色）。詳細は [`docs/seat-setup.md`](docs/seat-setup.md) |
 | `goals` | 未定 | GAS のみ | 目標値 |
 | `metrics` | `latest` ほか | GAS のみ | 実績・生産性KPI |
 | `syncStatus` | `spreadsheet` | GAS のみ | 最終同期時刻・同期結果 |

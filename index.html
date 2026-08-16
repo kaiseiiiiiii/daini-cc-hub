@@ -258,6 +258,33 @@ select.input{padding-right:8px;}
   margin-top:1px;}
 .mytask-plan-late{color:var(--color-dusk-ink); font-weight:700;}
 
+/* 座席表。原本の格子をそのままの並びで出す */
+.seat-card{padding:12px;}
+.seat-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;}
+.seat-title{font-size:14px; font-weight:700; color:var(--color-text);}
+.seat-sub{font-size:11px; color:var(--color-text-sub); opacity:0.8;}
+.seat-toggle{display:flex; gap:6px; margin-left:auto;}
+.seat-empty{font-size:13px; color:var(--color-text-sub); line-height:1.7; padding:6px 2px;}
+.seat-changed{font-size:12px; font-weight:700; color:var(--color-dusk-ink);
+  background:var(--color-dusk-tint); border-radius:var(--radius-md);
+  padding:6px 10px; margin-bottom:8px;}
+/* 席の並びは横に広い（実物で19列ある）。畳んで折り返すと配置の意味が
+   壊れるので、横スクロールさせる（ページ全体ではなく、この箱の中だけ）。
+
+   縦にも上限を置く。実物は21行あり、そのまま出すとスマホ画面をほぼ
+   埋めてしまい、下のシフト表に届くまで1画面ぶんスクロールすることになる。
+   座席表を一番上に置く判断と、シフト表が読めることは両立させたい。 */
+.seat-scroll{overflow:auto; -webkit-overflow-scrolling:touch; max-height:58vh;}
+.seat-table{border-collapse:collapse; table-layout:auto;}
+.seat-cell{border:1px solid var(--color-border); padding:4px 7px; font-size:11px;
+  line-height:1.5; color:#202124; white-space:nowrap; text-align:center; min-width:52px;}
+/* 空セルにも枠を出す。抜けている席そのものが配置の情報になる */
+.seat-cell-empty{background:transparent; border-color:var(--color-border);}
+/* 自分の席。原本の背景色は消さずに、枠と太字で重ねる
+   （色が遅番などの意味を持っているため、塗り替えてはいけない） */
+.seat-cell-me{outline:2px solid var(--color-accent); outline-offset:-2px;
+  font-weight:700; color:var(--color-accent-deep);}
+
 /* 掲示板の送信ボタン。フォーム内でいちばん大きく、迷わないようにする */
 /* height を上書きしているのは、.btn-primary が 44px 固定のため
    （2行入れるので、内容に合わせて伸びる必要がある） */
@@ -1336,6 +1363,9 @@ var state = {
   shiftMobileView:"day",    // スマホ用。"day" | "week"。既定は日表示
   shiftDayIdx:null,         // 日表示で選んでいる日。null なら本日
   shiftTeam:"all",
+  seatToday:null,           // 座席表（当日）。GAS が seats/{YYYY-MM-DD} に書く
+  seatTomorrow:null,        // 座席表（翌日）。前夜23時台に先取りされる
+  seatDay:"today",          // 座席表で見ている日。"today" | "tomorrow"
   metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
   feedSort:"new", feedOpenComment:null,
   boardOpenComment:null,    // コメントを開いている掲示板投稿のID（購読は常に1件だけ）
@@ -1834,8 +1864,23 @@ function attachAvatars(){
   ));
 }
 
+/** その日の座席表のドキュメントID。"YYYY-MM-DD"（GAS 側と同じ規則） */
+function seatDocId(offsetDays){
+  var d = new Date();
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + offsetDays);
+  return d.getFullYear() + "-" +
+         ("0"+(d.getMonth()+1)).slice(-2) + "-" +
+         ("0"+d.getDate()).slice(-2);
+}
+
 function attachSyncedData(){
   subscribeDoc("shifts", currentMonthId(), function(v){ state.shiftCurrent = v; });
+  // 当日と翌日の2件だけ購読する。1件はだいたい100セル程度なので軽い。
+  // 翌日分を持っておくのは、前夜のうちに「明日どこに座るか」を
+  // 見られるようにするため（23時台の取り込みはそのためにある）。
+  subscribeDoc("seats", seatDocId(0), function(v){ state.seatToday = v; });
+  subscribeDoc("seats", seatDocId(1), function(v){ state.seatTomorrow = v; });
   subscribeDoc("metrics", "latest",        function(v){ state.metrics = v; });
   subscribeDoc("goals", "current",         function(v){ state.goals = v; });
   subscribeDoc("syncStatus", "spreadsheet", function(v){
@@ -4495,6 +4540,109 @@ function renderShiftControls(){
     '<span class="shift-controls-spacer"></span>'+teamChips+'</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  座席表
+//
+//  座席表は「どこに座るか」を位置そのもので表すので、行と列の並びを
+//  崩さずに出す。空セルも詰めない（詰めると席の位置がずれる）。
+//
+//  背景色は原本の色をそのまま使う。「※遅番グレー」「※青PCなし」という
+//  凡例が表の中にあり、色が意味を持っているため、こちらで色を
+//  作り直すとその凡例が嘘になる。
+//
+//  名前はメンバーマスタと突き合わせない。原本の書き方が
+//  「太田さん」「洸太朗さん」「前田C」「金兒L」と揺れていて、
+//  機械的に対応付けると取り違える。出すのは原本の文字のまま。
+//  自分の名前を目立たせるところだけ、後述の緩い判定で拾う。
+// ══════════════════════════════════════════════════════════════════
+
+/** 表示中の座席表と、その日のラベル */
+function displayedSeat(){
+  return state.seatDay === "tomorrow"
+    ? { data: state.seatTomorrow, label: "明日", offset: 1 }
+    : { data: state.seatToday,    label: "本日", offset: 0 };
+}
+
+/**
+ * そのセルが自分か。
+ *
+ * 原本の表記が揺れているので、姓・名・表示名のどれかが含まれていれば
+ * 自分とみなす。「坂田 洸太朗」さんが「洸太朗さん」と書かれていても
+ * 拾えるようにするため。
+ *
+ * 1文字の語は使わない。「守」「学」のような名前が、無関係な語に
+ * 含まれて誤って光る（例:「守衛室」）のを避ける。
+ */
+function seatIsMe(text){
+  var me = currentUser();
+  if(!me || !text) return false;
+  var tokens = [me.displayName].concat(String(me.fullName||"").split(/[\s　]+/));
+  for(var i=0;i<tokens.length;i++){
+    var t = String(tokens[i]||"").trim();
+    if(t.length >= 2 && text.indexOf(t) >= 0) return true;
+  }
+  return false;
+}
+
+function renderSeatChart(){
+  var view = displayedSeat();
+  var other = view.offset === 0 ? state.seatTomorrow : state.seatToday;
+
+  // 当日・翌日を行き来するボタン。相手側のデータが無いときは出さない
+  // （押しても空を見せるだけのボタンを置かない）。
+  var toggle = other
+    ? '<div class="seat-toggle">' +
+        ['today','tomorrow'].map(function(k){
+          var on = state.seatDay === k;
+          return '<button class="chip'+(on?" chip-active":"")+'" data-act="seat-day" data-id="'+k+'">' +
+            (k==="today" ? "本日" : "明日") + '</button>';
+        }).join("") +
+      '</div>'
+    : "";
+
+  if(!view.data || !view.data.rows || !view.data.rows.length){
+    // 座席表が無い日は普通にある（休業日、まだ作られていない翌日分）。
+    // 同期の失敗と読み違えられないよう、理由の側を書く。
+    return '<div class="card seat-card">' +
+      '<div class="seat-head"><span class="seat-title">🪑 '+view.label+'の座席</span>'+toggle+'</div>' +
+      '<div class="seat-empty">' +
+        (view.offset === 1
+          ? '明日の座席表はまだ取り込まれていません。前日の23時台に取り込みます。'
+          : '本日の座席表はまだ取り込まれていません。') +
+      '</div>' +
+    '</div>';
+  }
+
+  var d = view.data;
+  var body = d.rows.map(function(row){
+    var cells = (row.cells || []).map(function(c){
+      var t = c.t || "";
+      var mine = t && seatIsMe(t);
+      var style = c.b ? ' style="background:'+esc(c.b)+'"' : '';
+      return '<td class="seat-cell'+(t?"":" seat-cell-empty")+(mine?" seat-cell-me":"")+'"'+style+'>' +
+        esc(t) +
+      '</td>';
+    }).join("");
+    return '<tr>'+cells+'</tr>';
+  }).join("");
+
+  // 朝の再確認で中身が変わっていた日は、その旨を出す。
+  // 前夜に見た配置を覚えている人が、古いまま動くのを防ぐため。
+  var changed = d.changedAtCheck
+    ? '<div class="seat-changed">⚠ 朝の再確認で前夜から変更がありました</div>'
+    : "";
+
+  return '<div class="card seat-card">' +
+    '<div class="seat-head">' +
+      '<span class="seat-title">🪑 '+view.label+'の座席</span>' +
+      (d.label ? '<span class="seat-sub">'+esc(d.label)+'</span>' : '') +
+      toggle +
+    '</div>' +
+    changed +
+    '<div class="seat-scroll"><table class="seat-table"><tbody>'+body+'</tbody></table></div>' +
+  '</div>';
+}
+
 function renderShift(){
   var sh = displayedShift();
   var off = state.shiftMonthOffset;
@@ -4515,7 +4663,7 @@ function renderShift(){
         "スプレッドシート同期が動くと表示されます");
     }
     return '<div class="tab-pad">' +
-      renderSyncBar() + renderShiftMonthBar() + renderTodayShiftCard() + body +
+      renderSyncBar() + renderSeatChart() + renderShiftMonthBar() + renderTodayShiftCard() + body +
     '</div>';
   }
 
@@ -4525,6 +4673,7 @@ function renderShift(){
   if(isNarrow()){
     return '<div class="tab-pad">' +
       renderSyncBar() +
+      renderSeatChart() +
       renderShiftMonthBar() +
       renderTodayShiftCard() +
       renderShiftControls() +
@@ -4620,6 +4769,7 @@ function renderShift(){
 
   return '<div class="tab-pad">' +
     renderSyncBar() +
+    renderSeatChart() +
     renderShiftMonthBar() +
     renderTodayShiftCard() +
     renderShiftControls() +
@@ -5822,6 +5972,7 @@ function bindEvents(){
     }
     else if(act==="shift-day"){ state.shiftDayIdx = parseInt(id, 10); render(); }
     else if(act==="shift-team"){ state.shiftTeam = id; render(); }
+    else if(act==="seat-day"){ state.seatDay = id; render(); }
     else if(act==="shift-week"){
       if(id === "") return;          // 端まで来ている（ボタンは disabled）
       state.shiftWeekStart = parseInt(id, 10);
