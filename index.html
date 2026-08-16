@@ -655,6 +655,48 @@ select.input{padding-right:8px;}
 .wk-val{font-size:12px; font-weight:700;}
 .wk-legend{font-size:11px; color:var(--color-text-mute); line-height:1.7;}
 
+/* ── 週の達成率 ──
+   達成の色は3段。100%以上＝達成、90%以上＝あと少し、それ未満＝落ちている。
+   目標進捗に赤は使わない方針なので、落ちている側も警告色（琥珀）までに留める。 */
+.rate-ok   .rate-fill, .rate-fill.rate-ok  {background:var(--green);}
+.rate-near .rate-fill, .rate-fill.rate-near{background:var(--color-accent);}
+.rate-low  .rate-fill, .rate-fill.rate-low {background:var(--amber);}
+.rate-list{display:flex; flex-direction:column; gap:7px; margin:10px 0 8px;}
+.rate-row{display:flex; align-items:center; gap:8px;}
+.rate-label{flex:none; width:52px; font-size:11px; color:var(--color-text-sub);
+  white-space:nowrap;}
+.rate-track{flex:1; min-width:0; height:8px; background:var(--color-track);
+  border-radius:var(--radius-pill); overflow:hidden;}
+.rate-fill{display:block; height:100%; border-radius:var(--radius-pill);
+  background:var(--color-accent);}
+.rate-pct{flex:none; width:42px; text-align:right; font-size:12px; font-weight:700;
+  font-variant-numeric:tabular-nums; color:var(--color-text-sub);}
+.rate-pct.rate-ok{color:var(--color-grow-ink);}
+.rate-pct.rate-low{color:var(--color-dusk-ink);}
+
+/* ── 日ごとの達成率 ──
+   棒の領域（.dr-plot）と日付ラベル（.dr-labels）を分けている。
+   同じ箱に入れると、棒はラベルを除いた高さを基準にするのに対し、
+   100%の線は箱全体を基準にすることになり、両者の基準がずれる。 */
+.dr-plot{position:relative; height:96px; margin:14px 0 0;}
+.dr-cols{display:flex; align-items:flex-end; gap:3px; height:100%;}
+.dr{flex:1; min-width:0; height:100%; display:flex; align-items:flex-end;}
+.dr-bar{width:100%; border-radius:2px 2px 0 0; min-height:2px; background:var(--color-accent);}
+.dr-labels{display:flex; gap:3px; margin-top:4px;}
+.dr-lb{flex:1; min-width:0; text-align:center; font-size:9px; line-height:1;
+  color:var(--color-text-mute);}
+.dr-bar.rate-ok{background:var(--green);}
+.dr-bar.rate-near{background:var(--color-accent);}
+.dr-bar.rate-low{background:var(--amber);}
+/* 100%の線。棒の高さだけでは達成しているかが読み取れない */
+.dr-line{position:absolute; left:0; right:0; height:1px; background:var(--color-text);
+  opacity:.45; pointer-events:none; z-index:1;}
+.dr-sum{display:flex; flex-direction:column; gap:4px; margin-top:10px;
+  padding-top:10px; border-top:1px solid var(--color-border);}
+.dr-sum-row{display:flex; justify-content:space-between; align-items:baseline;
+  font-size:11px; color:var(--color-text-sub);}
+.dr-sum-row b{font-size:13px; color:var(--color-text); font-variant-numeric:tabular-nums;}
+
 /* ── 本日のシフトサマリー（広い画面） ── */
 .tsum{margin-bottom:14px;}
 .tsum-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px;}
@@ -5062,14 +5104,31 @@ function computeProgress(){
   days.forEach(function(d, i){
     var wd = d.weekday;
     if(cur === null || wd === "月"){
-      cur = { label: d.date, actual: 0, target: 0, hasActual: false };
+      cur = { label: d.date, end: d.date, actual: 0, target: 0, hasActual: false };
       weeks.push(cur);
     }
+    cur.end = d.date;
     cur.target += (d.dailyTarget || 0);
     if(d.dailyActual !== null && d.dailyActual !== undefined){
       cur.actual += d.dailyActual;
       cur.hasActual = true;
     }
+  });
+  // 達成率は「実績が入っている週」だけ意味を持つ。まだ来ていない週に
+  // 0% と出すと、未達と区別が付かない（実績ゼロではなく未確定なので）。
+  weeks.forEach(function(w){
+    w.rate = (w.hasActual && w.target > 0) ? (w.actual / w.target * 100) : null;
+  });
+
+  // 日ごとの達成率。実績が入っていない日は rate を null にして、
+  // 「0%だった日」と「まだ来ていない日」を混同させない。
+  var dayRates = days.map(function(d){
+    var t = d.dailyTarget || 0;
+    var a = (d.dailyActual === null || d.dailyActual === undefined) ? null : d.dailyActual;
+    return {
+      date: d.date, weekday: d.weekday, target: t, actual: a,
+      rate: (a !== null && t > 0) ? (a / t * 100) : null
+    };
   });
 
   return {
@@ -5078,6 +5137,7 @@ function computeProgress(){
     planned: planned,
     plannedPct: monthTarget > 0 ? (planned / monthTarget * 100) : 0,
     weeks: weeks,
+    dayRates: dayRates,
     remaining: remaining,
     pct: monthTarget > 0 ? (actual / monthTarget * 100) : 0,
     lastActualDate: lastActualIdx >= 0 ? days[lastActualIdx].date : null,
@@ -5212,14 +5272,17 @@ function renderProgress(){
       : "") +
     renderKpiSection();
 
+  // 右カラム（狭い画面では本体の下）に並べる、推移を見るための3枚。
+  // 積み上げ → 週の達成率 → 日ごとの達成率、と粒度を細かくしていく順に置く。
+  var side = renderWeeklyChart(p) + renderWeekRates(p) + renderDayRates(p);
+
   if(isWide()){
     return '<div class="prog-cols">' +
       '<div class="prog-main">' + renderSyncBar() + confirmNote + main + '</div>' +
-      '<div class="prog-side">' + renderWeeklyChart(p) + '</div>' +
+      '<div class="prog-side">' + side + '</div>' +
     '</div>';
   }
-  return '<div class="tab-pad">' + renderSyncBar() + confirmNote + main +
-    renderWeeklyChart(p) + '</div>';
+  return '<div class="tab-pad">' + renderSyncBar() + confirmNote + main + side + '</div>';
 }
 
 /**
@@ -5251,6 +5314,101 @@ function renderWeeklyChart(p){
     '<div class="side-title">週ごとの積み上げ</div>' +
     '<div class="wk-grid">'+bars+'</div>' +
     '<div class="wk-legend">棒＝実績　／　横線＝その週の目標</div>' +
+  '</div>';
+}
+
+/**
+ * 週ごとの達成率。
+ *
+ * 積み上げのグラフは「どれだけ積んだか」を見るもので、目標に届いていたかは
+ * 棒の高さと横線の位置を見比べないと分からない。どの週で落としたのかは
+ * 数字で並べたほうが早い。
+ */
+function renderWeekRates(p){
+  var weeks = (p.weeks || []).filter(function(w){ return w.hasActual; });
+  if(!weeks.length) return "";
+
+  var rows = weeks.map(function(w){
+    var r = w.rate;
+    var cls = r === null ? "" : (r >= 100 ? " rate-ok" : (r >= 90 ? " rate-near" : " rate-low"));
+    // 棒は100%を基準に伸ばす。超過分は目盛りの外に出るので、
+    // 100%で頭打ちにして、実際の数字は右に出す。
+    var w100 = r === null ? 0 : Math.max(0, Math.min(100, r));
+    return '<div class="rate-row">' +
+      '<span class="rate-label">'+esc(w.label)+'〜</span>' +
+      '<span class="rate-track"><span class="rate-fill'+cls+'" style="width:'+w100+'%"></span></span>' +
+      '<span class="rate-pct'+cls+'">'+(r === null ? "—" : Math.round(r)+"%")+'</span>' +
+    '</div>';
+  }).join("");
+
+  return '<div class="card side-card">' +
+    '<div class="side-title">週の達成率</div>' +
+    '<div class="rate-list">'+rows+'</div>' +
+    '<div class="wk-legend">実績が入っている週だけ出しています</div>' +
+  '</div>';
+}
+
+/**
+ * 日ごとの達成率。
+ *
+ * 月の合計や週の合計だけだと、「どの日が効いたのか」「崩れ始めたのはいつか」が
+ * 見えない。1日単位で並べると、続けて落ちている区間が形として分かる。
+ *
+ * 表示は直近14日に絞る。月末まで並べると1本が細くなりすぎて形が読めない。
+ */
+function renderDayRates(p){
+  var all = (p.dayRates || []).filter(function(d){ return d.rate !== null; });
+  if(!all.length) return "";
+  var shown = all.slice(-14);
+
+  // 目盛りの上限。飛び抜けた日があると他が潰れるので、150%を基本にしつつ
+  // それを超える日があるときだけ伸ばす。
+  var top = 150;
+  shown.forEach(function(d){ top = Math.max(top, Math.ceil(d.rate / 50) * 50); });
+
+  // 棒と日付ラベルは別の行に分ける。同じ箱に入れると、棒はラベルを除いた
+  // 高さを基準にするのに対し、100%の線は箱全体を基準にすることになり、
+  // 両者の基準がずれる（達成している日の棒が線に届かない、が起きる）。
+  var bars = shown.map(function(d){
+    var h = Math.max(2, Math.round(d.rate / top * 100));
+    var cls = d.rate >= 100 ? " rate-ok" : (d.rate >= 90 ? " rate-near" : " rate-low");
+    return '<div class="dr" title="'+esc(d.date)+' '+Math.round(d.rate)+'%">' +
+      '<div class="dr-bar'+cls+'" style="height:'+h+'%"></div>' +
+    '</div>';
+  }).join("");
+  var labels = shown.map(function(d){
+    return '<div class="dr-lb">'+esc(String(d.date).split("/")[1] || d.date)+'</div>';
+  }).join("");
+
+  // 100%の位置に線を引く。棒の高さだけでは達成しているかが読み取れない。
+  var lineBottom = Math.round(100 / top * 100);
+
+  var hit = all.filter(function(d){ return d.rate >= 100; }).length;
+  var sumA = 0, sumT = 0;
+  all.forEach(function(d){ sumA += (d.actual || 0); sumT += (d.target || 0); });
+  var avgA = all.length ? sumA / all.length : 0;
+  var avgT = all.length ? sumT / all.length : 0;
+
+  return '<div class="card side-card">' +
+    '<div class="side-title">日ごとの達成率</div>' +
+    '<div class="dr-plot">' +
+      '<span class="dr-line" style="bottom:'+lineBottom+'%"></span>' +
+      '<div class="dr-cols">'+bars+'</div>' +
+    '</div>' +
+    '<div class="dr-labels">'+labels+'</div>' +
+    // 線の意味はグラフの中ではなく凡例で書く。中に置くと背の高い棒に
+    // 重なって、どちらも読みにくくなる（上の積み上げグラフと同じ形に揃えた）。
+    '<div class="wk-legend">横線＝100%（目標どおりの日）</div>' +
+    // 「1日あたりどれくらい来ているか」を金額でも出す。率だけだと、
+    // 目標そのものが日によって違うこの表では、規模の感覚が掴めない。
+    '<div class="dr-sum">' +
+      '<div class="dr-sum-row"><span>1日平均の実績</span><b>'+esc(yen(avgA))+'</b></div>' +
+      '<div class="dr-sum-row"><span>1日平均の目標</span><b>'+esc(yen(avgT))+'</b></div>' +
+      '<div class="dr-sum-row"><span>目標に届いた日</span><b>'+hit+' / '+all.length+'日</b></div>' +
+    '</div>' +
+    (all.length > shown.length
+      ? '<div class="wk-legend">グラフは直近'+shown.length+'日分（集計は'+all.length+'日すべて）</div>'
+      : '') +
   '</div>';
 }
 
