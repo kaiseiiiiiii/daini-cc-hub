@@ -308,6 +308,9 @@ select.input{padding-right:8px;}
   box-shadow:0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
   font-weight:700;}
 .seat-cell-me.seat-cell-text{color:var(--color-accent-deep);}
+/* 原本では名前が隠れているが、そこが自分の席という場合。
+   名前の代わりに「あなた」とだけ出す（他人の隠れた名前は出さない）。 */
+.seat-cell-me-hidden .seat-name{font-size:10px; letter-spacing:0.04em; opacity:0.95;}
 
 /* 掲示板の送信ボタン。フォーム内でいちばん大きく、迷わないようにする */
 /* height を上書きしているのは、.btn-primary が 44px 固定のため
@@ -4616,6 +4619,29 @@ function seatInkOn(hex){
   return onWhite > onDark ? "#fff" : SEAT_DARK_INK;
 }
 
+/**
+ * 原本でその文字が読める状態か。
+ *
+ * 座席表には「黒地に黒文字」のセルがある。座席のブロックの中に名前が
+ * 残っているが、原本を見ている人には読めない——つまり**読ませない**ための
+ * 書き方になっている。背景色だけを見て文字色をこちらで決めると、
+ * 原本では見えない名前をアプリだけが表に出すことになる。
+ *
+ * 文字色と背景色にコントラストが無いに等しいときは、隠されているものと
+ * みなして出さない。原本を見ている人とアプリを見ている人で、
+ * 見えるものを一致させるため。
+ *
+ * 文字色を持たないセル（同期がこの対応より前のもの、既定の黒）は
+ * 黒として扱う。黒地に黒＝隠す、が正しく効く。
+ */
+function seatTextVisible(cell){
+  var bgL = seatLuminance(cell.b || "#ffffff");
+  var fgL = seatLuminance(cell.f || "#000000");
+  if(bgL === null || fgL === null) return true;   // 判定できない書式は出す
+  var hi = Math.max(bgL, fgL), lo = Math.min(bgL, fgL);
+  return (hi + 0.05) / (lo + 0.05) >= 1.6;
+}
+
 /** 表示中の座席表と、その日のラベル */
 function displayedSeat(){
   return state.seatDay === "tomorrow"
@@ -4677,9 +4703,19 @@ function renderSeatChart(){
   var meFound = 0;
   var body = d.rows.map(function(row){
     var cells = (row.cells || []).map(function(c){
-      var t = c.t || "";
-      var mine = t && seatIsMe(t);
+      var raw = c.t || "";
+      // 原本で読めない文字は、こちらでも出さない（黒地に黒文字など）。
+      // 塗りは残す。座席のブロックそのものは配置の情報だから。
+      var visible = raw && seatTextVisible(c);
+      var mine = raw && seatIsMe(raw);
       if(mine) meFound++;
+
+      // 隠れているのが**自分の名前**のときだけ、位置を示す。
+      // 自分の名前は自分が知っているので、これで新しく漏れるものはない。
+      // 逆にこれを出さないと、自分の席が黒いブロックに入っている人は
+      // 「座席表を開いても自分の席が分からない」ことになる。
+      var hiddenMine = mine && !visible;
+      var t = visible ? raw : (hiddenMine ? "あなた" : "");
 
       // 名前の入ったセルと、塗りだけのセルを分けて扱う。
       // 塗りだけのセル（壁・通路・机の区切り）は配置を形づくる背景で、
@@ -4688,6 +4724,7 @@ function renderSeatChart(){
       cls += t ? " seat-cell-text" : " seat-cell-blank";
       if(c.b) cls += " seat-cell-fill";
       if(mine) cls += " seat-cell-me";
+      if(hiddenMine) cls += " seat-cell-me-hidden";
 
       var style = "";
       if(c.b){
