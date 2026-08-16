@@ -920,6 +920,8 @@ body.wide .pc-cols:has(.pc-side:empty),
 .kpi-value{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;}
 .kpi-unit{font-size:11px; color:var(--text-4);}
 .kpi-target{margin-left:auto; font-size:11px; color:var(--text-4); white-space:nowrap;}
+/* 原本に基準ラインが無い指標。目標と同じ強さで出すと、基準があるように読める */
+.kpi-target-none{opacity:0.6;}
 .kpi-bar-bg{height:4px; background:var(--color-track); border-radius:var(--radius-pill);}
 .kpi-bar{height:100%; border-radius:99px;}
 .section-label{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em;}
@@ -1164,12 +1166,24 @@ function valueOptionsHtml(selected){
   }
   return html;
 }
+/**
+ * 生産性KPIの定義。
+ *
+ * 目標値（t）は**原本の「基準ライン」行に合わせる**こと。
+ * ここに独自の数字を置くと、原本を見ている人とアプリを見ている人で
+ * 達成・未達の判定が食い違う。基準ラインが変わったらここも直す。
+ *
+ * t:null は「原本に基準ラインが無い指標」。数値は出すが、目標との
+ * 比較はしない（勝手に基準を作ると、原本にない線で未達に見せることになる）。
+ */
 var KPI_DEF = {
   call_rate:{ l:"通話率", t:45, u:"%", g:"high" },
   ancillary_rate:{ l:"付帯率", t:25, u:"%", g:"low" },
-  wait_rate:{ l:"待機率", t:10, u:"%", g:"low" },
+  // 原本の基準ラインは空欄。数値だけ出す。
+  wait_rate:{ l:"待機率", t:null, u:"%", g:"low" },
   work_rate:{ l:"作業率", t:10, u:"%", g:"low" },
-  avg_call:{ l:"平均通話", t:4, u:"分", g:"target" },
+  // 原本の基準ラインは 5:00。
+  avg_call:{ l:"平均通話", t:5, u:"分", g:"target" },
   // 手配率（目標35%）はここには置かない。
   // 生産性データシートに手配率の列が無く、同期でも値が入らないため、
   // 定義だけ残すと「0%」として赤く出て未達に見えてしまう。
@@ -5426,6 +5440,8 @@ function yenShort(n){
 // ══════════════════════════════════════════════════════════════════
 function kSt(key,val){
   var t = KPI_DEF[key];
+  // 基準ラインが無い指標は、達成も未達も判定しない。
+  if(t.t === null || t.t === undefined) return "none";
   if(t.g==="high") return val>=t.t ? "success" : (val>=t.t*0.9 ? "warn" : "bad");
   if(t.g==="low") return val<=t.t ? "success" : (val<=t.t*1.1 ? "warn" : "bad");
   return Math.abs(val-t.t)<=0.5 ? "success" : (Math.abs(val-t.t)<=1 ? "warn" : "bad");
@@ -5485,13 +5501,39 @@ function renderKpiSection(){
     var colorVar = st==="success" ? "color-grow-ink"
                  : st==="warn"    ? "color-dusk-ink"
                                   : "color-text-sub";
-    var pct = cfg.g==="low" ? Math.min(100, Math.round(cfg.t/val*100)) : Math.min(100, Math.round(val/cfg.t*100));
+    // 基準ラインが無い指標は、目標の表記もバーも出さない。
+    // 0 を目標として描くと、無い線に対して達成しているように見える。
+    var hasTarget = cfg.t !== null && cfg.t !== undefined;
+    var pct = !hasTarget ? 0
+            : (cfg.g==="low" ? Math.min(100, Math.round(cfg.t/val*100))
+                             : Math.min(100, Math.round(val/cfg.t*100)));
     return '<div class="card kpi-card">' +
       '<div class="kpi-label">'+cfg.l+'</div>' +
-      '<div class="kpi-value-row"><span class="kpi-value" style="color:var(--'+colorVar+')">'+val+'</span><span class="kpi-unit">'+cfg.u+'</span><span class="kpi-target">目標'+cfg.t+'</span></div>' +
-      '<div class="kpi-bar-bg"><div class="kpi-bar" style="width:'+pct+'%;background:var(--'+colorVar+')"></div></div>' +
+      '<div class="kpi-value-row"><span class="kpi-value" style="color:var(--'+colorVar+')">'+val+'</span><span class="kpi-unit">'+cfg.u+'</span>' +
+        (hasTarget ? '<span class="kpi-target">目標'+cfg.t+'</span>'
+                   : '<span class="kpi-target kpi-target-none">基準なし</span>') +
+      '</div>' +
+      (hasTarget
+        ? '<div class="kpi-bar-bg"><div class="kpi-bar" style="width:'+pct+'%;background:var(--'+colorVar+')"></div></div>'
+        : '') +
     '</div>';
   }).join("");
+
+  // 出せる指標が1つも無いとき。以前はここが空白のまま残り、
+  // 壊れているのか、まだデータが来ていないだけなのかが区別できなかった。
+  // どの指標が来ていないのかまで書いて、原本のどこを見ればよいかを示す。
+  if(!gridHtml){
+    var missing = Object.keys(KPI_DEF).map(function(k){ return KPI_DEF[k].l; }).join("・");
+    var who = state.kpiSel ? esc(getM(state.kpiSel).displayName) + "さんの" : "";
+    return '<div class="prog-section">' + head +
+      scopeNote +
+      '<div class="kpi-filter">' + filterHtml + '</div>' +
+      '<div class="prog-note">' +
+        who + '生産性の数値がまだ入っていません（' + esc(missing) + '）。' +
+        '同期は動いていますが、取り込み元にこれらの値が無い状態です。' +
+      '</div>' +
+    '</div>';
+  }
 
   return '<div class="prog-section">'+head+
     scopeNote +
