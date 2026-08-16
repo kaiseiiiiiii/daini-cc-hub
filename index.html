@@ -265,6 +265,9 @@ select.input{padding-right:8px;}
 .seat-sub{font-size:11px; color:var(--color-text-sub); opacity:0.8;}
 .seat-toggle{display:flex; gap:6px; margin-left:auto;}
 .seat-empty{font-size:13px; color:var(--color-text-sub); line-height:1.7; padding:6px 2px;}
+.seat-hint{font-size:11px; color:var(--color-text-sub); margin-bottom:6px;}
+.seat-hint-me{display:inline-block; border:2px solid var(--color-accent); border-radius:4px;
+  padding:0 4px; color:var(--color-accent-deep); font-weight:700;}
 .seat-changed{font-size:12px; font-weight:700; color:var(--color-dusk-ink);
   background:var(--color-dusk-tint); border-radius:var(--radius-md);
   padding:6px 10px; margin-bottom:8px;}
@@ -274,16 +277,37 @@ select.input{padding-right:8px;}
    縦にも上限を置く。実物は21行あり、そのまま出すとスマホ画面をほぼ
    埋めてしまい、下のシフト表に届くまで1画面ぶんスクロールすることになる。
    座席表を一番上に置く判断と、シフト表が読めることは両立させたい。 */
-.seat-scroll{overflow:auto; -webkit-overflow-scrolling:touch; max-height:58vh;}
-.seat-table{border-collapse:collapse; table-layout:auto;}
-.seat-cell{border:1px solid var(--color-border); padding:4px 7px; font-size:11px;
-  line-height:1.5; color:#202124; white-space:nowrap; text-align:center; min-width:52px;}
-/* 空セルにも枠を出す。抜けている席そのものが配置の情報になる */
-.seat-cell-empty{background:transparent; border-color:var(--color-border);}
-/* 自分の席。原本の背景色は消さずに、枠と太字で重ねる
-   （色が遅番などの意味を持っているため、塗り替えてはいけない） */
-.seat-cell-me{outline:2px solid var(--color-accent); outline-offset:-2px;
-  font-weight:700; color:var(--color-accent-deep);}
+.seat-scroll{overflow:auto; -webkit-overflow-scrolling:touch; max-height:58vh;
+  background:var(--color-bg); border:1px solid var(--color-border);
+  border-radius:var(--radius-md); padding:6px;}
+
+/* 罫線で全マスを囲むのはやめ、マスの間に隙間を空けて「席が並んでいる」
+   形として見せる。原本をそのまま罫線で写すと、名前・塗り・空マスが
+   すべて同じ強さで並び、どこに誰がいるのかを目で追えなかった。 */
+.seat-table{border-collapse:separate; border-spacing:2px; table-layout:auto;}
+.seat-cell{padding:5px 7px; font-size:11px; line-height:1.5; color:#202124;
+  white-space:nowrap; text-align:center; min-width:54px;
+  border-radius:5px; vertical-align:middle;}
+.seat-name{display:block;}
+
+/* 名前の入ったマスだけ、アプリのカードと同じ地色と枠を持たせて浮かせる */
+.seat-cell-text{background:var(--color-surface); border:1px solid var(--color-border);
+  color:var(--color-text); font-weight:500;}
+/* 塗りだけのマス（壁・通路・机の区切り）。配置を形づくる背景として、
+   名前より一段弱く出す。消すと席の位置が読めなくなるので残す。 */
+.seat-cell-blank{border:none;}
+/* 濃い塗りの空マスは、そのまま出すと黒い帯になって名前より目立つ。
+   薄くして「そこに何かある」ことだけを残す。 */
+.seat-cell-blank.seat-cell-fill{opacity:0.28;}
+/* 原本の塗りが入るマスは、その色を活かすので枠を持たせない */
+.seat-cell-fill{border-color:transparent;}
+
+/* 自分の席。原本の背景色は塗り替えない（色が遅番などの意味を持つため）。
+   枠と太字だけを重ねる。暗い塗りの上でも見えるよう、影で縁取る。 */
+.seat-cell-me{outline:2px solid var(--color-accent); outline-offset:1px;
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  font-weight:700;}
+.seat-cell-me.seat-cell-text{color:var(--color-accent-deep);}
 
 /* 掲示板の送信ボタン。フォーム内でいちばん大きく、迷わないようにする */
 /* height を上書きしているのは、.btn-primary が 44px 固定のため
@@ -4556,6 +4580,42 @@ function renderShiftControls(){
 //  自分の名前を目立たせるところだけ、後述の緩い判定で拾う。
 // ══════════════════════════════════════════════════════════════════
 
+/**
+ * 背景色の相対輝度（0〜1）。判定できない書式なら null。
+ *
+ * 原本には黒に近い塗りのセルがあり、文字色を固定していると
+ * 黒地に黒文字で名前が読めなくなる（実際にそうなっていた）。
+ *
+ * ガンマを戻してから重み付けする。人の目は緑を明るく感じるので、
+ * RGB をそのまま平均すると緑や水色の上で判定を誤る。
+ */
+function seatLuminance(hex){
+  var h = String(hex || "").replace("#", "").trim();
+  if(h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  if(!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  function lin(v){
+    var c = parseInt(v, 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+  return 0.2126*lin(h.slice(0,2)) + 0.7152*lin(h.slice(2,4)) + 0.0722*lin(h.slice(4,6));
+}
+
+/**
+ * その塗りの上に置く文字色。白と濃色のうち、読みやすいほうを返す。
+ *
+ * 「明るさが◯以下なら白」という一本のしきい値だと、境目付近の色
+ * （原本で使われている青がまさにそれ）でどちらとも言えない結果になる。
+ * 両方のコントラスト比を出して、大きいほうを選ぶ。
+ */
+var SEAT_DARK_INK = "#202124";
+function seatInkOn(hex){
+  var L = seatLuminance(hex);
+  if(L === null) return "";                  // 判定できない書式は触らない
+  var onWhite = 1.05 / (L + 0.05);           // 白文字にしたときの比
+  var onDark  = (L + 0.05) / (0.0144 + 0.05); // 濃色文字にしたときの比
+  return onWhite > onDark ? "#fff" : SEAT_DARK_INK;
+}
+
 /** 表示中の座席表と、その日のラベル */
 function displayedSeat(){
   return state.seatDay === "tomorrow"
@@ -4614,13 +4674,31 @@ function renderSeatChart(){
   }
 
   var d = view.data;
+  var meFound = 0;
   var body = d.rows.map(function(row){
     var cells = (row.cells || []).map(function(c){
       var t = c.t || "";
       var mine = t && seatIsMe(t);
-      var style = c.b ? ' style="background:'+esc(c.b)+'"' : '';
-      return '<td class="seat-cell'+(t?"":" seat-cell-empty")+(mine?" seat-cell-me":"")+'"'+style+'>' +
-        esc(t) +
+      if(mine) meFound++;
+
+      // 名前の入ったセルと、塗りだけのセルを分けて扱う。
+      // 塗りだけのセル（壁・通路・机の区切り）は配置を形づくる背景で、
+      // 名前と同じ強さで出すと、肝心の名前が埋もれる。
+      var cls = "seat-cell";
+      cls += t ? " seat-cell-text" : " seat-cell-blank";
+      if(c.b) cls += " seat-cell-fill";
+      if(mine) cls += " seat-cell-me";
+
+      var style = "";
+      if(c.b){
+        style = "background:" + c.b;
+        // 塗りに合わせて文字色を決める。固定していると黒地に黒文字になる。
+        var ink = seatInkOn(c.b);
+        if(ink) style += ";color:" + ink;
+      }
+
+      return '<td class="'+cls+'"'+(style?' style="'+esc(style)+'"':'')+'>' +
+        (t ? '<span class="seat-name">'+esc(t)+'</span>' : '') +
       '</td>';
     }).join("");
     return '<tr>'+cells+'</tr>';
@@ -4639,6 +4717,15 @@ function renderSeatChart(){
       toggle +
     '</div>' +
     changed +
+    // 自分の席が見つかったかどうかを言葉でも出す。枠だけだと、
+    // 探しても見つからないときに「枠が無い」のか「自分がいない日」なのかが
+    // 分からず、表を何度も往復することになる。
+    '<div class="seat-hint">' +
+      (meFound
+        ? '<span class="seat-hint-me">青い枠</span>があなたの席です' +
+          (meFound > 1 ? '（'+meFound+'か所に名前があります）' : '')
+        : 'この座席表にあなたの名前は見当たりません') +
+    '</div>' +
     '<div class="seat-scroll"><table class="seat-table"><tbody>'+body+'</tbody></table></div>' +
   '</div>';
 }
