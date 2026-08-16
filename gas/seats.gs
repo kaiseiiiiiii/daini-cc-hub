@@ -201,6 +201,10 @@ function readSeatGrid_(sheet) {
   var range = sheet.getDataRange();
   var values = range.getValues();
   var bgs = range.getBackgrounds();
+  // 文字色も読む。原本には「黒地に黒文字」で意図的に読ませていないセルが
+  // あり（座席のブロックの中に名前が残っている）、背景色だけを見ていると
+  // 原本では見えない名前をアプリが表に出してしまう。
+  var fgs = range.getFontColors();
 
   // 上限に当たったかどうかは呼び出し側へ返す。座席表の端が欠けても
   // 画面はエラーを出さないので、記録に残らないと誰も気づけない。
@@ -240,9 +244,12 @@ function readSeatGrid_(sheet) {
     for (var c3 = 0; c3 <= lastCol; c3++) {
       var text = String(values[r3][c3] == null ? "" : values[r3][c3]).trim();
       var bg = normalizeSeatBg_(bgs[r3] ? bgs[r3][c3] : "");
-      // 文字も色も無いセルは、空きとして最小の形で持つ
+      var fg = normalizeSeatFg_(fgs[r3] ? fgs[r3][c3] : "");
+      // 文字も色も無いセルは、空きとして最小の形で持つ。
+      // 文字色は既定の黒のときだけ省く（省いた側は黒として読む約束）。
       var cell = { t: text };
       if (bg) cell.b = bg;
+      if (fg) cell.f = fg;
       cells.push(cell);
     }
     rows.push({ cells: cells });
@@ -258,12 +265,24 @@ function normalizeSeatBg_(bg) {
 }
 
 /**
+ * 文字色。既定の黒は捨てる（読む側は「無ければ黒」として扱う）。
+ * 全セルに持たせると、ほとんどが同じ値でドキュメントが太るだけになる。
+ */
+function normalizeSeatFg_(fg) {
+  var v = String(fg || "").trim().toLowerCase();
+  if (v === "" || v === "#000000" || v === "#000" || v === "black") return "";
+  return v;
+}
+
+/**
  * 中身が変わったかを見るための指紋。
  * 文字と色の両方を含める。色だけが変わる（早番→遅番）ことがあるため。
  */
 function seatFingerprint_(grid) {
   var flat = grid.rows.map(function (row) {
-    return row.cells.map(function (c) { return c.t + "|" + (c.b || ""); }).join(",");
+    return row.cells.map(function (c) {
+      return c.t + "|" + (c.b || "") + "|" + (c.f || "");
+    }).join(",");
   }).join(";");
   var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, flat, Utilities.Charset.UTF_8);
   return bytes.map(function (b) {
