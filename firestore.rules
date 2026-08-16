@@ -174,6 +174,22 @@ service cloud.firestore {
                     && request.resource.data.dueBy.size() <= 200 ) );
     }
 
+    // 掲示板の投稿から見た、コメントの親の可視性。
+    //
+    // サブコレクションは親のルールを継承しない。非公開の投稿に付いた
+    // コメントを、対象外の人が直接 URL を組み立てて読めてしまうため、
+    // 親を引いて同じ条件をかけ直す。
+    //
+    // get() は1回あたり読み取り1件として課金される。コメントは開いている
+    // 投稿の分しか読まないので、この位置なら許容できる。
+    function boardParentVisible(postId) {
+      let p = get(/databases/$(database)/documents/boardPosts/$(postId)).data;
+      return !('visibleTo' in p)
+          || !(p.visibleTo is list)
+          || VISIBLE_ALL() in p.visibleTo
+          || myMemberId() in p.visibleTo;
+    }
+
     // 作成者IDと作成日時は、いかなる更新でも変更させない。
     // これを許すと、他人の投稿を自分のものに書き換えたり、
     // 投稿日時を偽装したりできてしまう。
@@ -451,8 +467,14 @@ service cloud.firestore {
     //   フィールド: authorId, title, body, category, pinned,
     //               readBy{memberId: 読んだ日時},
     //               reactions{memberId: [emoji]},
+    //               commentCount   … 表示用の非正規化値。この機能より前の
+    //                                投稿には無い（無い＝0件として読むこと）
     //               createdAt, updatedAt, edited,
     //               deleted, deletedBy, deletedAt
+    //
+    //   category は "重要" / "連絡" / "お知らせ" / "ニュース"。
+    //   ルールでは値を縛っていない（増減のたびにルール改定が要るのは
+    //   運用が持たない）。表示側は一覧に無い値も出せるようにしてある。
     //
     //   チェックリストとして使う場合のみ付く（無い投稿が正常にある）:
     //               dueDate         … "YYYY-MM-DD"。これが入っていると
@@ -462,6 +484,13 @@ service cloud.firestore {
     //               dueBy{memberId: "YYYY-MM-DD"}
     //                               … 人ごとの期日。**全体と違う人の分だけ**
     //                                 入れる。入っていない人は dueDate に従う
+    //               planBy{memberId: "YYYY-MM-DD"}
+    //                               … 「自分はここまでにやります」と**本人が**
+    //                                 置く日。dueBy とは別物で、書けるのは
+    //                                 本人のみ（作成者も admin も書けない）。
+    //                                 出した側の期日と本人の見通しが食い違って
+    //                                 いること自体が見たい情報なので、上書き
+    //                                 させずに2つ持つ
     //               visibleTo       … 読める人。["*"] は全員。
     //                                 それ以外は memberId の列挙（作成者を含む）
     //               doneBy{memberId: 完了した日時}
@@ -539,6 +568,26 @@ service cloud.firestore {
                          //    誰が代行したかを残せる形で別に設計する）。
                       || ( onlyChanged(['doneBy']) && onlyMyKeyInOrNew('doneBy') )
 
+                         // ③' 「自分はいつまでにやる」の宣言。
+                         //    作成者が決めた期日（dueDate / dueBy）とは別のフィールドで、
+                         //    書けるのは本人だけ。作成者にも書き換えさせない
+                         //    （下の⑤の onlyChanged に planBy は入れていない）。
+                         //
+                         //    他人が書けると、遅れている本人が「やると言っていた日」を
+                         //    まわりに書き換えられることになり、記録として意味を失う。
+                      || ( onlyChanged(['planBy']) && onlyMyKeyInOrNew('planBy') )
+
+                         // ③'' コメント数は非正規化した表示用の値。フィードと同じく ±1 だけ。
+                         //     この機能より前の投稿は commentCount を持たないので、
+                         //     フィールドが無い状態から 1 になる場合も許す。
+                      || ( onlyChanged(['commentCount'])
+                           && ( ( !resource.data.keys().hasAny(['commentCount'])
+                                  && request.resource.data.commentCount == 1 )
+                             || ( resource.data.keys().hasAny(['commentCount'])
+                                  && ( request.resource.data.commentCount == resource.data.commentCount + 1
+                                    || request.resource.data.commentCount == resource.data.commentCount - 1 ) ) )
+                           && request.resource.data.commentCount >= 0 )
+
                          // ④ 論理削除は作成者本人、または admin。
                       || ( isLogicalDelete()
                            && (isAuthor() || isAdmin())
@@ -568,6 +617,38 @@ service cloud.firestore {
                        );
 
       allow delete: if false;
+
+      // ----- コメント -----
+      //
+      // フィードのコメントと同じ形。違うのは、親の公開範囲を必ず見る点。
+      // サブコレクションは親のルールを継承しないので、ここで明示しないと
+      // 「本文は読めないのにコメントは読める」非公開の抜け道になる。
+      match /comments/{commentId} {
+        allow read: if isMember() && boardParentVisible(postId);
+
+        allow create: if validNewPost()
+                      && boardParentVisible(postId)
+                      && request.resource.data.edited == false;
+
+        allow update: if isMember()
+                      && boardParentVisible(postId)
+                      && immutableOrigin()
+                      && (
+                           ( isLogicalDelete()
+                             && (isAuthor() || isAdmin())
+                             && request.resource.data.deletedBy == myMemberId()
+                             && request.resource.data.deletedAt == request.time
+                             && onlyChanged(['deleted','deletedBy','deletedAt']) )
+                        || ( isAuthor()
+                             && !isLogicalDelete()
+                             && !isUndelete()
+                             && resource.data.deleted == false
+                             && request.resource.data.edited == true
+                             && onlyChanged(['text','edited','updatedAt']) )
+                         );
+
+        allow delete: if false;
+      }
     }
 
 

@@ -208,6 +208,64 @@ select.input{padding-right:8px;}
 .comment-input-row{display:flex; gap:8px; margin-top:8px; align-items:center;}
 .comment-input{font-size:13px;}
 
+/* コメント欄。以前は投稿本文との境目が無く、どこからがコメントなのか、
+   そもそも書けるのかが読み取れなかった。左に線を引いて一段下げる。 */
+.comments{border-left:2px solid var(--color-border); padding-left:14px; margin-left:12px;}
+.comments-label{font-size:12px; font-weight:700; color:var(--color-text-sub); margin-bottom:8px;}
+.comment-empty{font-size:12px; color:var(--color-text-sub); opacity:0.75; padding:4px 0 8px;}
+.comment-bubble-head{display:flex; align-items:baseline; gap:8px; margin-bottom:2px;}
+.comment-time{font-size:11px; color:var(--color-text-sub); opacity:0.75;}
+.comment-bubble .comment-text{color:var(--color-text);}
+/* 送信ボタン。Enter だけだと、変換確定と区別が付かず送れないことがある */
+.comment-send{flex-shrink:0; min-height:36px; padding:0 14px; border:none;
+  border-radius:var(--radius-pill); background:var(--color-accent); color:#fff;
+  font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; line-height:1;}
+.comment-send:hover{background:var(--color-accent-deep);}
+.comment-toggle-on{background:var(--color-accent-tint); border-color:var(--color-accent);
+  color:var(--color-accent-ink);}
+
+/* 過去の投稿。閉じているときは1行、開くと月ごとの見出しを挟んで並ぶ */
+.archive-trigger{display:flex; align-items:center; justify-content:center; gap:8px;
+  width:100%; min-height:44px; margin-top:16px; padding:11px 14px;
+  background:var(--color-surface); border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-md); font-size:13px; font-weight:700;
+  color:var(--color-text-sub); cursor:pointer; font-family:inherit;}
+.archive-trigger:hover{background:var(--color-bg);}
+.archive-trigger-open{border-color:color-mix(in srgb, var(--color-accent) 45%, transparent);
+  color:var(--color-accent-ink); background:var(--color-accent-tint);}
+.archive-count{background:var(--color-border); color:var(--color-text-sub);
+  border-radius:var(--radius-pill); padding:1px 8px; font-size:12px;}
+.archive-body{margin-top:10px;}
+.archive-month-head{position:sticky; top:0; z-index:1; padding:8px 2px; margin-bottom:6px;
+  background:var(--color-bg); font-size:12px; font-weight:700; color:var(--color-text-sub);
+  border-bottom:1px solid var(--color-border);}
+/* 過去のものだと分かるよう、現行より一段落とす。押せば通常どおり操作できる */
+.archive-month .card{opacity:0.9;}
+
+/* 自分で決める期限 */
+.task-plan{display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:10px;
+  padding:10px 12px; background:var(--color-bg); border:1px solid var(--color-border);
+  border-radius:var(--radius-md);}
+.task-plan-label{font-size:12px; font-weight:700; color:var(--color-text-sub);}
+.task-plan-input{flex:1; min-width:140px; font-size:13px;}
+.task-plan-clear{background:none; border:none; padding:4px 6px; font-size:12px;
+  color:var(--color-text-sub); text-decoration:underline; cursor:pointer; font-family:inherit;}
+.task-plan-late{border-color:color-mix(in srgb, var(--amber) 50%, transparent);
+  background:var(--color-dusk-tint);}
+.task-plan-warn{flex-basis:100%; font-size:12px; font-weight:700; color:var(--color-dusk-ink);}
+.reader-chip-note{font-size:11px; color:var(--color-text-sub); opacity:0.85;}
+.mytask-plan{display:block; font-size:11px; font-weight:400; color:var(--color-text-sub);
+  margin-top:1px;}
+.mytask-plan-late{color:var(--color-dusk-ink); font-weight:700;}
+
+/* 掲示板の送信ボタン。フォーム内でいちばん大きく、迷わないようにする */
+/* height を上書きしているのは、.btn-primary が 44px 固定のため
+   （2行入れるので、内容に合わせて伸びる必要がある） */
+.board-submit{display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px; width:100%; height:auto; min-height:60px; padding:10px 14px; margin-top:4px;}
+.board-submit-main{font-size:15px; font-weight:700; line-height:1.4;}
+.board-submit-sub{font-size:11px; font-weight:400; opacity:0.85; line-height:1.4;}
+
 .board-card{cursor:default;}
 /* 投稿者はカードの先頭。誰の連絡かを読む前に分かるようにする */
 .board-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
@@ -996,7 +1054,19 @@ var KPI_DEF = {
   // 定義だけ残すと「0%」として赤く出て未達に見えてしまう。
   // 出すなら手配粗利額データ側から取る必要があり、そこはまだ繋いでいない。
 };
-var CT = { Thanks:"green", お知らせ:"blue", 雑談:"purple", 質問:"amber", 報告:"blue", 重要:"red", 連絡:"blue" };
+/**
+ * 掲示板のカテゴリ。並び順がそのままプルダウンの並びになる。
+ *
+ * 投稿フォームと編集フォームの両方がここを見る。片方だけに直接
+ * 書いていると、増やしたときに「新規では選べるのに編集では消える」
+ * （＝編集して保存した瞬間にカテゴリが変わる）事故が起きる。
+ *
+ * 減らすときは注意。ここから外したカテゴリも過去の投稿には残っており、
+ * CT に色が無いと既定色で出る。表示側は一覧に無い値も出せるようにしてある。
+ */
+var BOARD_CATEGORIES = ["重要","連絡","お知らせ","ニュース"];
+
+var CT = { Thanks:"green", お知らせ:"blue", 雑談:"purple", 質問:"amber", 報告:"blue", 重要:"red", 連絡:"blue", ニュース:"purple" };
 var TEAM_COLOR_CLASS = { mgmt:"team-mgmt", a:"team-a", b:"team-b" };
 
 // ══════════════════════════════════════════════════════════════════
@@ -1078,6 +1148,97 @@ function monthOf(offset){
   };
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  アーカイブ（月が変わった投稿を畳む）
+//
+//  Firestore には何も書かない。「投稿日が当月ではない、かつ固定されて
+//  いない」を、そのつど計算して判定している。
+//
+//  フラグを持たせない理由:
+//    ・月初にまとめて書き込む処理（GAS）が要らない。増えた投稿の分だけ
+//      書き込みが走る運用は、止まったときに誰も気づけない。
+//    ・「固定を外したら自動でアーカイブ」が、外した瞬間に成立する。
+//      フラグ方式だと、外したあと次の実行まで一覧に残り続ける。
+//    ・過去データの移行が不要。archived を持たない既存の投稿も
+//      そのまま正しく畳まれる。
+//
+//  代償は、古い投稿も購読の対象として読み続けること（表示だけ畳んでいる）。
+//  件数が増えて読み取り量が問題になったら、ここを archived フラグと
+//  クエリの絞り込みに置き換える。そのときも判定の意味は変えない。
+// ══════════════════════════════════════════════════════════════════
+
+/** その投稿が属する月。"2026-8" の形（表示にも並べ替えにも使う） */
+function monthKeyOf(ms){
+  var d = new Date(ms);
+  return d.getFullYear() + "-" + (d.getMonth()+1);
+}
+
+function currentMonthKey(){ return monthKeyOf(Date.now()); }
+
+/**
+ * アーカイブ済みか。
+ * 固定されているものは、何か月経っても現行の一覧に残す。
+ * 固定を外した瞬間にここが true になり、次の描画でアーカイブへ移る。
+ */
+function isArchivedPost(p){
+  return !p.pinned && monthKeyOf(p.createdAtMs) !== currentMonthKey();
+}
+
+/** "2026-8" → "2026年8月（8/1〜8/31）" */
+function monthKeyLabel(key){
+  var parts = key.split("-");
+  var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+  // 翌月0日 = その月の末日。月ごとの日数もうるう年もこれで済む。
+  var last = new Date(y, m, 0).getDate();
+  return y + "年" + m + "月（" + m + "/1〜" + m + "/" + last + "）";
+}
+
+/**
+ * 投稿の配列を「現行」と「アーカイブ（月ごと）」に分ける。
+ * months は新しい月が先。中身の並びは渡されたままの順を保つ。
+ */
+function splitArchive(list){
+  var live = [], byMonth = {};
+  list.forEach(function(p){
+    if(!isArchivedPost(p)){ live.push(p); return; }
+    var k = monthKeyOf(p.createdAtMs);
+    (byMonth[k] = byMonth[k] || []).push(p);
+  });
+  var keys = Object.keys(byMonth).sort(function(a,b){
+    var pa = a.split("-"), pb = b.split("-");
+    return (pb[0]-pa[0]) || (pb[1]-pa[1]);
+  });
+  return {
+    live: live,
+    months: keys.map(function(k){ return { key:k, label:monthKeyLabel(k), posts:byMonth[k] }; }),
+    count: list.length - live.length
+  };
+}
+
+/**
+ * アーカイブの折りたたみ。閉じているときはボタン1つだけを出し、
+ * 開くと月の見出しごとに投稿を並べる。
+ * 月をさらに1つずつ開かせないのは、「1クリックで過去が見える」を
+ * 満たすため（2段階にすると、目当ての月を探す手間が増える）。
+ */
+function renderArchive(split, openFlagKey, renderOne){
+  if(!split.count) return "";
+  var open = !!state[openFlagKey];
+  var head = '<button class="archive-trigger'+(open?" archive-trigger-open":"")+'" ' +
+    'data-act="archive-toggle" data-id="'+openFlagKey+'" aria-expanded="'+(open?"true":"false")+'">' +
+    '🗂 過去の投稿 <span class="archive-count">'+split.count+'</span>' +
+    '<span class="reader-caret">'+(open?"▲":"▼")+'</span>' +
+  '</button>';
+  if(!open) return head;
+  var body = split.months.map(function(g){
+    return '<div class="archive-month">' +
+      '<div class="archive-month-head">'+esc(g.label)+' · '+g.posts.length+'件</div>' +
+      g.posts.map(renderOne).join("") +
+    '</div>';
+  }).join("");
+  return head + '<div class="archive-body">' + body + '</div>';
+}
+
 function getM(id){
   for(var i=0;i<session.members.length;i++) if(session.members[i].id===id) return session.members[i];
   return { id:id, displayName:"?", initial:"?", team:null };
@@ -1137,6 +1298,7 @@ var state = {
   tab:"feed",
   feed:[], board:[], surveys:[],
   comments:[],              // 開いている投稿のコメント（サブコレクション）
+  commentKind:"feed",       // そのコメントがどちら側のものか（"feed" | "board"）
   // シフトは月ごとに別ドキュメント。当月は常に購読し（ヘッダーの本日人数と
   // 本日サマリーが、どの月を見ていても正しく出るようにするため）、
   // 前月・翌月を見ているあいだだけ2本目を張る。
@@ -1151,6 +1313,9 @@ var state = {
   shiftTeam:"all",
   metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
   feedSort:"new", feedOpenComment:null,
+  boardOpenComment:null,    // コメントを開いている掲示板投稿のID（購読は常に1件だけ）
+  feedArchiveOpen:false,    // 先月以前のフィード投稿を開いているか
+  boardArchiveOpen:false,   // 先月以前の掲示板投稿を開いているか
   reactionPickerFor:null,   // リアクションの選択パレットを開いている投稿ID
   avatarFor:null,           // アイコン設定を開いている memberId
   avatarDraft:null,         // 保存前の縮小済み画像
@@ -1327,12 +1492,22 @@ function reconcileOpenState(){
     if(e.kind==="feed"   && !has(state.feed, e.id))      lost = "編集していた投稿は削除されました";
     if(e.kind==="board"  && !has(state.board, e.id))     lost = "編集していた掲示板の投稿は削除されました";
     if(e.kind==="survey" && !has(state.surveys, e.id))   lost = "編集していたアンケートは削除されました";
-    if(e.kind==="comment"&& !has(state.feed, e.postId))  lost = "コメント先の投稿は削除されました";
+    // コメントの親は、開いている側のコレクションで探す。
+    // 常に state.feed を見ていると、掲示板のコメントを編集中に
+    // 「親が消えた」と誤判定して編集が中断される。
+    if(e.kind==="comment"){
+      var pool = (state.commentKind === "board") ? state.board : state.feed;
+      if(!has(pool, e.postId)) lost = "コメント先の投稿は削除されました";
+    }
     if(lost) state.editing = null;
   }
 
   if(state.feedOpenComment && !has(state.feed, state.feedOpenComment)){
     state.feedOpenComment = null;
+    detachComments();
+  }
+  if(state.boardOpenComment && !has(state.board, state.boardOpenComment)){
+    state.boardOpenComment = null;
     detachComments();
   }
   if(state.boardOpenReaders && !has(state.board, state.boardOpenReaders)) state.boardOpenReaders = null;
@@ -1352,10 +1527,19 @@ function reconcileOpenState(){
   if(lost) state.notice = lost;
 }
 
-function attachComments(postId){
+/**
+ * コメントの購読。フィードと掲示板の両方から使う。
+ *
+ * 購読は常に1本だけ。開いている投稿は画面全体で1件という前提で、
+ * kind（どちらのコレクションか）と postId を渡す。2本張れるように
+ * すると、タブを行き来したときに前の購読を落とし忘れる経路ができる。
+ */
+function attachComments(kind, postId){
   detachComments();
   if(!postId) return;
-  var q = query(collection(db, "feedPosts", postId, "comments"), orderBy("createdAt", "asc"), limit(200));
+  var col = kind === "board" ? "boardPosts" : "feedPosts";
+  state.commentKind = kind;
+  var q = query(collection(db, col, postId, "comments"), orderBy("createdAt", "asc"), limit(200));
   commentUnsub = onSnapshot(q,
     function(snap){
       state.comments = snap.docs.map(mapDoc).filter(notDeleted)
@@ -1920,10 +2104,16 @@ if(mqWide.addEventListener){
   mqWide.addEventListener("change", function(){ if(session.status==="ready") render(); });
 }
 
-/** 未読の掲示板 */
+/**
+ * 未読の掲示板。
+ * アーカイブに畳まれたものは数えない。開かないと見えないものを
+ * バッジに載せると、押しても減らない数字になる。
+ */
 function unreadBoards(){
   var me = currentUserId();
-  return state.board.filter(function(p){ return !(p.readBy && p.readBy[me]); });
+  return state.board.filter(function(p){
+    return !isArchivedPost(p) && !(p.readBy && p.readBy[me]);
+  });
 }
 /** 未回答のアンケート（締切済みは除く） */
 function pendingSurveys(){
@@ -2103,15 +2293,21 @@ function renderFeed(){
     return '<button class="chip'+(state.feedSort===sd[0]?" chip-active":"")+'" data-act="feed-sort" data-id="'+sd[0]+'">'+sd[1]+'</button>';
   }).join("");
   var formHtml = renderComposer();
-  var body = sorted.length
-    ? sorted.map(renderFeedPost).join("")
-    : emptyStateIn("lonely","まだ何もないですね","まだ投稿がありません","最初の投稿をしてみましょう");
+  // 先月以前の投稿は畳む。並べ替えは畳む前に済ませてあるので、
+  // アーカイブの中も選んだ順（新着／スタンプ／コメント）のまま並ぶ。
+  var split = splitArchive(sorted);
+  var body = split.live.length
+    ? split.live.map(renderFeedPost).join("")
+    : (split.count
+        ? emptyState("📡","今月の投稿はまだありません","過去の投稿は下にまとまっています")
+        : emptyStateIn("lonely","まだ何もないですね","まだ投稿がありません","最初の投稿をしてみましょう"));
   return '<div class="tab-pad">' +
     renderLegacyCard() +
     renderMvvPanel() +
     '<div class="sortbar">'+sortHtml+'</div>' +
     formHtml +
     body +
+    renderArchive(split, "feedArchiveOpen", renderFeedPost) +
     renderTrash("feed") +
   '</div>';
 }
@@ -2286,32 +2482,7 @@ function renderFeedPost(post){
   var byEmoji = reactionsByEmoji(post);
   var mine = (post.reactions && post.reactions[me]) || [];
   var isOpen = state.feedOpenComment===post.id;
-
-  var commentsHtml = "";
-  if(isOpen){
-    commentsHtml = '<div class="comments">' +
-      state.comments.map(function(c){
-        if(state.editing && state.editing.kind==="comment" && state.editing.id===c.id && canEdit(c)){
-          return '<div class="comment-edit-row">' + avatar(c.authorId,22) +
-            '<input id="editCommentText" class="input comment-input" value="'+esc(c.text)+'">' +
-            '<button class="tool-btn" data-act="edit-save" data-kind="comment" data-id="'+c.id+'" data-post="'+post.id+'">保存</button>' +
-            '<button class="tool-btn" data-act="edit-cancel">中止</button>' +
-          '</div>';
-        }
-        return '<div class="comment-row">'+avatar(c.authorId,22) +
-          '<div class="comment-bubble">' +
-            '<span class="comment-name">'+esc(getM(c.authorId).displayName)+' </span>' +
-            '<span class="comment-text">'+esc(c.text)+'</span>' +
-            editedMark(c) +
-          '</div>' +
-          renderTools("comment", c, post.id) +
-        '</div>';
-      }).join("") +
-      '<div class="comment-input-row">' + avatar(me,22) +
-        '<input class="input comment-input" placeholder="コメントを入力... (Enter で送信)" data-act="comment-input" data-id="'+post.id+'">' +
-      '</div>' +
-    '</div>';
-  }
+  var commentsHtml = isOpen ? renderComments("feed", post) : "";
 
   return '<div class="card post-card">' +
     '<div class="post-head">' + avatar(post.authorId,38) +
@@ -2327,9 +2498,67 @@ function renderFeedPost(post){
       renderTools("feed", post) +
     '</div>' +
     '<div class="post-text">'+esc(post.text)+'</div>' +
-    renderReactionRow("feed", post,
-      '<button class="comment-toggle-btn" data-act="comment-toggle" data-id="'+post.id+'">💬 '+(post.commentCount||0)+'</button>') +
+    renderReactionRow("feed", post, commentToggleBtn("feed", post)) +
     commentsHtml +
+  '</div>';
+}
+
+/**
+ * コメントを開くボタン。
+ *
+ * 以前は「💬 0」とだけ出していた。0 が何を意味するのか（押せるのか、
+ * ただの表示なのか）が読み取れず、コメント機能に気づかれていなかった。
+ * 件数が無いときは動詞で「コメントする」と出し、押せることを文字で示す。
+ */
+function commentToggleBtn(kind, post){
+  var n = post.commentCount || 0;
+  var open = (kind==="board" ? state.boardOpenComment : state.feedOpenComment) === post.id;
+  return '<button class="comment-toggle-btn'+(open?" comment-toggle-on":"")+'"' +
+    ' data-act="comment-toggle" data-kind="'+kind+'" data-id="'+post.id+'"' +
+    ' aria-expanded="'+(open?"true":"false")+'">' +
+    '💬 <span>'+(n ? "コメント "+n : "コメントする")+'</span>' +
+  '</button>';
+}
+
+/**
+ * コメント欄。フィードと掲示板で同じものを使う。
+ *
+ * 送信は Enter だけにしていたが、スマホの日本語入力では変換確定の
+ * Enter と送信の Enter が区別しづらく、押せるボタンが要る。
+ * Enter でも送れる挙動は残してある（PC ではそちらが速いため）。
+ */
+function renderComments(kind, post){
+  var me = currentUserId();
+  var rows = state.comments.map(function(c){
+    if(state.editing && state.editing.kind==="comment" && state.editing.id===c.id && canEdit(c)){
+      return '<div class="comment-edit-row">' + avatar(c.authorId,22) +
+        '<input id="editCommentText" class="input comment-input" value="'+esc(c.text)+'">' +
+        '<button class="tool-btn" data-act="edit-save" data-kind="comment" data-id="'+c.id+'" data-post="'+post.id+'">保存</button>' +
+        '<button class="tool-btn" data-act="edit-cancel">中止</button>' +
+      '</div>';
+    }
+    return '<div class="comment-row">'+avatar(c.authorId,22) +
+      '<div class="comment-bubble">' +
+        '<div class="comment-bubble-head">' +
+          '<span class="comment-name">'+esc(getM(c.authorId).displayName)+'</span>' +
+          '<span class="comment-time">'+tAgo(c.createdAtMs)+'</span>' +
+          editedMark(c) +
+        '</div>' +
+        '<div class="comment-text">'+esc(c.text)+'</div>' +
+      '</div>' +
+      renderTools("comment", c, post.id) +
+    '</div>';
+  }).join("");
+
+  return '<div class="comments">' +
+    '<div class="comments-label">💬 コメント'+(state.comments.length?' '+state.comments.length:'')+'</div>' +
+    (state.comments.length ? rows
+      : '<div class="comment-empty">まだコメントはありません</div>') +
+    '<div class="comment-input-row">' + avatar(me,22) +
+      '<input class="input comment-input" placeholder="コメントを書く..." ' +
+        'data-act="comment-input" data-kind="'+kind+'" data-id="'+post.id+'">' +
+      '<button class="comment-send" data-act="comment-send" data-kind="'+kind+'" data-id="'+post.id+'">送信</button>' +
+    '</div>' +
   '</div>';
 }
 
@@ -2399,14 +2628,21 @@ function renderBoard(){
     return b.createdAtMs-a.createdAtMs;
   });
   var formHtml = state.boardShowForm ? renderBoardForm() : "";
-  var body = sorted.length
-    ? sorted.map(renderBoardPost).join("")
-    : emptyState("📋","まだ共有事項がありません");
+  // 先月以前の投稿は畳む。固定（📌）は月をまたいでも現行に残るので、
+  // 並べ替えで先頭に来た固定投稿はそのまま先頭に残る。
+  var split = splitArchive(sorted);
+  var body = split.live.length
+    ? split.live.map(renderBoardPost).join("")
+    : (split.count
+        ? emptyState("📋","今月の共有事項はまだありません","過去の投稿は下にまとまっています")
+        : emptyState("📋","まだ共有事項がありません"));
 
   // 未読ゼロのときだけ出す。掲示板を全部読み終えた状態は
   // わざわざ知らせる価値があるので、ここだけ INさんを出す。
+  // 見るのは現行分だけ。畳まれて画面に出ていない過去の投稿を
+  // 未読として数えると、開きようのないものが理由で永久に出なくなる。
   var me = currentUserId();
-  var allRead = sorted.length > 0 && sorted.every(function(p){
+  var allRead = split.live.length > 0 && split.live.every(function(p){
     return !!(p.readBy && p.readBy[me]);
   });
   var readAllHtml = allRead
@@ -2430,6 +2666,7 @@ function renderBoard(){
     formHtml +
     body +
     readAllHtml +
+    renderArchive(split, "boardArchiveOpen", renderBoardPost) +
     renderTrash("board") +
   '</div>';
 }
@@ -2447,14 +2684,15 @@ function renderOnboarding(){
   return '<div class="card onboard-card">' +
     inChar("guide", "ここが第二CCの掲示板です", 88) +
     '<div class="onboard-body">連絡事項はここに残ります。' +
-      '未読には NEW が付き、開くと既読になります。' +
-      '「既読◯名」を押すと、まだ読んでいない人が分かります。</div>' +
+      '未読には NEW が付き、画面に出して少し経つと自動で既読になります。' +
+      '「既読◯名」を押すと、まだ読んでいない人が分かります。' +
+      '月が変わった投稿は「過去の投稿」にまとまります（📌 固定したものは残ります）。</div>' +
     '<button class="btn-primary onboard-ok" data-act="onboard-done">わかりました</button>' +
   '</div>';
 }
 
 function renderBoardForm(){
-  var catOpts = ["重要","連絡","お知らせ"].map(function(c){ return "<option>"+c+"</option>"; }).join("");
+  var catOpts = BOARD_CATEGORIES.map(function(c){ return "<option>"+esc(c)+"</option>"; }).join("");
   return '<div class="card form-card">' +
     '<div class="form-col">' +
       '<input id="boardFormTitle" class="input input-strong" placeholder="タイトル">' +
@@ -2467,7 +2705,14 @@ function renderBoardForm(){
       renderImageField("boardForm", null) +
       renderTaskFields("boardForm", null) +
       errorSlot("boardFormError") +
-      '<button class="btn-primary full" data-act="board-submit">投稿する</button>' +
+      // 送信ボタンは、フォームの中でいちばん目立つ要素にしておく。
+      // 以前はほかの入力欄と同じ幅・同じ高さで最下段に置いていたため、
+      // 公開範囲や画像の欄と区別が付かず、押す場所が分からないという
+      // 報告が出ていた。何が起きるか（全員に見えること）も添える。
+      '<button class="btn-primary board-submit" data-act="board-submit">' +
+        '<span class="board-submit-main">📋 掲示板に投稿する</span>' +
+        '<span class="board-submit-sub">投稿するとメンバー全員の掲示板に出ます</span>' +
+      '</button>' +
     '</div>' +
   '</div>';
 }
@@ -2578,6 +2823,40 @@ function taskNeedsMe(post){
 function memberDue(post, memberId){
   var by = post.dueBy || {};
   return by[memberId] || post.dueDate || null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  自分で決める期限（planBy）
+//
+//  dueBy とは別物なので混ぜないこと。
+//    dueDate / dueBy … 出した人が決めた期日。動かせるのは作成者だけ。
+//    planBy          … 受けた人が「自分はここまでにやります」と自分で置く日。
+//                      本人しか書けない（ルール側で自分のキーだけに制限）。
+//
+//  分けている理由は、この2つが食い違うこと自体が見たい情報だから。
+//  作成者の期日に本人の宣言を上書きさせると、「間に合わないと本人は
+//  思っている」という状態が消えて、遅れが期日当日まで表に出てこない。
+// ══════════════════════════════════════════════════════════════════
+
+/** その人が自分で宣言した期限。無ければ null */
+function memberPlan(post, memberId){
+  var by = post.planBy || {};
+  return by[memberId] || null;
+}
+
+/** 宣言した期限が、割り当てられた期日より後になっているか */
+function planIsLate(post, memberId){
+  var plan = memberPlan(post, memberId);
+  var due  = memberDue(post, memberId);
+  if(!plan || !due) return false;
+  return plan > due;      // どちらも "YYYY-MM-DD" なので文字列比較でよい
+}
+
+/** 未完了者パネルに添える一言。「この人はいつやると言っているか」 */
+function planNote(post, m){
+  var plan = memberPlan(post, m.id);
+  if(!plan) return "";
+  return (planIsLate(post, m.id) ? "⚠ " : "") + ymdLabel(plan) + "予定";
 }
 
 /** 人ごとの期日が1件でも入っているか */
@@ -2787,7 +3066,8 @@ function renderTaskBlock(post){
   var isOpen  = state.boardOpenTask === post.id;
   var iAmDone = taskDone(post, me);
 
-  var mine = isTaskTarget(post, me)
+  var iAmTarget = isTaskTarget(post, me);
+  var mine = iAmTarget
     ? '<button class="task-check'+(iAmDone?" task-check-done":"")+'" ' +
         'data-act="task-toggle" data-id="'+post.id+'" ' +
         'role="checkbox" aria-checked="'+(iAmDone?"true":"false")+'">' +
@@ -2795,6 +3075,30 @@ function renderTaskBlock(post){
         '<span>'+(iAmDone?"完了しました（取り消す）":"完了にする")+'</span>' +
       '</button>'
     : '<div class="task-note">あなたはこのチェックリストの対象者ではありません</div>';
+
+  // 自分の期限の宣言。終わっていない対象者にだけ出す。
+  // 終わった人に予定日を聞いても意味がなく、欄が残っていると
+  // 「まだ何かやることがある」と読めてしまう。
+  var planHtml = "";
+  if(iAmTarget && !iAmDone){
+    var myPlan = memberPlan(post, me) || "";
+    var myDue  = memberDue(post, me);
+    var late   = planIsLate(post, me);
+    planHtml = '<div class="task-plan'+(late?" task-plan-late":"")+'">' +
+      '<label class="task-plan-label" for="plan-'+post.id+'">🗓 自分はいつまでにやる</label>' +
+      // data-nokeep: この欄の値は Firestore 側が持っている。描き直しの
+      // 引き継ぎ対象に入れると、取り消した直後に古い日付が書き戻される。
+      '<input type="date" id="plan-'+post.id+'" class="input task-plan-input" data-nokeep ' +
+        'data-act="plan-date" data-id="'+post.id+'" value="'+esc(myPlan)+'">' +
+      (myPlan
+        ? '<button class="task-plan-clear" data-act="plan-clear" data-id="'+post.id+'">取り消す</button>'
+        : '') +
+      // 期日より後ろの日を置いたことは、その場で言う。あとから
+      // 「間に合っていない」と気づくより、置いた瞬間に分かるほうがよい。
+      (late ? '<div class="task-plan-warn">期日（'+esc(ymdLabel(myDue))+'）より後です</div>'
+            : '') +
+    '</div>';
+  }
 
   return '<div class="task-block">' +
     '<div class="task-head">' +
@@ -2807,6 +3111,7 @@ function renderTaskBlock(post){
       '</button>' +
     '</div>' +
     mine +
+    planHtml +
     // 人ごとに期日が違うときは、誰がいつまでなのかを並べる。
     // カードの中で分かるようにしておかないと、割り振った本人以外は
     // カレンダーを開くまで自分の日付を知る手段がない。
@@ -2814,7 +3119,10 @@ function renderTaskBlock(post){
     (isOpen ? renderPeoplePanel({
       pendingLabel:"未完了", pending:pending,
       doneLabel:"完了",     done:done,
-      allDoneText:"全員が完了しました"
+      allDoneText:"全員が完了しました",
+      // 未完了の人が自分で置いた予定日を並べる。「まだの人」の一覧が、
+      // 声をかける先の一覧から「いつやると言っているかの一覧」になる。
+      noteOf: function(m){ return planNote(post, m); }
     }) : "") +
   '</div>';
 }
@@ -2950,9 +3258,16 @@ function renderMyTasks(){
     var d = ymdDaysLeft(memberDue(p, currentUserId()));
     var cls = d === null ? "" : (d < 0 ? " mytask-due-late" : (d <= 2 ? " mytask-due-soon" : ""));
     var text = d === null ? "" : (d < 0 ? "期限切れ" : (d === 0 ? "本日" : "残り"+d+"日"));
+    // 自分で置いた予定日があれば添える。期日と自分の宣言がずれている場合、
+    // 動く日として意味があるのは宣言のほう。
+    var plan = memberPlan(p, currentUserId());
+    var planHtml = plan
+      ? '<span class="mytask-plan'+(planIsLate(p, currentUserId())?" mytask-plan-late":"")+'">' +
+          '🗓 '+esc(ymdLabel(plan)) + '</span>'
+      : '';
     return '<button class="mytask-row" data-act="task-toggle" data-id="'+p.id+'">' +
       '<span class="task-box"></span>' +
-      '<span class="mytask-title">'+esc(p.title)+'</span>' +
+      '<span class="mytask-title">'+esc(p.title)+planHtml+'</span>' +
       '<span class="mytask-due'+cls+'">'+esc(text)+'</span>' +
     '</button>';
   }).join("");
@@ -2963,9 +3278,11 @@ function renderMyTasks(){
 }
 
 /** 名前チップ1つ。未読側は色を強めて目に入るようにする */
-function memberChip(m, emphasize){
+function memberChip(m, emphasize, note){
   return '<span class="reader-chip'+(emphasize?" reader-chip-unread":"")+'">' +
-    avatar(m.id,18) + '<span>'+esc(m.displayName)+'</span></span>';
+    avatar(m.id,18) + '<span>'+esc(m.displayName)+'</span>' +
+    (note ? '<span class="reader-chip-note">'+esc(note)+'</span>' : '') +
+  '</span>';
 }
 
 /**
@@ -2978,7 +3295,9 @@ function renderPeoplePanel(cfg){
   if(cfg.pending.length){
     html += '<div class="reader-group">' +
       '<div class="reader-label reader-label-unread">'+esc(cfg.pendingLabel)+' '+cfg.pending.length+'名</div>' +
-      '<div class="reader-chips">' + cfg.pending.map(function(m){ return memberChip(m, true); }).join("") + '</div>' +
+      '<div class="reader-chips">' + cfg.pending.map(function(m){
+        return memberChip(m, true, cfg.noteOf ? cfg.noteOf(m) : "");
+      }).join("") + '</div>' +
     '</div>';
   }else{
     html += '<div class="reader-group"><div class="reader-label reader-label-done">✓ '+esc(cfg.allDoneText)+'</div></div>';
@@ -2993,8 +3312,13 @@ function renderPeoplePanel(cfg){
 }
 
 function renderBoardEditForm(post){
-  var catOpts = ["重要","連絡","お知らせ"].map(function(c){
-    return '<option'+(c===post.category?" selected":"")+'>'+c+'</option>';
+  // 一覧から外したカテゴリが付いた古い投稿も、そのカテゴリのまま保存できるように
+  // 選択肢へ足しておく。足さないと、開いた時点で先頭の「重要」が選ばれた状態になり、
+  // 本文だけ直したつもりの保存でカテゴリが勝手に変わる。
+  var cats = BOARD_CATEGORIES.slice();
+  if(post.category && cats.indexOf(post.category) < 0) cats.push(post.category);
+  var catOpts = cats.map(function(c){
+    return '<option'+(c===post.category?" selected":"")+'>'+esc(c)+'</option>';
   }).join("");
   return '<div class="card form-card edit-card">' +
     '<div class="edit-head">共有事項を編集</div>' +
@@ -3031,7 +3355,9 @@ function renderBoardPost(post){
 
   var author = getM(post.authorId);
 
-  return '<div class="card board-card" style="border-left:3px solid var(--'+catColor+')"'+(isRead?"":' data-act="board-read" data-id="'+post.id+'"')+'>' +
+  // 未読のカードには data-unread を付けるだけ。既読にするのはクリックではなく、
+  // カードが画面に入ったことを見ている IntersectionObserver（observeUnread）。
+  return '<div class="card board-card" style="border-left:3px solid var(--'+catColor+')"'+(isRead?"":' data-unread="'+post.id+'"')+'>' +
     // 投稿者を先頭に、名前をはっきり出す。以前は 18px のアイコンと
     // 薄い小さな文字でカードの一番下に置いていて、誰の連絡なのかが
     // 読み終わるまで分からなかった。「誰が言っているか」は
@@ -3060,7 +3386,8 @@ function renderBoardPost(post){
     (post.body ? '<div class="board-body">'+esc(post.body)+'</div>' : "") +
     renderBoardImage(post) +
     renderTaskBlock(post) +
-    renderReactionRow("board", post) +
+    renderReactionRow("board", post, commentToggleBtn("board", post)) +
+    (state.boardOpenComment===post.id ? renderComments("board", post) : "") +
     renderTools("board", post) +
     '<div class="board-footer">' +
       '<button class="reader-toggle'+(isOpen?" reader-toggle-open":"")+'" data-act="board-readers" data-id="'+post.id+'" aria-expanded="'+(isOpen?"true":"false")+'">' +
@@ -3779,6 +4106,61 @@ function observeImages(){
     });
   }, { root: scroller || null, rootMargin:"400px 0px" });
   Array.prototype.forEach.call(slots, function(el){ imageObserver.observe(el); });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  既読（画面に入ったら既読にする）
+//
+//  以前はカードのどこかを押して初めて既読になっていた。読んだのに
+//  未読のまま残るので、「既読◯名」も未読者リストも実態とずれていた。
+//
+//  今は「一定時間、画面に入っていた」ことを既読の条件にしている。
+//  すれ違いざまのスクロールで既読にしないよう、少し待つ。
+//
+//  待ち時間の管理を要素ではなく投稿IDで持っているのは、待っている
+//  最中にほかの人の書き込みで描き直されるため。要素で持つと、描き直しの
+//  たびにタイマーが作り直され、複数枚が同時に見えているときに
+//  いつまでも既読にならない（書き込み→描き直し→リセットの堂々巡り）。
+// ══════════════════════════════════════════════════════════════════
+var READ_DWELL_MS = 1000;    // 何ミリ秒見えていたら既読とみなすか
+var unreadObserver = null;
+var unreadTimers = {};       // postId -> タイマー
+
+function observeUnread(){
+  var cards = document.querySelectorAll("[data-unread]");
+  if(!cards.length) return;
+  // 対応していないブラウザでは、描画された時点のものをそのまま既読にする。
+  // 「押さないと既読にならない」に戻すより、こちらのほうが実態に近い。
+  if(!("IntersectionObserver" in window)){
+    Array.prototype.forEach.call(cards, function(el){
+      markBoardRead(el.getAttribute("data-unread"));
+    });
+    return;
+  }
+  if(unreadObserver) unreadObserver.disconnect();
+  var scroller = document.getElementById("content");
+  unreadObserver = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      var id = e.target.getAttribute("data-unread");
+      if(!id) return;
+      // 画面より背の高いカードは、何割見えたかでは判定できない
+      // （長い連絡事項は 60% に届かないまま読み終わる）。
+      // 見えている高さそのものも条件に入れておく。
+      var enough = e.isIntersecting
+                && (e.intersectionRatio >= 0.6 || e.intersectionRect.height >= 240);
+      if(enough){
+        if(unreadTimers[id]) return;   // すでに待っている。数え直さない
+        unreadTimers[id] = setTimeout(function(){
+          delete unreadTimers[id];
+          markBoardRead(id);
+        }, READ_DWELL_MS);
+      }else{
+        clearTimeout(unreadTimers[id]);
+        delete unreadTimers[id];
+      }
+    });
+  }, { root: scroller || null, threshold:[0, 0.25, 0.6] });
+  Array.prototype.forEach.call(cards, function(el){ unreadObserver.observe(el); });
 }
 
 /**
@@ -4672,6 +5054,10 @@ function formSignature(){
   return [state.tab,
           state.boardShowForm ? 1 : 0,
           state.surveyShowForm ? 1 : 0,
+          // 開いているコメント欄も組み合わせに入れる。入れないと、書きかけの
+          // コメントが、別の投稿のコメント欄を開いたときにそちらへ移る。
+          state.feedOpenComment || "-",
+          state.boardOpenComment || "-",
           e ? e.kind+":"+e.id+":"+(e.postId||"") : "-"].join("|");
 }
 
@@ -4683,12 +5069,25 @@ function formFieldKey(el, seen){
   return "." + cls + ":" + seen[cls];
 }
 
+/**
+ * 引き継ぎの対象外にする入力か。
+ *
+ * 対象にしてよいのは「値が DOM にしか無い」下書きだけ。
+ * すでに保存された値を描き直しているだけの欄まで運ぶと、
+ * 消した直後の描き直しで古い値が書き戻される
+ * （「自分の期限」を取り消したのに、日付が入ったまま見える）。
+ */
+function skipKeep(el){
+  return el.type === "file"          // ファイル入力の値は代入できない
+      || el.hasAttribute("data-nokeep");
+}
+
 function captureForms(){
   var keep = {}, seen = {};
   Array.prototype.forEach.call(
     document.querySelectorAll("#app input, #app select, #app textarea"),
     function(el){
-      if(el.type === "file") return;   // ファイル入力の値は代入できない
+      if(skipKeep(el)) return;
       keep[formFieldKey(el, seen)] = (el.type === "checkbox" || el.type === "radio")
         ? el.checked : el.value;
     }
@@ -4701,7 +5100,7 @@ function restoreForms(keep){
   Array.prototype.forEach.call(
     document.querySelectorAll("#app input, #app select, #app textarea"),
     function(el){
-      if(el.type === "file") return;
+      if(skipKeep(el)) return;
       var k = formFieldKey(el, seen);
       if(!(k in keep)) return;
       if(el.type === "checkbox" || el.type === "radio") el.checked = keep[k];
@@ -4709,6 +5108,18 @@ function restoreForms(keep){
     }
   );
 }
+
+// ── スクロール位置の引き継ぎ ────────────────────────────────
+//
+// render() は #app の中身を丸ごと入れ替える。スクロールしているのは
+// その内側の #content なので、入れ替えた瞬間に位置が 0 に戻る。
+// つまり「リアクションの＋を押す」「既読の一覧を開く」「並べ替える」など、
+// 状態が変わる操作すべてで画面が先頭まで飛んでいた。
+// （報告のあった「＋を押すと上に飛ぶ」は、これが原因）
+//
+// 直前の描画と同じタブなら、位置を測っておいて入れ替えのあとに戻す。
+// タブが変わったときは戻さない（別の画面を途中から見せない）。
+var renderedTab = null;
 
 function render(){
   var app = document.getElementById("app");
@@ -4718,7 +5129,12 @@ function render(){
   var keep = (sig === lastFormSig) ? captureForms() : null;
   lastFormSig = sig;
 
+  var contentEl = document.getElementById("content");
+  var keepScroll = (contentEl && renderedTab === state.tab) ? contentEl.scrollTop : 0;
+
   // ログインしていない／許可されていない間は、アプリの中身を一切描画しない。
+  // 画面が入れ替わるので、覚えている位置は捨てる。
+  if(session.status !== "ready") renderedTab = null;
   if(session.status === "config")    { app.innerHTML = renderConfigNotice(); return; }
   if(session.status === "loading")   { app.innerHTML = renderSplash("読み込み中..."); return; }
   if(session.status === "signedOut") { app.innerHTML = renderLogin(); return; }
@@ -4752,7 +5168,7 @@ function render(){
       '</div>' +
       renderConfirmDialog() + renderAvatarDialog() + renderLightbox();
     if(keep) restoreForms(keep);
-    observeImages();
+    afterRender(keepScroll);
     return;
   }
 
@@ -4760,8 +5176,20 @@ function render(){
     '<div class="content" id="content">'+body+'</div>' + renderNav() +
     renderConfirmDialog() + renderAvatarDialog() + renderLightbox();
   if(keep) restoreForms(keep);
-  // 描き直すたびに置き直す。innerHTML の差し替えで前の要素は捨てられている。
+  afterRender(keepScroll);
+}
+
+/**
+ * 描き直したあとの後始末。2か所（広い画面／狭い画面）から呼ぶので
+ * まとめてある。片方だけに書くと、画面幅によって挙動が変わる。
+ */
+function afterRender(keepScroll){
+  renderedTab = state.tab;
+  var el = document.getElementById("content");
+  if(el && keepScroll) el.scrollTop = keepScroll;
+  // 監視は描き直すたびに置き直す。innerHTML の差し替えで前の要素は捨てられている。
   observeImages();
+  observeUnread();
 }
 
 /** 画像の拡大表示。縮小してあるので、これが原寸 */
@@ -4915,13 +5343,17 @@ function toggleReaction(kind, id, emoji){
   write("リアクション", function(){ return updateDoc(doc(db, col, id), patch); });
 }
 
-function submitComment(postId, text){
+function submitComment(kind, postId, text){
+  var col = kind === "board" ? "boardPosts" : "feedPosts";
   var payload = baseFields();
   payload.text = text;
   write("コメント", async function(){
-    await addDoc(collection(db, "feedPosts", postId, "comments"), payload);
-    // 一覧に「💬 N」を出すための非正規化値。ルールで ±1 しか許していない。
-    await updateDoc(doc(db, "feedPosts", postId), { commentCount: increment(1) });
+    await addDoc(collection(db, col, postId, "comments"), payload);
+    // 一覧に件数を出すための非正規化値。ルールで ±1 しか許していない。
+    // 掲示板にはこの機能より前の投稿があり commentCount を持たない。
+    // increment は「無ければ 0 から」で動くので、ここは同じ書き方でよい
+    // （ルール側にも、フィールドが無い状態から 1 になる場合を足してある）。
+    await updateDoc(doc(db, col, postId), { commentCount: increment(1) });
   });
 }
 
@@ -4996,6 +5428,25 @@ function toggleTaskDone(id){
   patch["doneBy." + me] = taskDone(post, me) ? deleteField() : serverTimestamp();
   write("完了の記録", function(){ return updateDoc(doc(db, "boardPosts", id), patch); });
   markBoardRead(id);
+}
+
+/**
+ * 「自分はいつまでにやる」を置く／消す。
+ *
+ * 触れるのは自分のキーだけ（ルール側でも同じ条件で止めている）。
+ * 空文字が来たら消す。日付欄は × で空にできるので、その操作を
+ * 「宣言を取り消した」として扱う。
+ */
+function setMyPlan(id, ymd){
+  var me = currentUserId();
+  var post = state.board.filter(function(p){ return p.id===id; })[0];
+  if(!post || !isTask(post) || !isTaskTarget(post, me)) return;
+  // 壊れた日付は送らない。ルールでは中身の形を検証できないので、
+  // ここで止めないと表示側が黙って無視するだけのゴミが残る。
+  if(ymd && !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return;
+  var patch = {};
+  patch["planBy." + me] = ymd ? ymd : deleteField();
+  write("予定日の記録", function(){ return updateDoc(doc(db, "boardPosts", id), patch); });
 }
 
 function markBoardRead(id){
@@ -5137,9 +5588,11 @@ function saveCommentEdit(postId, commentId){
   var text = document.getElementById("editCommentText").value.trim();
   if(!text) return;
   var patch = { text: text, edited: true, updatedAt: serverTimestamp() };
+  // 開いているコメント欄がどちら側のものかで、書き込み先が変わる
+  var col = state.commentKind === "board" ? "boardPosts" : "feedPosts";
   state.editing = null;
   write("編集", function(){
-    return updateDoc(doc(db, "feedPosts", postId, "comments", commentId), patch);
+    return updateDoc(doc(db, col, postId, "comments", commentId), patch);
   }, true);
 }
 
@@ -5188,6 +5641,7 @@ function askDelete(kind, id, postId){
 
   state.confirm = {
     kind: kind, targetId: id, postId: postId || null,
+    commentKind: state.commentKind,   // コメントの削除先（feed / board）を確定させておく
     title: title, body: body, okLabel: "削除する"
   };
   render();
@@ -5205,9 +5659,12 @@ function runConfirmedDelete(){
   }else if(c.kind==="survey"){
     write("削除", function(){ return updateDoc(doc(db, "surveys", c.targetId), patch); }, true);
   }else if(c.kind==="comment"){
+    // 確認ダイアログを出したときに開いていた側へ書く。
+    // 確認中にコメント欄を切り替えることはできない（ダイアログが前に出る）。
+    var ccol = c.commentKind === "board" ? "boardPosts" : "feedPosts";
     write("削除", async function(){
-      await updateDoc(doc(db, "feedPosts", c.postId, "comments", c.targetId), patch);
-      await updateDoc(doc(db, "feedPosts", c.postId), { commentCount: increment(-1) });
+      await updateDoc(doc(db, ccol, c.postId, "comments", c.targetId), patch);
+      await updateDoc(doc(db, ccol, c.postId), { commentCount: increment(-1) });
     }, true);
   }
 }
@@ -5313,6 +5770,7 @@ function bindEvents(){
       // タブを離れたらコメントの購読だけ落とす。
       // 一覧の3本はログイン中つなぎっぱなし（張り直すと全件読み直しになるため）。
       state.feedOpenComment = null;
+      state.boardOpenComment = null;
       detachComments();
       render();
     }
@@ -5348,10 +5806,26 @@ function bindEvents(){
     }
     else if(act==="comment-toggle"){
       // コメントは投稿ごとのサブコレクション。開いている1件だけ購読する。
-      state.feedOpenComment = state.feedOpenComment===id ? null : id;
-      attachComments(state.feedOpenComment);
+      // フィードと掲示板をまたいで同時には開かない（購読は1本だけ）。
+      var ck = el.getAttribute("data-kind") || "feed";
+      var already = (ck==="board" ? state.boardOpenComment : state.feedOpenComment) === id;
+      state.feedOpenComment = null;
+      state.boardOpenComment = null;
+      if(!already){
+        if(ck==="board") state.boardOpenComment = id; else state.feedOpenComment = id;
+      }
+      attachComments(ck, already ? null : id);
       render();
     }
+    else if(act==="comment-send"){
+      var box = document.querySelector('.comment-input[data-act="comment-input"][data-id="'+id+'"]');
+      if(!box) return;
+      var msg = box.value.trim();
+      if(!msg) return;
+      box.value = "";   // 送信は非同期。先に空にして二重送信を防ぐ
+      submitComment(el.getAttribute("data-kind") || "feed", id, msg);
+    }
+    else if(act==="archive-toggle"){ state[id] = !state[id]; render(); }
     else if(act==="legacy-download"){ downloadLegacy(); }
     else if(act==="legacy-discard"){ discardLegacy(); }
     else if(act==="notice-close"){ state.notice = ""; render(); }
@@ -5384,7 +5858,6 @@ function bindEvents(){
     else if(act==="board-open-form"){ state.boardShowForm = true; state.boardImageDraft = null; render(); }
     else if(act==="board-cancel"){ state.boardShowForm = false; state.boardImageDraft = null; render(); }
     else if(act==="board-submit"){ submitBoardPost(); }
-    else if(act==="board-read"){ markBoardRead(id); }
     else if(act==="board-readers"){
       state.boardOpenReaders = state.boardOpenReaders===id ? null : id;
       render();
@@ -5401,6 +5874,7 @@ function bindEvents(){
     else if(act==="lightbox"){ state.lightbox = id; render(); }
     else if(act==="lightbox-close"){ state.lightbox = null; render(); }
     else if(act==="task-toggle"){ toggleTaskDone(id); }
+    else if(act==="plan-clear"){ setMyPlan(id, ""); }
     else if(act==="task-status"){
       state.boardOpenTask = state.boardOpenTask===id ? null : id;
       render();
@@ -5441,6 +5915,10 @@ function bindEvents(){
     if(av){ pickAvatarFile(av.files && av.files[0], av.getAttribute("data-id")); return; }
     var bi = e.target.closest('[data-act="board-img-file"]');
     if(bi){ pickBoardImage(bi.files && bi.files[0], bi.getAttribute("data-which")); return; }
+    // 自分の期限は、日付を選んだ時点で記録する。
+    // 別に保存ボタンを置くと「選んだのに保存を押していない」状態が生まれる。
+    var pd = e.target.closest('[data-act="plan-date"]');
+    if(pd){ setMyPlan(pd.getAttribute("data-id"), pd.value); return; }
   });
 
   // 拡大表示は Esc でも閉じられるようにする
@@ -5452,11 +5930,13 @@ function bindEvents(){
     if(session.status !== "ready") return;
     var el = e.target.closest('[data-act="comment-input"]');
     if(!el) return;
-    if(e.key==="Enter"){
+    // 日本語入力の変換確定の Enter で送信しない。
+    // isComposing が true のあいだは、まだ文字を選んでいる最中。
+    if(e.key==="Enter" && !e.isComposing){
       var text = el.value.trim();
       if(!text) return;
       el.value = "";   // 送信は非同期。先に空にして二重送信を防ぐ
-      submitComment(el.getAttribute("data-id"), text);
+      submitComment(el.getAttribute("data-kind") || "feed", el.getAttribute("data-id"), text);
     }
   });
 }
