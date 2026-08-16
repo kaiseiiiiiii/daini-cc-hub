@@ -25,7 +25,13 @@ var NOTIFY_HOUR_TO   = 22;
 var APP_URL = "https://kaiseiiiiiii.github.io/daini-cc-hub/";
 
 // 1回で流す最大件数。まとめて増えたときにスペースを埋め尽くさないため。
-var NOTIFY_MAX = 10;
+// フィードも流すようになって件数が増えたので、以前の10から引き上げてある。
+var NOTIFY_MAX = 15;
+
+// 通知の対象コレクション。ここに足せば拾うようになる。
+// 表示の並びもこの順（掲示板 → アンケート → フィード）。
+// 反応が要るものを先に置き、フィードを最後にしている。
+var NOTIFY_COLLECTIONS = ["boardPosts", "surveys", "feedPosts"];
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -88,10 +94,12 @@ function runNotify(trigger) {
     // 何件見て何件が新着だったかを残す。
     // 送らなかったときに「壊れているのか、単に新着が無いのか」を
     // ログだけで区別できるようにするため。
-    var seen = { boardPosts: 0, surveys: 0 };
-    var items = []
-      .concat(collectNew_(projectId, token, "boardPosts", since, seen))
-      .concat(collectNew_(projectId, token, "surveys", since, seen));
+    var seen = {};
+    var items = [];
+    NOTIFY_COLLECTIONS.forEach(function (col) {
+      seen[col] = 0;
+      items = items.concat(collectNew_(projectId, token, col, since, seen));
+    });
 
     var sinceText = Utilities.formatDate(new Date(since), TZ, "MM-dd HH:mm:ss");
 
@@ -99,7 +107,8 @@ function runNotify(trigger) {
       touchWatermark_(projectId, token, startedAt, 0, "");
       notifyLog_("ok", trigger, new Date() - startedAt, 0,
         "新着なし（起点 " + sinceText + " 以降／掲示板 " + seen.boardPosts +
-        "件・アンケート " + seen.surveys + "件を確認）");
+        "件・アンケート " + seen.surveys + "件・フィード " + seen.feedPosts +
+        "件を確認）");
       return;
     }
 
@@ -191,7 +200,11 @@ function collectNew_(projectId, token, col, sinceMs, seen) {
       multi: fsBool_(f.multi),
       deadline: fsStr_(f.deadline),
       dueDate: fsStr_(f.dueDate),    // 掲示板のチェックリストの期日（無ければ ""）
-      hasImage: !!fsStr_(f.imageId)  // 添付画像の有無（画像そのものは送らない）
+      hasImage: !!fsStr_(f.imageId), // 添付画像の有無（画像そのものは送らない）
+      // ここから下はフィード用。掲示板には無いので "" になる。
+      text: fsStr_(f.text),
+      type: fsStr_(f.type),
+      toMemberId: fsStr_(f.toMemberId)
     });
   });
   return out;
@@ -239,10 +252,17 @@ function fetchMemberIdNameMap_(projectId, token) {
  * 1件ずつ送らず、1回の実行分をまとめて1通にする。
  * 5分おきに何通も鳴ると、そのうち誰も見なくなるため。
  */
+/** 長い本文は Chat では読ませない。続きはアプリで読む前提で頭だけ出す */
+function clip_(s, max) {
+  var t = String(s || "").replace(/\s+/g, " ").trim();
+  return t.length > max ? t.slice(0, max) + "…" : t;
+}
+
 function buildMessage_(items, names, overflow) {
   var lines = [];
   var boards = items.filter(function (i) { return i.kind === "boardPosts"; });
   var surveys = items.filter(function (i) { return i.kind === "surveys"; });
+  var feed = items.filter(function (i) { return i.kind === "feedPosts"; });
 
   if (boards.length) {
     lines.push("*掲示板に " + boards.length + "件*");
@@ -267,6 +287,19 @@ function buildMessage_(items, names, overflow) {
       if (s.deadline) meta.push("期限 " + s.deadline);
       meta.push(s.multi ? "複数選択" : "単一選択");
       lines.push("• " + s.title + "（" + meta.join("・") + "）  — " + (names[s.authorId] || "?"));
+    });
+  }
+
+  if (feed.length) {
+    if (lines.length) lines.push("");
+    lines.push("*フィードに " + feed.length + "件*");
+    feed.forEach(function (p) {
+      var who = names[p.authorId] || "?";
+      // 宛先のある投稿（Thanks など）は「誰から誰へ」が本体。
+      // 名前を落とすと、感謝が誰に向いたものか分からなくなる。
+      var to = p.toMemberId ? " → " + (names[p.toMemberId] || "?") : "";
+      var kind = p.type ? "［" + p.type + "］" : "";
+      lines.push("• " + kind + who + to + "  " + clip_(p.text, 60));
     });
   }
 
@@ -362,7 +395,7 @@ function whyNoNotify() {
     : Utilities.formatDate(new Date(since), TZ, "yyyy-MM-dd HH:mm:ss")));
   out.push("");
 
-  ["boardPosts", "surveys"].forEach(function (col) {
+  NOTIFY_COLLECTIONS.forEach(function (col) {
     var url = fsBase_(pid) + col + "?pageSize=5&orderBy=" + encodeURIComponent("createdAt desc");
     var res = UrlFetchApp.fetch(url, {
       headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true
@@ -378,8 +411,11 @@ function whyNoNotify() {
       var mark = !ts ? "createdAt なし"
         : (fsBool_(f.deleted) ? "削除済みのため対象外"
         : (since !== null && ms > since ? "★ 通知対象" : "起点より前のため対象外"));
+      // フィードには title が無く text が本体。無題と出ると
+      // 「壊れているのか、そういう投稿なのか」が分からない。
+      var label = fsStr_(f.title) || clip_(fsStr_(f.text), 30) || "(無題)";
       out.push("  " + (ts ? Utilities.formatDate(new Date(ts), TZ, "MM-dd HH:mm:ss") : "--")
-        + "  " + (fsStr_(f.title) || "(無題)") + "  → " + mark);
+        + "  " + label + "  → " + mark);
     });
   });
 
@@ -390,7 +426,7 @@ function whyNoNotify() {
 /** テスト送信。スペースに届くかだけ確かめる */
 function sendTestMessage() {
   postToChat_(requiredProp_("CHAT_WEBHOOK_URL"),
-    "第二CC Hub の通知テストです。この後、掲示板とアンケートの新着がここに届きます。\n" +
+    "第二CC Hub の通知テストです。この後、掲示板・アンケート・フィードの新着がここに届きます。\n" +
     "<" + APP_URL + "|第二CC Hub を開く>");
   Logger.log("テスト送信しました");
 }
