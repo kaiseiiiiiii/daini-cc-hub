@@ -517,19 +517,85 @@ function sendTestMessage() {
 //  Chat ユーザーID の登録（Thanks のメンション用）
 //
 //  Chat は「メールアドレスでのメンション」ができない。数値のユーザーIDが
-//  要る。ID は Admin SDK（Directory API）からしか引けないので、
-//  このセクションの関数は **Workspace の管理者アカウントで** 実行すること。
+//  要る。取り込む入口は2つあり、どちらか片方を1回実行すればよい。
+//
+//    backfillChatUserIdsViaPeople … People API の社内ディレクトリから引く。
+//                                   一般ユーザーの権限で動く。まずこちら。
+//    backfillChatUserIds          … Admin SDK から引く。Workspace の
+//                                   管理者アカウントでしか動かない。
+//
+//  書き込む処理は runChatIdBackfill_ に寄せてあり、違うのは「IDをどこから
+//  引くか」だけ。片方を直したらもう片方も直す、という状態を作らないため。
 //
 //  一度 members に書いてしまえば、日々の通知は Firestore を読むだけで済む。
-//  Admin SDK は以降いっさい使わない。
+//  Admin SDK も People API も、以降いっさい使わない。
 //
 //  ⚠️ members は許可リストそのもの。ここで書いてよいのは chatUserId の
 //     1フィールドだけで、それ以外には絶対に触れないこと。
 // ══════════════════════════════════════════════════════════════════════
 
 /**
- * members 全員分の chatUserId を Admin SDK から引いて書き込む。
- * すでに入っている人は触らない。何度実行しても結果は同じ（べき等）。
+ * 【まずこちら】members 全員分の chatUserId を People API から引いて書き込む。
+ *
+ * People API の「社内ディレクトリ」は、管理者でない一般ユーザーでも
+ * 同じドメインの人のプロフィールを引ける。Admin SDK が 403 で弾かれる
+ * アカウントでも、こちらなら通ることが多い。
+ *
+ * 事前に Apps Script の左メニュー「サービス」＋ から People API を
+ * 追加しておくこと（識別子は People）。
+ *
+ * ⚠️ ここで得た resourceName の数値部分が、Chat のメンションに使える
+ *    ユーザーIDと同じである前提に立っている。取り込んだあと必ず
+ *    sendMentionTest を実行し、「@名前」に化けることを目で確かめること。
+ *    生の <users/...> のまま出るなら、この経路は使えていない。
+ */
+function backfillChatUserIdsViaPeople() {
+  if (typeof People === "undefined") {
+    throw new Error("People API が有効になっていません。Apps Script の左「サービス」＋ から " +
+      "People API を追加してください（識別子 People）。");
+  }
+  var byEmail = fetchDirectoryIds_();
+  if (!Object.keys(byEmail).length) {
+    throw new Error("社内ディレクトリから1人も取得できませんでした。" +
+      "ドメインの共有設定で無効になっている可能性があります。管理者に " +
+      "backfillChatUserIds の実行を依頼してください。");
+  }
+  return runChatIdBackfill_(function (m) {
+    return byEmail[m.email] || "";
+  });
+}
+
+/**
+ * 社内ディレクトリ全員分の メールアドレス（小文字） → ユーザーID。
+ * resourceName は "people/1234567890" の形で返るので、末尾を取る。
+ */
+function fetchDirectoryIds_() {
+  var map = {};
+  var pageToken = null;
+  do {
+    var res = People.People.listDirectoryPeople({
+      readMask: "emailAddresses",
+      sources: ["DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE"],
+      pageSize: 1000,
+      pageToken: pageToken || undefined
+    });
+    (res.people || []).forEach(function (person) {
+      var id = String(person.resourceName || "").split("/").pop();
+      if (!id) return;
+      (person.emailAddresses || []).forEach(function (e) {
+        if (e.value) map[String(e.value).toLowerCase()] = id;
+      });
+    });
+    pageToken = res.nextPageToken;
+  } while (pageToken);
+  return map;
+}
+
+/**
+ * 【管理者用】members 全員分の chatUserId を Admin SDK から引いて書き込む。
+ *
+ * People API 版が使えなかったときの経路。**Workspace の管理者アカウント**
+ * でしか動かない（一般ユーザーは directory.users.get が 403 になる）。
  *
  * 事前に Apps Script の左メニュー「サービス」＋ から Admin SDK API を
  * 追加しておくこと（識別子は AdminDirectory）。
@@ -539,6 +605,21 @@ function backfillChatUserIds() {
     throw new Error("Admin SDK が有効になっていません。Apps Script の左「サービス」＋ から " +
       "Admin SDK API を追加してください（識別子 AdminDirectory）。");
   }
+  return runChatIdBackfill_(function (m) {
+    return String(AdminDirectory.Users.get(m.email).id || "");
+  });
+}
+
+/**
+ * chatUserId を書き込む共通部分。
+ *
+ * 2つの入口（People API / Admin SDK）で違うのは「IDをどこから引くか」だけ
+ * なので、そこだけを lookup として受け取る。lookup は members の1件を
+ * 受け取り、ID の文字列を返す（引けなければ空文字を返すか例外を投げる）。
+ *
+ * すでに入っている人は触らない。何度実行しても結果は同じ（べき等）。
+ */
+function runChatIdBackfill_(lookup) {
   var token = getAccessToken_();
   var pid = requiredProp_("FIREBASE_PROJECT_ID");
   var members = fetchMemberDocs_(pid, token);
@@ -547,20 +628,20 @@ function backfillChatUserIds() {
   members.forEach(function (m) {
     if (!m.memberId) { skipped++; return; }
     // 退職者（active:false）は飛ばす。Google アカウントが消えていると
-    // Admin SDK が毎回エラーを返し、失敗件数がいつまでも残るため。
+    // 毎回エラーを返し、失敗件数がいつまでも残るため。
     if (!m.active) { skipped++; return; }
     if (m.chatUserId) { already++; return; }
 
     var uid = "";
     try {
-      uid = String(AdminDirectory.Users.get(m.email).id || "");
+      uid = String(lookup(m) || "");
     } catch (e) {
       failed++;
       // ログにメールアドレスは残さない（実行ログは他の編集者からも見える）。
       Logger.log("ID を引けませんでした: " + m.memberId + " — " + ((e && e.message) || e));
       return;
     }
-    if (!uid) { failed++; Logger.log("ID が空でした: " + m.memberId); return; }
+    if (!uid) { failed++; Logger.log("ID が見つかりませんでした: " + m.memberId); return; }
 
     try {
       patchMemberChatId_(pid, token, m.email, uid);
