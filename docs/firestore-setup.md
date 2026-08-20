@@ -120,6 +120,7 @@ yamada.taro@example.co.jp
 | `active` | boolean | ✅ | `true` で有効。退職・異動時は削除せず `false` にする |
 | `inShift` | boolean | 任意 | `false` にするとシフト関連から外れる（後述）。未設定なら載る |
 | `avatar` | string | 任意 | アバター画像のファイル名（後述）。未設定なら頭文字のアバター |
+| `chatUserId` | string | 任意 | Google Chat のユーザーID（数値）。Thanks の新着通知で本人を @メンションするのに使う。**手入力は不要**（GAS の `backfillChatUserIds` が入れます）。未設定でも通知は止まらず、その人だけ表示名で出ます |
 
 ### アイコンは画面から設定できます
 
