@@ -37,7 +37,7 @@
 body{margin:0;background:var(--color-page);}
 .shell-outer{
   display:flex; justify-content:center; align-items:stretch;
-  min-height:100vh; background:var(--page-bg);
+  min-height:100vh; min-height:100dvh; background:var(--page-bg);
   /* Noto Sans JP が届くまでは各OSの標準日本語フォントで出す */
   font-family:"Noto Sans JP",-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
   color:var(--color-text);
@@ -47,11 +47,20 @@ body{margin:0;background:var(--color-page);}
 }
 .app{
   width:100%; max-width:640px; display:flex; flex-direction:column;
-  height:100vh; background:var(--color-bg); overflow:hidden;
+  /* スマホの 100vh は「URLバーが隠れているときの高さ」なので、実際に
+     見えている領域より大きい。その差の分だけアプリの下端（ボトムナビと
+     本文の末尾）が画面の外に出る。さらに .app は overflow:hidden で、
+     外側も min-height:100vh のためページ自体もスクロールしない。
+     結果、はみ出した分には永久に手が届かなかった。
+
+     dvh は URLバーの出入りに追従する高さ。読めない古い端末では
+     直前の 100vh がそのまま効くので、下げても壊れない。 */
+  height:100vh; height:100dvh;
+  background:var(--color-bg); overflow:hidden;
 }
 @media (min-width:641px){
   .shell-outer{padding:24px 16px;}
-  .app{height:calc(100vh - 48px); max-height:900px; border-radius:var(--radius-lg);
+  .app{height:calc(100vh - 48px); height:calc(100dvh - 48px); max-height:900px; border-radius:var(--radius-lg);
     box-shadow:var(--shadow-pop); border:1px solid var(--color-border);}
 }
 
@@ -280,7 +289,10 @@ select.input{padding-right:8px;}
    縦にも上限を置く。実物は21行あり、そのまま出すとスマホ画面をほぼ
    埋めてしまい、下のシフト表に届くまで1画面ぶんスクロールすることになる。
    座席表を一番上に置く判断と、シフト表が読めることは両立させたい。 */
-.seat-scroll{overflow:auto; -webkit-overflow-scrolling:touch; max-height:58vh;
+/* -webkit-overflow-scrolling:touch は付けない。iOS でこれが付いた要素の上を
+   スワイプすると、その要素が動かせない向きでもスクロールが親に伝わらず、
+   ページごと止まって見えることがある。慣性スクロールは今の iOS では既定。 */
+.seat-scroll{overflow:auto; max-height:58vh; max-height:58dvh;
   background:var(--color-bg); border:1px solid var(--color-border);
   border-radius:var(--radius-md); padding:6px;}
 
@@ -646,14 +658,25 @@ select.input{padding-right:8px;}
 .prog-plan{margin-top:6px; font-size:12px; color:var(--color-text-sub);}
 
 .wk-card{padding:14px 16px;}
-.wk-grid{display:flex; align-items:flex-end; gap:8px; margin:10px 0 6px;}
+/* 列は「上」で揃える。下端で揃えてはいけない。
+   列の中身は 棒（高さ110px固定）→ 週ラベル → 実績値 の縦並びで、
+   実績値だけが幅次第で1行にも2行にもなる（狭い端末では「251.1万」が
+   「251.1」「万」に折り返す）。下端で揃えると、折り返した列だけ
+   棒が 21px ぶん持ち上がり、グラフが階段状にずれる。
+   棒の高さを比べるグラフなので、土台がずれるのは致命的。
+   棒の高さは固定なので、上で揃えれば上端も下端も必ず一致する。 */
+.wk-grid{display:flex; align-items:flex-start; gap:8px; margin:10px 0 6px;}
 .wk{flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:4px;}
 .wk-col{position:relative; width:100%; height:110px; display:flex; align-items:flex-end;
   background:var(--color-track); border-radius:var(--radius-sm); overflow:visible;}
 .wk-bar{width:100%; background:var(--color-accent); border-radius:var(--radius-sm); min-height:2px;}
 .wk-bar-none{background:var(--color-border);}
+/* 目標線。bottom:◯% は「線の下端」をその高さに置くので、線は常に目標より
+   2px 上に出る。目標と実績が同じ週でも棒が線に届いていないように見え、
+   目標がその月の最大値になる週（bottom:100%）では線がトラックの外に
+   浮いてしまう。線の中心が目標の高さに来るよう半分ぶん下げる。 */
 .wk-target{position:absolute; left:-2px; right:-2px; height:2px; background:var(--color-text);
-  opacity:.55;}
+  opacity:.55; transform:translateY(50%);}
 .wk-label{font-size:11px; color:var(--color-text-sub); white-space:nowrap;}
 .wk-val{font-size:12px; font-weight:700;}
 .wk-legend{font-size:11px; color:var(--color-text-mute); line-height:1.7;}
@@ -766,7 +789,7 @@ select.input{padding-right:8px;}
    PC レイアウト（900px 以上）
    狭い画面は下部タブの1カラムのまま。ここは広い画面専用の骨組み。
    ══════════════════════════════════════════════════════════════════ */
-body.wide .app{max-width:1280px; height:calc(100vh - 48px); max-height:none;}
+body.wide .app{max-width:1280px; height:calc(100vh - 48px); height:calc(100dvh - 48px); max-height:none;}
 
 .pc-topbar{display:flex; align-items:center; gap:20px; padding:0 20px; height:60px; flex-shrink:0;
   background:var(--color-surface); border-bottom:1px solid var(--color-border);}
@@ -859,7 +882,8 @@ body.wide .pc-cols:has(.pc-side:empty),
 
 /* ── スマホ用のシフト。横スクロールは日付の帯だけに閉じ込める ── */
 .daystrip{display:flex; gap:6px; overflow-x:auto; padding:2px 0 8px; scroll-snap-type:x proximity;
-  -webkit-overflow-scrolling:touch;}
+  /* 横方向の行き止まりをページに伝えない。縦のスワイプは親に通す。 */
+  overscroll-behavior-x:contain;}
 .daystrip-btn{flex:0 0 auto; scroll-snap-align:center; width:46px; min-height:52px; display:flex;
   flex-direction:column; align-items:center; justify-content:center; gap:1px;
   background:var(--color-surface); border:1px solid var(--color-border);
@@ -1008,6 +1032,14 @@ body.wide .pc-cols:has(.pc-side:empty),
   color:var(--text-2); font-size:13px; font-weight:700; cursor:pointer;
   font-family:inherit; margin-bottom:10px;}
 .prog-toggle-sub{margin-left:auto; font-size:11px; font-weight:400; color:var(--text-4);}
+
+/* 狭い画面でだけ畳むブロックの見出し。prog-toggle と同じ見た目にしてある
+   （同じ操作なのに見た目が違うと、押せるものだと気づかれない）。 */
+.fold-toggle{width:100%; min-height:52px; display:flex; align-items:center; gap:8px; padding:10px 12px;
+  background:var(--input-bg); border:1px solid var(--border); border-radius:10px;
+  color:var(--text-2); font-size:13px; font-weight:700; cursor:pointer;
+  font-family:inherit; margin-bottom:10px; text-align:left;}
+.fold-toggle-sub{margin-left:auto; font-size:11px; font-weight:400; color:var(--text-4); white-space:nowrap;}
 
 .notice{margin:10px 16px 0; padding:8px 12px; background:color-mix(in srgb, var(--amber) 12%, transparent); border:1px solid color-mix(in srgb, var(--amber) 30%, transparent); border-radius:8px; font-size:11px; color:var(--amber-c); line-height:1.5;}
 .notice-error{background:color-mix(in srgb, var(--red) 12%, transparent); border-color:color-mix(in srgb, var(--red) 32%, transparent); color:var(--red); display:flex; align-items:flex-start; gap:8px; font-size:12px;}
@@ -1452,6 +1484,10 @@ var state = {
   seatToday:null,           // 座席表（当日）。GAS が seats/{YYYY-MM-DD} に書く
   seatTomorrow:null,        // 座席表（翌日）。前夜23時台に先取りされる
   seatDay:"today",          // 座席表で見ている日。"today" | "tomorrow"
+  // 狭い画面での開閉。シフト表より上に置いているブロックを既定で畳む。
+  // 広い画面では参照しない（常に開いた状態で出す）。
+  seatOpen:false,
+  todayShiftOpen:false,
   metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
   feedSort:"new", feedOpenComment:null,
   boardOpenComment:null,    // コメントを開いている掲示板投稿のID（購読は常に1件だけ）
@@ -4837,6 +4873,48 @@ function renderSeatChart(){
   '</div>';
 }
 
+/**
+ * 1カラムのときだけ畳む。PC の2カラム表示ではそのまま返す。
+ *
+ * シフトタブは、シフト表にたどり着くまでに座席表（最大 58vh）と
+ * 本日のシフトカード（約 309px）で 800px 以上を使っていた。スマホの
+ * 表示領域は 650px 前後しかないため、「シフトタブを開いてもシフト表が
+ * 一度も画面に入らない」状態だった（報告のあった「下にスクロールできなくて
+ * シフト表が見れない」はこれ）。
+ *
+ * 判定に isNarrow()（640px以下）ではなく isWide()（900px以上）の否定を
+ * 使っている。その間の 641〜899px も1カラムのままで、しかもスマホの
+ * 横向き（例 844×390）がここに入る。横向きは表示領域の高さが 200px 前後
+ * しかなく、畳まないと最も見えない。幅ではなく「1カラムかどうか」で
+ * 決めるのが正しい。
+ *
+ * 見出しは先頭に残すので、座席表をシフトタブの先頭に置く設計は変えていない。
+ *
+ * 中身が空のときは見出しも出さない。開いても何も無いものを
+ * 押させないため。
+ */
+function foldUnlessWide(open, act, title, sub, bodyHtml){
+  if(!bodyHtml) return "";
+  if(isWide()) return bodyHtml;
+  return '<div class="fold">' +
+    '<button class="fold-toggle" data-act="'+act+'">' +
+      '<span>'+(open ? "▼" : "▶")+' '+esc(title)+'</span>' +
+      '<span class="fold-toggle-sub">'+esc(sub)+'</span>' +
+    '</button>' +
+    (open ? bodyHtml : "") +
+  '</div>';
+}
+
+/** 折りたたみ見出しに出す、開かなくても分かる一言 */
+function seatFoldSub(){
+  var view = displayedSeat();
+  return (view.data && view.data.rows && view.data.rows.length) ? "タップで開く" : "未取り込み";
+}
+function todayShiftFoldSub(){
+  var n = todayScheduledCount();
+  return n === null ? "未同期" : "本日 " + n + "名";
+}
+
 function renderShift(){
   var sh = displayedShift();
   var off = state.shiftMonthOffset;
@@ -4857,7 +4935,13 @@ function renderShift(){
         "スプレッドシート同期が動くと表示されます");
     }
     return '<div class="tab-pad">' +
-      renderSyncBar() + renderSeatChart() + renderShiftMonthBar() + renderTodayShiftCard() + body +
+      renderSyncBar() +
+      foldUnlessWide(state.seatOpen, "seat-fold", "🪑 " + displayedSeat().label + "の座席",
+        seatFoldSub(), renderSeatChart()) +
+      renderShiftMonthBar() +
+      foldUnlessWide(state.todayShiftOpen, "todayshift-fold", "🕐 本日のシフト",
+        todayShiftFoldSub(), renderTodayShiftCard()) +
+      body +
     '</div>';
   }
 
@@ -4867,9 +4951,11 @@ function renderShift(){
   if(isNarrow()){
     return '<div class="tab-pad">' +
       renderSyncBar() +
-      renderSeatChart() +
+      foldUnlessWide(state.seatOpen, "seat-fold", "🪑 " + displayedSeat().label + "の座席",
+        seatFoldSub(), renderSeatChart()) +
       renderShiftMonthBar() +
-      renderTodayShiftCard() +
+      foldUnlessWide(state.todayShiftOpen, "todayshift-fold", "🕐 本日のシフト",
+        todayShiftFoldSub(), renderTodayShiftCard()) +
       renderShiftControls() +
       (state.shiftMobileView === "week"
         ? renderShiftWeekMobile(sh, todayIdx)
@@ -4963,9 +5049,11 @@ function renderShift(){
 
   return '<div class="tab-pad">' +
     renderSyncBar() +
-    renderSeatChart() +
+    foldUnlessWide(state.seatOpen, "seat-fold", "🪑 " + displayedSeat().label + "の座席",
+      seatFoldSub(), renderSeatChart()) +
     renderShiftMonthBar() +
-    renderTodayShiftCard() +
+    foldUnlessWide(state.todayShiftOpen, "todayshift-fold", "🕐 本日のシフト",
+      todayShiftFoldSub(), renderTodayShiftCard()) +
     renderShiftControls() +
     weekBar +
     '<div class="shift-scroll'+(wide?" shift-week":"")+'">' +
@@ -6311,6 +6399,8 @@ function bindEvents(){
     else if(act==="shift-day"){ state.shiftDayIdx = parseInt(id, 10); render(); }
     else if(act==="shift-team"){ state.shiftTeam = id; render(); }
     else if(act==="seat-day"){ state.seatDay = id; render(); }
+    else if(act==="seat-fold"){ state.seatOpen = !state.seatOpen; render(); }
+    else if(act==="todayshift-fold"){ state.todayShiftOpen = !state.todayShiftOpen; render(); }
     else if(act==="shift-week"){
       if(id === "") return;          // 端まで来ている（ボタンは disabled）
       state.shiftWeekStart = parseInt(id, 10);
