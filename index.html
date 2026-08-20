@@ -180,6 +180,9 @@ select.input{padding-right:8px;}
 .post-name{font-weight:700; font-size:15px;}
 .post-arrow{color:var(--text-4); font-size:12px;}
 .post-to{font-weight:600; font-size:13px; color:var(--accent);}
+/* 全員宛。個人宛の水色と同じ強さで出すと、名指しの投稿が埋もれる。
+   誰か1人に向いていることのほうが目を引くべきなので、こちらは落とす。 */
+.post-to-all{font-weight:400; color:var(--text-3);}
 .post-time{color:var(--text-4); font-size:12px; margin-top:2px;}
 .post-text{font-size:15px; color:var(--color-text); line-height:1.8; margin-bottom:10px; padding-left:48px; white-space:pre-wrap; word-break:break-word;}
 .post-actions{display:flex; gap:5px; flex-wrap:wrap; padding-left:48px; position:relative;}
@@ -2549,7 +2552,7 @@ function renderLegacyCard(){
  * 標準のまま使えるほうが確実。
  */
 function renderComposer(){
-  var toOpts = '<option value="">＋ 宛先を選ぶ</option>' + memberOptionsGrouped(true);
+  var toOpts = '<option value="">全員へ</option>' + memberOptionsGrouped(true);
   var valOpts = '<option value="">＋ バリュータグ</option>' + valueOptionsHtml(null).replace(
     /^<option value="">[^<]*<\/option>/, "");
   var typeOpts = POST_TYPES.map(function(t){
@@ -2605,7 +2608,7 @@ function editedMark(d){
 
 function renderFeedEditForm(post){
   var typeOpts = POST_TYPES.map(function(t){ return '<option'+(t===post.type?" selected":"")+'>'+t+'</option>'; }).join("");
-  var toOpts = '<option value="">全体へ</option>' + memberOptionsGrouped(true, post.toMemberId);
+  var toOpts = '<option value="">全員へ</option>' + memberOptionsGrouped(true, post.toMemberId);
   var valOpts = valueOptionsHtml(post.valueTag);
   return '<div class="card form-card edit-card">' +
     '<div class="edit-head">投稿を編集</div>' +
@@ -2631,6 +2634,14 @@ function renderFeedPost(post){
   }
   var me = currentUserId();
   var from = getM(post.authorId);
+  // 宛先を選ばなかった投稿は「全員へ」として出す。
+  //
+  // 「全員」は toMemberId が無いこと（null）で表しており、"*" のような
+  // 専用の値は持たせていない。同じ意味を2通りで持つと、片方だけを見る
+  // 場所が必ず出てくる。過去の宛先なし投稿も、そのまま全員宛として出る。
+  //
+  // 以前は宛先が無いと矢印ごと消していたため、全員に向けた投稿なのか
+  // 宛先を入れ忘れたのかが画面から区別できなかった。
   var to = post.toMemberId ? getM(post.toMemberId) : null;
   var byEmoji = reactionsByEmoji(post);
   var mine = (post.reactions && post.reactions[me]) || [];
@@ -2642,7 +2653,10 @@ function renderFeedPost(post){
       '<div class="post-head-info">' +
         '<div class="post-head-line">' +
           '<span class="post-name">'+esc(from.displayName)+'</span>' +
-          (to ? '<span class="post-arrow">→</span><span class="post-to">'+esc(to.displayName)+'</span>' : '') +
+          '<span class="post-arrow">→</span>' +
+          '<span class="post-to'+(to ? '' : ' post-to-all')+'">' +
+            esc(to ? to.displayName : "全員") +
+          '</span>' +
           badge(post.type, CT[post.type]||"blue") +
           (post.valueTag ? '<span class="tag-value">#'+esc(post.valueTag)+'</span>' : "") +
         '</div>' +
