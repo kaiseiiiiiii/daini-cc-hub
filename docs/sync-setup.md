@@ -327,31 +327,51 @@ Apps Script でファイルを追加し（＋ → スクリプト、名前は `n
 #### なぜ一手間かかるのか
 
 Chat は**メールアドレスではメンションできません**。`<users/123456789>` という
-数値のユーザーIDが要ります。このIDは Admin SDK（Directory API）からしか
-引けないため、**Workspace の管理者アカウントで一度だけ**取り込みます。
-取り込んだ後は Firestore を読むだけになり、Admin SDK は使いません。
+数値のユーザーIDが要ります。これは Google 側の名簿から引くしかないので、
+**一度だけ**取り込んで `members.chatUserId` に持たせます。
+取り込んだ後は Firestore を読むだけになり、名簿のAPIは使いません。
+
+引く経路は2つあり、**どちらか片方を1回実行すれば済みます**。
+
+| 関数 | 使う API | 必要な権限 |
+|---|---|---|
+| `backfillChatUserIdsViaPeople` | People API（社内ディレクトリ） | **一般ユーザーでOK** |
+| `backfillChatUserIds` | Admin SDK（Directory API） | Workspace 管理者のみ |
+
+**まず People API 版を試してください。** 2026-08-20 の導入時は、管理者権限を
+持たないアカウントで15名全員分が取れました（同じアカウントで Admin SDK 版は
+`Not Authorized to access this resource` で15名全滅しました）。
 
 #### 手順
 
-1. Apps Script の左メニュー **サービス** の ＋ から **Admin SDK API** を追加する
-   （識別子は `AdminDirectory` のまま）
-2. **Workspace の管理者アカウント**で `backfillChatUserIds` を実行する
+1. Apps Script の左メニュー **サービス** の ＋ から **People API** を追加する
+   （識別子は `People` のまま）
+2. `backfillChatUserIdsViaPeople` を実行する
    → `members` の各ドキュメントに `chatUserId` が入ります
 3. `checkChatMentions` で全員分入ったかを確認する
-4. `sendMentionTest` を実行し、Chat で「@自分の名前」と表示されるかを見る
-   （`<users/...>` のまま出ていたらIDが違います）
+4. `sendMentionTest` を実行し、Chat で「@自分の名前」が**青字のメンションに
+   なっているか**を目で見る
+
+**手順4は飛ばさないでください。** 取り込んだIDが Chat のメンションに使える
+IDと同じである保証はどこにもありません。違っていた場合は `<users/...>` という
+生の文字列がそのままスペースに流れます。テスト送信で必ず確かめます。
 
 | 関数 | 役割 |
 |---|---|
-| `backfillChatUserIds` | 全員分の Chat ユーザーIDを取り込む（管理者アカウントで実行・べき等） |
+| `backfillChatUserIdsViaPeople` | 全員分の Chat ユーザーIDを取り込む（べき等） |
 | `checkChatMentions` | 誰のIDが未設定かを一覧する |
 | `sendMentionTest` | 実行した本人あてにメンションのテストを送る |
 
-#### 管理者権限が無い場合
+#### People API で取れなかった場合
 
-`backfillChatUserIds` は実行できません。その場合 `chatUserId` は未設定のままで
-構いません。**未設定の人は今までどおり表示名で出るだけ**で、通知そのものは
-止まりません。後から入れれば、その時点からメンションに変わります。
+「社内ディレクトリから1人も取得できませんでした」と出るときは、ドメインの
+共有設定で無効にされています。その場合は **Admin SDK API**（識別子
+`AdminDirectory`）を追加して、**Workspace の管理者アカウント**に
+`backfillChatUserIds` を1回だけ実行してもらいます。
+
+どちらも無理なら、`chatUserId` は未設定のままで構いません。
+**未設定の人は今までどおり表示名で出るだけ**で、通知そのものは止まりません。
+後から入れれば、その時点からメンションに変わります。
 
 #### 対象を広げたいとき
 
@@ -359,9 +379,10 @@ Chat は**メールアドレスではメンションできません**。`<users/
 ただし宛先の付いた報告や質問まで鳴らすと、メンションが日常の景色になり、
 肝心の Thanks も見られなくなります。まず Thanks だけで様子を見てください。
 
-> ⚠️ `backfillChatUserIds` は `members`（許可リスト）に書き込む唯一の GAS です。
-> 書き換えるのは `chatUserId` の1フィールドだけで、`role` や `active` には
-> 触れません（`updateMask` で明示的に絞っています）。ここを緩めないでください。
+> ⚠️ この2つの取り込み関数は、`members`（許可リスト）に書き込む唯一の GAS です。
+> 書き込みは共通の `runChatIdBackfill_` に寄せてあり、書き換えるのは
+> `chatUserId` の1フィールドだけ。`role` や `active` には触れません
+> （`updateMask` で明示的に絞っています）。ここを緩めないでください。
 
 ### 止めたいとき
 
