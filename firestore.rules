@@ -225,7 +225,9 @@ service cloud.firestore {
     // メンバーマスタ（許可リスト）
     //   ドキュメントID = 小文字のメールアドレス
     //   フィールド: memberId, fullName, displayName, initial,
-    //               team, jobTitle, role('member'|'admin'), order, active
+    //               team, jobTitle, role('member'|'admin'), order, active,
+    //               chatUserId（任意。Chat のユーザーID。Thanks の
+    //               メンションに使う。GAS が updateMask 付きで書く）
     // ========================================================================
     match /members/{email} {
 
