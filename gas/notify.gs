@@ -11,6 +11,13 @@
  * そもそも Chat の Webhook はブラウザからの呼び出しを許可していません。
  * サーバー側（GAS）から送る以外に選択肢がありません。
  *
+ * 【Thanks は宛先本人に @メンションする】
+ * 一括通知はスペース全員に同じ1通が届くだけで、感謝された本人が
+ * それに気づけなかった。Thanks の宛先だけ <users/{id}> でメンションする。
+ * ID は members.chatUserId に入れておく（backfillChatUserIds で一括登録）。
+ * 一括通知そのものは残す。Thanks は人目に触れること自体が価値なので、
+ * 本人あてに切り替えると承認の意味が消える。
+ *
  * 【このファイルに書いてはいけないもの】
  *   - Webhook URL（スクリプトプロパティ CHAT_WEBHOOK_URL に置く）
  *   - 社員の氏名（Firestore の members から取得する）
@@ -32,6 +39,12 @@ var NOTIFY_MAX = 15;
 // 表示の並びもこの順（掲示板 → アンケート → フィード）。
 // 反応が要るものを先に置き、フィードを最後にしている。
 var NOTIFY_COLLECTIONS = ["boardPosts", "surveys", "feedPosts"];
+
+// 宛先本人を @メンションする投稿の種類。
+// Thanks だけに絞ってある。宛先の付いた報告や質問まで鳴らすと
+// メンションが日常の景色になり、肝心の Thanks も見られなくなる。
+// 広げるならここに足す（"報告" など）。
+var MENTION_TYPES = ["Thanks"];
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -117,7 +130,9 @@ function runNotify(trigger) {
     if (overflow) items = items.slice(0, NOTIFY_MAX);
 
     var names = fetchMemberIdNameMap_(projectId, token);
-    postToChat_(webhook, buildMessage_(items, names, overflow));
+    // Thanks の宛先をメンションにするためのID。登録していない人は入っていない。
+    var chatIds = fetchMemberChatIdMap_(projectId, token);
+    postToChat_(webhook, buildMessage_(items, names, overflow, chatIds));
     sent = items.length;
 
     touchWatermark_(projectId, token, startedAt, sent, "");
@@ -227,6 +242,45 @@ function isPrivateFields_(f) {
   return true;
 }
 
+/**
+ * members を1件ずつ扱える形で読む。
+ * ドキュメントIDがメールアドレスなので、name の末尾から取り出している。
+ *
+ * fetchMemberIdNameMap_ と分けてあるのは、あちらが tasks.gs からも
+ * 呼ばれているため。戻り値の形を変えると、そちらが黙って壊れる。
+ */
+function fetchMemberDocs_(projectId, token) {
+  var res = UrlFetchApp.fetch(fsBase_(projectId) + "members?pageSize=300", {
+    headers: { Authorization: "Bearer " + token },
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) {
+    throw new Error("members を読めませんでした: " + res.getContentText());
+  }
+  return ((JSON.parse(res.getContentText()).documents) || []).map(function (d) {
+    var f = d.fields || {};
+    return {
+      email: String(d.name || "").split("/").pop(),
+      memberId: fsStr_(f.memberId),
+      name: fsStr_(f.displayName),
+      active: fsBool_(f.active),
+      chatUserId: fsStr_(f.chatUserId)
+    };
+  });
+}
+
+/**
+ * memberId → Chat のユーザーID（数値の文字列）。
+ * 登録していない人は含めない。呼ぶ側は「無い」を通常の状態として扱うこと。
+ */
+function fetchMemberChatIdMap_(projectId, token) {
+  var map = {};
+  fetchMemberDocs_(projectId, token).forEach(function (m) {
+    if (m.memberId && m.chatUserId) map[m.memberId] = m.chatUserId;
+  });
+  return map;
+}
+
 /** memberId → 表示名 */
 function fetchMemberIdNameMap_(projectId, token) {
   var map = {};
@@ -258,7 +312,32 @@ function clip_(s, max) {
   return t.length > max ? t.slice(0, max) + "…" : t;
 }
 
-function buildMessage_(items, names, overflow) {
+/**
+ * Chat 本文に埋める「宛先」の表記。
+ *
+ * Thanks だけ、宛先本人を @メンションにする。
+ *
+ * 一括通知はスペース全員に同じ1通が届くだけなので、感謝された本人が
+ * それに気づけない（最大 NOTIFY_MAX 件の一覧に紛れる）。メンションを
+ * 入れると、その1人にだけ Chat の通知が飛ぶ。
+ *
+ * スペースへの通知そのものは今までどおり残す。Thanks は人目に触れること
+ * 自体が価値なので、本人あてに切り替えると承認の意味が消える。
+ *
+ * <users/{id}> は Chat 側で「@表示名」に置き換わる。ID が違うと置き換わらず
+ * 生の文字列のまま出るので、設定したら sendMentionTest で見え方を確かめること。
+ *
+ * ID を持っていない人は今までどおり表示名で出す。1人分の設定漏れで
+ * 通知全体を落とさないため（「無い」を通常の状態として扱う）。
+ */
+function addressee_(post, names, chatIds) {
+  var name = names[post.toMemberId] || "?";
+  if (MENTION_TYPES.indexOf(post.type) < 0) return name;
+  var uid = (chatIds || {})[post.toMemberId];
+  return uid ? "<users/" + uid + ">" : name;
+}
+
+function buildMessage_(items, names, overflow, chatIds) {
   var lines = [];
   var boards = items.filter(function (i) { return i.kind === "boardPosts"; });
   var surveys = items.filter(function (i) { return i.kind === "surveys"; });
@@ -297,7 +376,8 @@ function buildMessage_(items, names, overflow) {
       var who = names[p.authorId] || "?";
       // 宛先のある投稿（Thanks など）は「誰から誰へ」が本体。
       // 名前を落とすと、感謝が誰に向いたものか分からなくなる。
-      var to = p.toMemberId ? " → " + (names[p.toMemberId] || "?") : "";
+      // Thanks だけ、ここを本人の @メンションに差し替える（addressee_ 参照）。
+      var to = p.toMemberId ? " → " + addressee_(p, names, chatIds) : "";
       var kind = p.type ? "［" + p.type + "］" : "";
       lines.push("• " + kind + who + to + "  " + clip_(p.text, 60));
     });
@@ -371,7 +451,9 @@ function checkNotifySetup() {
     out.push(wm === null
       ? "未設定  通知の起点（resetNotifyWatermark を1度実行してください）"
       : "OK      通知の起点 " + Utilities.formatDate(new Date(wm), TZ, "yyyy-MM-dd HH:mm:ss"));
-    out.push("OK      members " + Object.keys(fetchMemberIdNameMap_(pid, token)).length + "名");
+    var chatIds = fetchMemberChatIdMap_(pid, token);
+    out.push("OK      members " + Object.keys(fetchMemberIdNameMap_(pid, token)).length + "名" +
+      "（Chat ユーザーID 登録済み " + Object.keys(chatIds).length + "名）");
   } catch (e) {
     out.push("失敗    Firestore 接続: " + e.message);
   }
@@ -429,4 +511,138 @@ function sendTestMessage() {
     "第二CC Hub の通知テストです。この後、掲示板・アンケート・フィードの新着がここに届きます。\n" +
     "<" + APP_URL + "|第二CC Hub を開く>");
   Logger.log("テスト送信しました");
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Chat ユーザーID の登録（Thanks のメンション用）
+//
+//  Chat は「メールアドレスでのメンション」ができない。数値のユーザーIDが
+//  要る。ID は Admin SDK（Directory API）からしか引けないので、
+//  このセクションの関数は **Workspace の管理者アカウントで** 実行すること。
+//
+//  一度 members に書いてしまえば、日々の通知は Firestore を読むだけで済む。
+//  Admin SDK は以降いっさい使わない。
+//
+//  ⚠️ members は許可リストそのもの。ここで書いてよいのは chatUserId の
+//     1フィールドだけで、それ以外には絶対に触れないこと。
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * members 全員分の chatUserId を Admin SDK から引いて書き込む。
+ * すでに入っている人は触らない。何度実行しても結果は同じ（べき等）。
+ *
+ * 事前に Apps Script の左メニュー「サービス」＋ から Admin SDK API を
+ * 追加しておくこと（識別子は AdminDirectory）。
+ */
+function backfillChatUserIds() {
+  if (typeof AdminDirectory === "undefined") {
+    throw new Error("Admin SDK が有効になっていません。Apps Script の左「サービス」＋ から " +
+      "Admin SDK API を追加してください（識別子 AdminDirectory）。");
+  }
+  var token = getAccessToken_();
+  var pid = requiredProp_("FIREBASE_PROJECT_ID");
+  var members = fetchMemberDocs_(pid, token);
+
+  var already = 0, wrote = 0, failed = 0, skipped = 0;
+  members.forEach(function (m) {
+    if (!m.memberId) { skipped++; return; }
+    // 退職者（active:false）は飛ばす。Google アカウントが消えていると
+    // Admin SDK が毎回エラーを返し、失敗件数がいつまでも残るため。
+    if (!m.active) { skipped++; return; }
+    if (m.chatUserId) { already++; return; }
+
+    var uid = "";
+    try {
+      uid = String(AdminDirectory.Users.get(m.email).id || "");
+    } catch (e) {
+      failed++;
+      // ログにメールアドレスは残さない（実行ログは他の編集者からも見える）。
+      Logger.log("ID を引けませんでした: " + m.memberId + " — " + ((e && e.message) || e));
+      return;
+    }
+    if (!uid) { failed++; Logger.log("ID が空でした: " + m.memberId); return; }
+
+    try {
+      patchMemberChatId_(pid, token, m.email, uid);
+      wrote++;
+    } catch (e) {
+      failed++;
+      Logger.log("書き込みに失敗: " + m.memberId + " — " + ((e && e.message) || e));
+    }
+  });
+
+  var msg = "members " + members.length + "名のうち " + wrote + "名に Chat ユーザーIDを入れました" +
+    "（設定済み " + already + "名・失敗 " + failed + "名" +
+    (skipped ? "・対象外 " + skipped + "名" : "") + "）";
+  notifyLog_(failed ? "error" : "ok", "backfill-chatid", 0, 0, failed ? msg : "");
+  Logger.log(msg);
+  if (failed) Logger.log("失敗が残っています。checkChatMentions で誰が未設定か確認してください。");
+  return msg;
+}
+
+/**
+ * members の chatUserId だけを更新する。
+ *
+ * updateMask を必ず付ける。members は許可リストそのもので、マスク無しの
+ * PATCH は他のフィールドごと差し替えてしまう（role や active が消えれば
+ * その人はログインできなくなる）。ここで書いてよいのは chatUserId 1つだけ。
+ */
+function patchMemberChatId_(projectId, token, email, chatUserId) {
+  var url = fsBase_(projectId) + "members/" + encodeURIComponent(email) +
+    "?updateMask.fieldPaths=chatUserId";
+  var res = UrlFetchApp.fetch(url, {
+    method: "patch",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + token },
+    payload: JSON.stringify({ fields: { chatUserId: { stringValue: String(chatUserId) } } }),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() >= 300) {
+    throw new Error("chatUserId を書けませんでした: " + res.getContentText());
+  }
+}
+
+/** 誰に Chat ユーザーIDが入っているかを一覧する */
+function checkChatMentions() {
+  var token = getAccessToken_();
+  var pid = requiredProp_("FIREBASE_PROJECT_ID");
+  var members = fetchMemberDocs_(pid, token).filter(function (m) { return m.active; });
+  var missing = members.filter(function (m) { return !m.chatUserId; });
+  var out = [];
+
+  out.push("メンションする投稿の種類: " + MENTION_TYPES.join("・"));
+  out.push((missing.length ? "未設定あり  " : "OK          ") +
+    "在籍 " + members.length + "名のうち ID あり " + (members.length - missing.length) + "名");
+
+  if (missing.length) {
+    out.push("            未設定: " + missing.map(function (m) { return m.name || m.memberId; }).join("、"));
+    out.push("            backfillChatUserIds を管理者アカウントで実行してください");
+    out.push("            （未設定の人は今までどおり表示名で出ます。通知は止まりません）");
+  }
+  Logger.log(out.join("\n"));
+  return out.join("\n");
+}
+
+/**
+ * メンションが本当に「@名前」として出るかを確かめる。
+ * 実行した本人あてに1通送る。生の <users/...> のまま出たら ID が違う。
+ */
+function sendMentionTest() {
+  var token = getAccessToken_();
+  var pid = requiredProp_("FIREBASE_PROJECT_ID");
+  var email = String(Session.getEffectiveUser().getEmail() || "").toLowerCase();
+  var me = fetchMemberDocs_(pid, token).filter(function (m) { return m.email === email; })[0];
+
+  if (!me) {
+    throw new Error("実行しているアカウントが members にありません。メンバーのアカウントで実行してください。");
+  }
+  if (!me.chatUserId) {
+    throw new Error("あなたの chatUserId が未設定です。先に backfillChatUserIds を実行してください。");
+  }
+
+  postToChat_(requiredProp_("CHAT_WEBHOOK_URL"),
+    "メンションのテストです → <users/" + me.chatUserId + ">\n" +
+    "ここが「@自分の名前」になっていれば成功です。" +
+    "<users/...> のまま出ていたら ID が違います。");
+  Logger.log("テスト送信しました。Chat での見え方を確認してください。");
 }
