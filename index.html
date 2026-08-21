@@ -1526,6 +1526,7 @@ var state = {
   memberKpiDaily:[],        // 日次のメンバー別KPI。新しい日が先頭
   teamKpiTeam:"all",        // チーム実績タブで選んでいるチーム
   dailyDay:0,               // 日ごとの実績で見ている日。0=最新、1=前日…
+  dailyArchiveOpen:false,   // 直近より前の日を開いているか
   feedSort:"new", feedOpenComment:null,
   boardOpenComment:null,    // コメントを開いている掲示板投稿のID（購読は常に1件だけ）
   feedArchiveOpen:false,    // 先月以前のフィード投稿を開いているか
@@ -5894,6 +5895,10 @@ function teamKpiMembers(){
  *   agg:"avg"    … 通話率など。分母が手元に無いので、値のある人の平均
  * ratio と avg を混ぜて同じ顔で出すが、意味が違うことはコード側で覚えておく。
  */
+// 日付の帯にそのまま並べる日数。これより前は「過去の日」に畳む。
+// 2週間あれば「先週と比べる」が帯の中で済む。
+var DAILY_RECENT = 14;
+
 var DAILY_VIEW = [
   { key:"handled",        l:"対応数",   u:"件", agg:"sum",   t:null, g:"high" },
   { key:"arranged",       l:"手配数",   u:"件", agg:"sum",   t:null, g:"high" },
@@ -5977,11 +5982,46 @@ function renderDailyKpiTable(){
   }
 
   // ── 日付を選ぶ帯 ──
-  // 溜まってきたら横に伸びる。1日しか無いうちは1つだけ出る。
-  var picker = days.slice(0, 14).map(function(d, i){
+  //
+  // 直近 DAILY_RECENT 日はそのまま並べる。それより前は掲示板の
+  // 「過去の投稿」と同じ作りで畳む。日が経つほどチップが横に伸びて
+  // 目的の日を探せなくなるため。
+  //
+  // 畳んだ側も購読の対象としては読み続けている（表示を畳んでいるだけ）。
+  // 掲示板のアーカイブと同じ割り切りで、判定の意味を揃えてある。
+  function chip(d, i){
     return '<button class="chip'+(i === state.dailyDay ? " chip-active" : "")+
       '" data-act="daily-day" data-id="'+i+'">'+esc(label(d.date))+'</button>';
-  }).join("");
+  }
+  var picker = days.slice(0, DAILY_RECENT).map(chip).join("");
+
+  // 直近より前の日を、月ごとにまとめる
+  var older = [], seen = {}, groups = [];
+  days.forEach(function(d, i){
+    if(i < DAILY_RECENT) return;
+    var p = String(d.date).split("-");
+    var key = p[0] + "-" + Number(p[1]);
+    if(!seen[key]){ seen[key] = { key:key, label:monthKeyLabel(key), items:[] }; groups.push(seen[key]); }
+    seen[key].items.push({ d:d, i:i });
+    older.push(d);
+  });
+  var archive = "";
+  if(older.length){
+    var aOpen = !!state.dailyArchiveOpen;
+    archive = '<button class="archive-trigger'+(aOpen?" archive-trigger-open":"")+'" ' +
+      'data-act="archive-toggle" data-id="dailyArchiveOpen" aria-expanded="'+(aOpen?"true":"false")+'">' +
+      '🗂 過去の日 <span class="archive-count">'+older.length+'</span>' +
+      '<span class="reader-caret">'+(aOpen?"▲":"▼")+'</span>' +
+    '</button>';
+    if(aOpen){
+      archive += '<div class="archive-body">' + groups.map(function(g){
+        return '<div class="archive-month">' +
+          '<div class="archive-month-head">'+esc(g.label)+' · '+g.items.length+'日</div>' +
+          '<div class="kpi-filter">' + g.items.map(function(x){ return chip(x.d, x.i); }).join("") + '</div>' +
+        '</div>';
+      }).join("") + '</div>';
+    }
+  }
 
   // ── チーム集計 ──
   var roll = dailyRollup(day, members);
@@ -6007,6 +6047,7 @@ function renderDailyKpiTable(){
 
   return '<div class="side-title">日ごとの実績</div>' +
     (days.length > 1 ? '<div class="kpi-filter">'+picker+'</div>' : '') +
+    archive +
     '<div class="card tkpi-member">' +
       '<div class="tkpi-name"><span>'+esc(label(day.date))+' チーム合計</span></div>' +
       '<div class="tkpi-cells">'+teamCells+'</div>' +
