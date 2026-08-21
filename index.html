@@ -1525,6 +1525,7 @@ var state = {
   memberKpi:null,           // メンバー別KPI。canSeeTeamKpi を持つ人だけ購読する
   memberKpiDaily:[],        // 日次のメンバー別KPI。新しい日が先頭
   teamKpiTeam:"all",        // チーム実績タブで選んでいるチーム
+  dailyDay:0,               // 日ごとの実績で見ている日。0=最新、1=前日…
   feedSort:"new", feedOpenComment:null,
   boardOpenComment:null,    // コメントを開いている掲示板投稿のID（購読は常に1件だけ）
   feedArchiveOpen:false,    // 先月以前のフィード投稿を開いているか
@@ -5875,57 +5876,147 @@ function teamKpiMembers(){
   });
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  日ごとの実績
+//
+//  出どころは各チームのダッシュボードの「今日の状況」。
+//  9指標のうち **手配粗利だけは日次では出せない**（原本の列に無い）。
+//  月次のメンバー別手配粗利は Management Sheet から取れるので、
+//  下の「メンバー別」に出している。
+// ══════════════════════════════════════════════════════════════════
+
 /**
- * 日ごとの対応数・手配数・手配率（チーム集計）。
+ * 日次で出す指標。
  *
- * 表にしてある。棒グラフのほうが推移は見やすいが、指標が3つあり、
- * 狭い画面で3本並べると1本が細くなって読めない。数字で並べたほうが
- * 「どの日に落ちたか」を追える。
- *
- * 手配率は日ごとに「その日の合計手配数 ÷ 合計対応数」で出す。
- * 各人の率の平均にはしない（対応数の少ない人の率が同じ重みで効くため）。
- *
- * 休みの人はその日のキーを持たない。合計の分母から自然に外れる。
+ * 率は「合計 ÷ 合計」で出せるものと、平均するしかないものがある。
+ *   agg:"sum"    … 件数。単純に足す
+ *   agg:"ratio"  … 手配率。合計手配数 ÷ 合計対応数（率の平均にはしない）
+ *   agg:"avg"    … 通話率など。分母が手元に無いので、値のある人の平均
+ * ratio と avg を混ぜて同じ顔で出すが、意味が違うことはコード側で覚えておく。
  */
+var DAILY_VIEW = [
+  { key:"handled",        l:"対応数",   u:"件", agg:"sum",   t:null, g:"high" },
+  { key:"arranged",       l:"手配数",   u:"件", agg:"sum",   t:null, g:"high" },
+  { key:"arrange_rate",   l:"手配率",   u:"%",  agg:"ratio", t:34,   g:"high" },
+  { key:"call_rate",      l:"通話率",   u:"%",  agg:"avg",   t:45,   g:"high" },
+  { key:"work_rate",      l:"作業率",   u:"%",  agg:"avg",   t:10,   g:"low"  },
+  { key:"wait_rate",      l:"待機率",   u:"%",  agg:"avg",   t:null, g:"low"  },
+  { key:"ancillary_rate", l:"付帯率",   u:"%",  agg:"avg",   t:25,   g:"low"  },
+  { key:"avg_call",       l:"平均通話", u:"分", agg:"avg",   t:null, g:"high" }
+];
+
+/** 選択中の日のデータ。無ければ null */
+function dailyPicked(){
+  var days = state.memberKpiDaily || [];
+  if(!days.length) return null;
+  var i = Math.min(state.dailyDay, days.length - 1);
+  return days[i];
+}
+
+/** 1日ぶんの集計。members に渡した人だけを対象にする */
+function dailyRollup(day, members){
+  var sum = { handled:0, arranged:0 };
+  var has = { handled:false, arranged:false };
+  var bag = {};
+  DAILY_VIEW.forEach(function(d){ if(d.agg === "avg") bag[d.key] = []; });
+
+  members.forEach(function(m){
+    var v = (day.byMember || {})[m.id];
+    if(!v) return;
+    ["handled","arranged"].forEach(function(f){
+      if(typeof v[f] === "number"){ sum[f] += v[f]; has[f] = true; }
+    });
+    for(var k in bag){ if(typeof v[k] === "number") bag[k].push(v[k]); }
+  });
+
+  var out = {
+    handled: has.handled ? sum.handled : null,
+    arranged: has.arranged ? sum.arranged : null,
+    arrange_rate: (has.handled && has.arranged && sum.handled > 0)
+      ? Math.round(sum.arranged / sum.handled * 1000) / 10 : null
+  };
+  for(var k2 in bag){
+    var a = bag[k2];
+    if(!a.length){ out[k2] = null; continue; }
+    var t = 0; a.forEach(function(n){ t += n; });
+    out[k2] = Math.round(t / a.length * 10) / 10;
+  }
+  return out;
+}
+
+/** 日次の1マス。値が無ければ「—」 */
+function dailyCell(def, val){
+  var txt = (val === null || val === undefined) ? "—"
+          : (def.u === "件" ? Math.round(val).toLocaleString("ja-JP") : val + "");
+  var color = "color-text";
+  if(val !== null && val !== undefined && def.t !== null && def.t !== undefined){
+    color = (def.g === "low" ? val <= def.t : val >= def.t) ? "color-grow-ink" : "color-text-sub";
+  }
+  return '<span class="tkpi-cell">' +
+    '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
+    '<b class="tkpi-cell-v" style="color:var(--'+color+')">' +
+      esc(txt) + (val !== null && val !== undefined && def.u !== "件" ? esc(def.u) : "") +
+    '</b>' +
+  '</span>';
+}
+
 function renderDailyKpiTable(){
   var days = state.memberKpiDaily || [];
   if(!days.length) return "";
+  var members = teamKpiMembers();
+  if(!members.length) return "";
 
-  var ids = {};
-  teamKpiMembers().forEach(function(m){ ids[m.id] = true; });
-  if(!Object.keys(ids).length) return "";
+  // 選んでいる日が範囲外になったら最新に戻す（データが増減するため）
+  if(state.dailyDay > days.length - 1) state.dailyDay = 0;
+  var day = dailyPicked();
+  if(!day) return "";
 
-  var rows = days.slice(0, 14).map(function(d){
-    var handled = 0, arranged = 0, hasH = false, hasA = false;
-    for(var id in d.byMember){
-      if(!ids[id]) continue;
-      var v = d.byMember[id];
-      if(typeof v.handled === "number"){ handled += v.handled; hasH = true; }
-      if(typeof v.arranged === "number"){ arranged += v.arranged; hasA = true; }
-    }
-    if(!hasH && !hasA) return "";
-    var rate = (hasH && hasA && handled > 0) ? Math.round(arranged / handled * 1000) / 10 : null;
-    var ok = rate !== null && rate >= 34;
-    var label = String(d.date).replace(/^\d{4}-0?/, "").replace("-0", "/").replace("-", "/");
-    return '<div class="dk-row">' +
-      '<span class="dk-date">'+esc(label)+'</span>' +
-      '<span class="dk-num">'+(hasH ? handled.toLocaleString("ja-JP") : "—")+'</span>' +
-      '<span class="dk-num">'+(hasA ? arranged.toLocaleString("ja-JP") : "—")+'</span>' +
-      '<span class="dk-num'+(ok ? " dk-ok" : "")+'">'+(rate === null ? "—" : rate + "%")+'</span>' +
+  function label(d){
+    var p = String(d).split("-");
+    return p.length === 3 ? (Number(p[1]) + "/" + Number(p[2])) : String(d);
+  }
+
+  // ── 日付を選ぶ帯 ──
+  // 溜まってきたら横に伸びる。1日しか無いうちは1つだけ出る。
+  var picker = days.slice(0, 14).map(function(d, i){
+    return '<button class="chip'+(i === state.dailyDay ? " chip-active" : "")+
+      '" data-act="daily-day" data-id="'+i+'">'+esc(label(d.date))+'</button>';
+  }).join("");
+
+  // ── チーム集計 ──
+  var roll = dailyRollup(day, members);
+  var teamCells = DAILY_VIEW.map(function(def){ return dailyCell(def, roll[def.key]); }).join("");
+
+  // ── メンバー別 ──
+  // その日データが1つも無い人は出さない（休みの人で埋めない）。
+  var rows = members.map(function(m){
+    var v = (day.byMember || {})[m.id];
+    if(!v) return "";
+    var any = false;
+    DAILY_VIEW.forEach(function(def){ if(typeof v[def.key] === "number") any = true; });
+    if(!any) return "";
+    var cells = DAILY_VIEW.map(function(def){ return dailyCell(def, v[def.key]); }).join("");
+    return '<div class="card tkpi-member">' +
+      '<div class="tkpi-name">'+avatar(m.id,28)+'<span>'+esc(m.displayName)+'</span></div>' +
+      '<div class="tkpi-cells">'+cells+'</div>' +
     '</div>';
   }).join("");
 
-  if(!rows) return "";
+  var absent = members.filter(function(m){ return !(day.byMember || {})[m.id]; })
+    .map(function(m){ return m.displayName; });
+
   return '<div class="side-title">日ごとの実績</div>' +
-    '<div class="card dk-card">' +
-      '<div class="dk-row dk-head">' +
-        '<span class="dk-date">日付</span>' +
-        '<span class="dk-num">対応数</span>' +
-        '<span class="dk-num">手配数</span>' +
-        '<span class="dk-num">手配率</span>' +
-      '</div>' + rows +
-      '<div class="dk-note">手配率は その日の合計手配数 ÷ 合計対応数。目標34%以上を緑で示します。</div>' +
-    '</div>';
+    (days.length > 1 ? '<div class="kpi-filter">'+picker+'</div>' : '') +
+    '<div class="card tkpi-member">' +
+      '<div class="tkpi-name"><span>'+esc(label(day.date))+' チーム合計</span></div>' +
+      '<div class="tkpi-cells">'+teamCells+'</div>' +
+    '</div>' +
+    (rows || '<div class="prog-note">この日はメンバーの数字がありません。</div>') +
+    (absent.length ? '<div class="dk-note">この日データが無い人: '+esc(absent.join("、"))+
+      '（休みか、生産性データが未取り込み）</div>' : '') +
+    '<div class="dk-note">手配率は 合計手配数 ÷ 合計対応数。通話率・作業率・待機率・付帯率・' +
+      '平均通話は、値のある人の平均です。手配粗利は原本の「今日の状況」に列が無いため日次では出せません。' +
+      (days.length <= 1 ? '日次は取り込みを始めた日から1日ずつ増えます。' : '') + '</div>';
 }
 
 function renderTeamKpi(){
@@ -6920,6 +7011,7 @@ function bindEvents(){
     else if(act==="mvv-toggle"){ state.mvvOpen = !state.mvvOpen; render(); }
     else if(act==="kpi-section-toggle"){ state.progressKpiOpen = !state.progressKpiOpen; render(); }
     else if(act==="tkpi-team"){ state.teamKpiTeam = id; render(); }
+    else if(act==="daily-day"){ state.dailyDay = parseInt(id, 10) || 0; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
   });
