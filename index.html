@@ -1920,7 +1920,14 @@ async function onAuthChanged(user){
       jobTitle: m.jobTitle || "",
       role: m.role === "admin" ? "admin" : "member",
       order: m.order || 0,
-      avatar: m.avatar || ""
+      avatar: m.avatar || "",
+      // チーム実績タブを見られるか。既定は false。
+      //
+      // ここは loadMasters() の一覧とは別に、自分の1件だけを読んで組み立てて
+      // いる。members に項目を足したら **両方** に足すこと。片方だけだと、
+      // 一覧には出るのに自分の判定には効かない（実際それで
+      // 「権限を付けたのにタブが出ない」を出した）。
+      canSeeTeamKpi: m.canSeeTeamKpi === true
     };
     await loadMasters();
     loadLegacy();
