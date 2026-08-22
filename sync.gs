@@ -45,7 +45,19 @@ var TAB = {
   // 日次KPI（各チームのダッシュボードの「今日の状況」を縦に積んだもの）。
   // 任意の機能。このタブが無ければ何もしない。
   dailyKpi:     "daily_kpi",
+  // 月間の通話率・作業率・待機率（CC_アクション管理から IMPORTRANGE）。
+  // 任意の機能。このタブが無ければ何もしない。
+  prodKpi:      "prod_kpi",
   log:          "_log"
+};
+
+// prod_kpi の中で、A列に出てくるブロックの見出し → フィールド名。
+// 原本は「見出し行のあと、全体→拠点→チーム→メンバー」が縦に並ぶ形で、
+// 同じ形のブロックが縦に積まれている。
+var PROD_KPI_BLOCKS = {
+  "通話率": "call_rate",
+  "作業率": "work_rate",
+  "待機率": "wait_rate"
 };
 
 // daily_kpi の列見出し → Firestore のフィールド名。
@@ -67,15 +79,39 @@ var DAILY_KPI_COLS = {
 var DAILY_KPI_MIN_COLS = 3;
 
 // mgmt_kpi から取り込む行のラベル → Firestore のフィールド名。
-// ラベルは原本の表記そのまま。原本の言い回しが変わったらここを直す。
+// ラベルは原本の表記そのまま（前後の空白は落として突き合わせる）。
+// 原本の言い回しが変わったらここを直す。
 //
-// 通話率・作業率はここに入れない。原本のその行は全列 45.00% / 15.00% の
-// 固定値で、実績ではなく目標のラインだから。実績は productivity 側にある。
+// 似た名前の行が原本にあるので、**完全一致**で拾っている。
+//   手配粗利額 と 出張手配粗利額 ／ ホットレート と 出張_ホットレート
+// 部分一致にすると取り違える。
+//
+// 通話率・作業率・待機率も入れてあるが、第二CCの列では原本が 0.00% に
+// なっている（実績が入っていない）。アプリ側はこの3つを生産性データ
+// （metrics）から取り、原本の値は使っていない。原本が埋まったら
+// アプリ側の src を "mgmt" に変えるだけで切り替わる。
 var MGMT_KPI_ROWS = {
-  "対応数":     { key: "handled",      type: "num"  },
-  "手配数":     { key: "arranged",     type: "num"  },
-  "手配率":     { key: "arrange_rate", type: "rate" },
-  "手配粗利額": { key: "gross_profit", type: "num"  }
+  "対応数":               { key: "handled",            type: "num"  },
+  "有効案件対応数":        { key: "handled_valid",      type: "num"  },
+  "手配数":               { key: "arranged",           type: "num"  },
+  "出張手配数":            { key: "arranged_visit",     type: "num"  },
+  "手配率":               { key: "arrange_rate",       type: "rate" },
+  "有効案件手配率":        { key: "arrange_rate_valid", type: "rate" },
+  "高額手配率_B案件以上":   { key: "arrange_rate_b",     type: "rate" },
+  "高額手配率_C案件以上":   { key: "arrange_rate_c",     type: "rate" },
+  "高額手配率_期待値":      { key: "arrange_rate_exp",   type: "rate" },
+  "買取数":               { key: "bought",             type: "num"  },
+  "手配買取率":            { key: "buy_rate",           type: "rate" },
+  "通話率":               { key: "call_rate",          type: "rate" },
+  "作業率":               { key: "work_rate",          type: "rate" },
+  "待機率":               { key: "wait_rate",          type: "rate" },
+  "買取粗利単価":          { key: "buy_unit",           type: "num"  },
+  "IS追加数":             { key: "is_add",             type: "num"  },
+  "IS追加比率":            { key: "is_add_rate",        type: "rate" },
+  "ホットリード":          { key: "hot_lead",           type: "num"  },
+  "ホットレート":          { key: "hot_rate",           type: "rate" },
+  "手配粗利額":            { key: "gross_profit",       type: "num"  },
+  "買取粗利額":            { key: "buy_gross",          type: "num"  }
 };
 
 // 生産性シートの列（1始まり）。A列が氏名。
@@ -130,7 +166,7 @@ function forceSync() {
 
 function runSync(trigger) {
   var startedAt = new Date();
-  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, unmatched: [] };
+  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], unmatched: [] };
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -183,6 +219,13 @@ function runSync(trigger) {
     // canSeeTeamKpi を持つ人だけに絞っている。
     var memberKpi = readMgmtKpi_(ss, nameToId, counts);
     if (memberKpi) {
+      // 月間の通話率・作業率・待機率だけは別の原本から来る。
+      // Management Sheet の値（第二CCは 0.00%）を上書きする。
+      var prod = readProdKpi_(ss, nameToId, counts);
+      if (prod) {
+        mergeProdKpi_(memberKpi.byMember, prod.byMember);
+        counts.prodMembers = prod.memberCount;
+      }
       writeDoc_(projectId, token, "memberKpi/current", memberKpi);
       counts.mgmtMembers = memberKpi.memberCount;
     }
@@ -215,6 +258,9 @@ function runSync(trigger) {
       dailyMemberCount: counts.dailyMembers || 0,
       dailyBlocks: counts.dailyBlocks || 0,
       dailyStaleBlocks: counts.dailyStale || 0,
+      prodMemberCount: counts.prodMembers || 0,
+      prodBlocks: counts.prodBlocks || 0,
+      prodMissingBlocks: counts.prodMissing || [],
       unmatchedNames: counts.unmatched
     });
 
@@ -393,7 +439,92 @@ function readProductivity_(ss, nameToId, counts) {
 }
 
 /**
- * メンバー別の主要KPIを読む（Management Sheet 由来）。
+ * 月間の通話率・作業率・待機率をメンバー別に読む（CC_アクション管理由来）。
+ *
+ * 原本は同じ形のブロックが縦に積まれている。
+ *
+ *   通話率 | 6月月間 | 2026年7月 | 2026年8月 | 20260727週 | …
+ *   全体   |  42.1%  |   42.8%   |   41.9%
+ *   第一東京CC …
+ *   第二東京CC …
+ *   （チーム）
+ *   庄司 祐亮 |  46.3% |  45.8%  |  45.4%
+ *   …
+ *   作業率 | …          ← 次のブロック
+ *
+ * 【列を文字で探す】
+ * 月間の列は月が変わるたびに 35〜36列ずつ右へずれる（B → AK → BU）。
+ * 位置で指定すると毎月直すことになるので、見出し行の中から
+ * 「2026年8月」に一致するセルを探して、その列を読む。
+ * 9月になれば新しく出る「2026年9月」の列に自動で移る。
+ *
+ * 【拠点・チームの行は自動的に外れる】
+ * 拾うのは members の fullName と一致した行だけ。「全体」「第一東京CC」
+ * 「野ざらし」などは氏名と一致しないので、そのまま無視される。
+ */
+function readProdKpi_(ss, nameToId, counts) {
+  var sheet = ss.getSheetByName(TAB.prodKpi);
+  if (!sheet) return null;                  // 任意の機能
+  var values = sheet.getDataRange().getValues();
+  if (isEmptyTab_(values)) return null;
+  if (hasUnresolvedRefOnly_(values)) return null;
+  assertResolved_(values, TAB.prodKpi);
+
+  var now = new Date();
+  var target = now.getFullYear() + "年" + (now.getMonth() + 1) + "月";
+
+  var byMember = {};
+  var curKey = null, curCol = -1;
+  var found = [], missing = [];
+
+  for (var r = 0; r < values.length; r++) {
+    var head = String(values[r][0] == null ? "" : values[r][0]).trim();
+
+    // ブロックの見出しか
+    if (PROD_KPI_BLOCKS[head]) {
+      curKey = PROD_KPI_BLOCKS[head];
+      curCol = -1;
+      for (var c = 1; c < values[r].length; c++) {
+        if (String(values[r][c] == null ? "" : values[r][c]).trim() === target) { curCol = c; break; }
+      }
+      if (curCol < 0) missing.push(head);   // 当月の列がまだ無いブロック
+      else found.push(head);
+      continue;
+    }
+    if (!curKey || curCol < 0) continue;
+
+    var memberId = nameToId[normalizeName_(values[r][0])];
+    if (!memberId) continue;                // 全体・拠点・チームの行
+    var v = toRate_(values[r][curCol]);
+    if (v === null) continue;
+    if (!byMember[memberId]) byMember[memberId] = {};
+    byMember[memberId][curKey] = v;
+  }
+
+  if (counts) {
+    counts.prodBlocks = found.length;
+    counts.prodMissing = missing;
+  }
+  if (!Object.keys(byMember).length) return null;
+  return { month: target, byMember: byMember, memberCount: Object.keys(byMember).length };
+}
+
+/**
+ * Management Sheet 側の値に、月間の生産性の値を上書きする。
+ *
+ * Management Sheet にも通話率・作業率・待機率の行はあるが、第二CCの列は
+ * 0.00% のまま（実績が入っていない）。そのままだと全員0%になるので、
+ * 値のあるほうで上書きする。Management Sheet 側が埋まった日には、
+ * この上書きを外せば向こうの値に戻る。
+ */
+function mergeProdKpi_(base, over) {
+  for (var id in over) {
+    if (!base[id]) base[id] = {};
+    for (var k in over[id]) base[id][k] = over[id][k];
+  }
+}
+
+/** メンバー別の主要KPIを読む（Management Sheet 由来）。
  *
  * 原本は「行＝KPI、列＝人・チーム・拠点」のクロス集計。行も列も組織変更の
  * たびに動くので、位置ではなく **文字** で場所を決める。

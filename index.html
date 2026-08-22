@@ -6023,12 +6023,51 @@ function renderKpiSection(){
  * KPI_DEF には入れていない。あちらは生産性データ側に列が無く、
  * 0%として未達に見えてしまうため。
  */
+/**
+ * 月次で出す指標。Management Sheet の当月タブの並び順に合わせてある。
+ *
+ * src   … "kpi"=Management Sheet / "met"=生産性データ
+ * agg   … チーム集計の出し方
+ *           "sum"   件数。足す
+ *           "ratio" 定義どおり「合計÷合計」で出す（num/den を指定）
+ *           "avg"   分母が手元に無いので、値のある人の平均
+ * t     … 基準ライン。無い指標には置かない（無い線で未達に見せないため）
+ *
+ * 【通話率・作業率・待機率の出どころ】
+ * Management Sheet にも行はあるが、第二CCの列は 0.00% のままなので
+ * 使えない。CC_アクション管理の月間列から取って、GAS 側で
+ * Management Sheet の値に上書きしている（mergeProdKpi_）。
+ * アプリから見ると memberKpi の一部なので src は "kpi"。
+ *
+ * 【ratio の分母を確かめてある】
+ * 手配率＝手配数÷対応数、手配買取率＝買取数÷手配数、
+ * ホットレート＝ホットリード÷手配数。いずれも原本の第二CC列の値と
+ * 突き合わせて一致を確認した（37.5% / 79.7% / 14.7%）。
+ * 買取粗利単価は原本の値と一致する割り算が見つからなかったので
+ * 平均にしてある（推測で割り算を作らない）。
+ */
 var TEAM_KPI = [
-  { key:"handled",      l:"対応数",   u:"件", src:"kpi",     fmt:"int",  t:null, g:"high" },
-  { key:"arrange_rate", l:"手配率",   u:"%",  src:"kpi",     fmt:"rate", t:34,   g:"high" },
-  { key:"gross_profit", l:"手配粗利", u:"",   src:"kpi",     fmt:"yen",  t:null, g:"high" },
-  { key:"call_rate",    l:"通話率",   u:"%",  src:"met",     fmt:"rate", t:KPI_DEF.call_rate.t, g:"high" },
-  { key:"work_rate",    l:"作業率",   u:"%",  src:"met",     fmt:"rate", t:KPI_DEF.work_rate.t, g:"low"  }
+  { key:"handled",            l:"対応数",     full:"対応数",              u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { key:"handled_valid",      l:"有効対応",   full:"有効案件対応数",       u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { key:"arranged",           l:"手配数",     full:"手配数",              u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { key:"arranged_visit",     l:"出張手配",   full:"出張手配数",          u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { key:"arrange_rate",       l:"手配率",     full:"手配率",              u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged", den:"handled", t:34, g:"high" },
+  { key:"arrange_rate_valid", l:"有効手配率", full:"有効案件手配率",       u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { key:"arrange_rate_b",     l:"高額率B",    full:"高額手配率_B案件以上", u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { key:"arrange_rate_c",     l:"高額率C",    full:"高額手配率_C案件以上", u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { key:"arrange_rate_exp",   l:"高額率期",   full:"高額手配率_期待値",    u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { key:"bought",             l:"買取数",     full:"買取数",              u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { key:"buy_rate",           l:"手配買取率", full:"手配買取率",          u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"bought", den:"arranged" },
+  { key:"call_rate",          l:"通話率",     full:"通話率（月間）",       u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.call_rate.t, g:"high" },
+  { key:"work_rate",          l:"作業率",     full:"作業率（月間）",       u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.work_rate.t, g:"low" },
+  { key:"wait_rate",          l:"待機率",     full:"待機率（月間）",       u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { key:"buy_unit",           l:"粗利単価",   full:"買取粗利単価",        u:"円", src:"kpi", fmt:"int",  agg:"avg" },
+  { key:"is_add",             l:"IS追加",     full:"IS追加数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { key:"is_add_rate",        l:"IS追加率",   full:"IS追加比率",          u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { key:"hot_lead",           l:"ホット数",   full:"ホットリード",        u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { key:"hot_rate",           l:"ホット率",   full:"ホットレート",        u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"hot_lead", den:"arranged" },
+  { key:"gross_profit",       l:"手配粗利",   full:"手配粗利額",          u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { key:"buy_gross",          l:"買取粗利",   full:"買取粗利額",          u:"",   src:"kpi", fmt:"yen",  agg:"sum" }
 ];
 
 /** "2026_8" → "2026年8月"。警告文で使う */
@@ -6041,14 +6080,16 @@ function monthIdLabel(id){
 function teamKpiOf(memberId){
   var k = ((state.memberKpi && state.memberKpi.byMember) || {})[memberId] || {};
   var x = ((state.metrics && state.metrics.byMember) || {})[memberId] || {};
-  return {
-    handled:      k.handled,
-    arranged:     k.arranged,
-    arrange_rate: k.arrange_rate,
-    gross_profit: k.gross_profit,
-    call_rate:    x.call_rate,
-    work_rate:    x.work_rate
-  };
+  var out = {};
+  TEAM_KPI.forEach(function(def){
+    var v = (def.src === "met") ? x[def.key] : k[def.key];
+    if(typeof v === "number") out[def.key] = v;
+  });
+  // ratio の計算に使う値。表に出さなくても集計には要る
+  ["arranged","handled","bought","hot_lead"].forEach(function(f){
+    if(typeof k[f] === "number" && out[f] === undefined) out[f] = k[f];
+  });
+  return out;
 }
 
 /** そのメンバーに1つでも数字があるか（チップの出し分けと空表示の判定に使う） */
@@ -6066,33 +6107,43 @@ function hasTeamKpi(memberId){
  * チームの実勢とずれる。
  */
 function teamKpiRollup(members){
-  var sum = { handled:0, arranged:0, gross_profit:0 };
-  var has = { handled:false, arranged:false, gross_profit:false };
-  var rates = { call_rate:[], work_rate:[] };
+  var sum = {}, has = {}, bag = {};
+  function add(f, v){ if(typeof v !== "number") return; sum[f] = (sum[f]||0) + v; has[f] = true; }
 
   members.forEach(function(m){
     var v = teamKpiOf(m.id);
-    ["handled","arranged","gross_profit"].forEach(function(f){
-      if(typeof v[f] === "number"){ sum[f] += v[f]; has[f] = true; }
+    TEAM_KPI.forEach(function(def){
+      if(def.agg === "sum") add(def.key, v[def.key]);
+      else if(def.agg === "avg"){
+        if(typeof v[def.key] === "number"){ (bag[def.key] = bag[def.key] || []).push(v[def.key]); }
+      }
     });
-    ["call_rate","work_rate"].forEach(function(f){
-      if(typeof v[f] === "number") rates[f].push(v[f]);
-    });
+    // ratio の材料。表に出さない場合もあるので別途足す
+    ["arranged","handled","bought","hot_lead"].forEach(function(f){ add(f, v[f]); });
   });
 
   function avg(a){
-    if(!a.length) return null;
+    if(!a || !a.length) return null;
     var t = 0; a.forEach(function(n){ t += n; });
     return Math.round(t / a.length * 10) / 10;
   }
-  return {
-    handled:      has.handled ? sum.handled : null,
-    gross_profit: has.gross_profit ? sum.gross_profit : null,
-    arrange_rate: (has.arranged && has.handled && sum.handled > 0)
-                    ? Math.round(sum.arranged / sum.handled * 1000) / 10 : null,
-    call_rate:    avg(rates.call_rate),
-    work_rate:    avg(rates.work_rate)
-  };
+
+  var out = {};
+  TEAM_KPI.forEach(function(def){
+    if(def.agg === "sum"){
+      out[def.key] = has[def.key] ? sum[def.key] : null;
+    }else if(def.agg === "ratio"){
+      // 率の平均ではなく「合計 ÷ 合計」。対応数の少ない人の率が
+      // 同じ重みで効くのを避ける。
+      var n = has[def.num] ? sum[def.num] : null;
+      var d = has[def.den] ? sum[def.den] : null;
+      out[def.key] = (n !== null && d !== null && d > 0)
+        ? Math.round(n / d * 1000) / 10 : null;
+    }else{
+      out[def.key] = avg(bag[def.key]);
+    }
+  });
+  return out;
 }
 
 /** 指標1つの表示文字列 */
@@ -6195,6 +6246,19 @@ function dailyRollup(day, members){
     out[k2] = Math.round(t / a.length * 10) / 10;
   }
   return out;
+}
+
+/** 月次の1マス。集計カードとメンバー別カードで同じものを使う */
+function teamKpiCell(def, val){
+  var has = (val !== null && val !== undefined);
+  // ラベルは1マス60pxに収まる長さに詰めてある。原本どおりの名前は
+  // title に持たせて、PC では指を置けば読めるようにしておく。
+  return '<span class="tkpi-cell" title="'+esc(def.full || def.l)+'">' +
+    '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
+    '<b class="tkpi-cell-v" style="color:var(--'+teamKpiColor(def, val)+')">' +
+      esc(teamKpiText(def, val)) + (has && def.u ? esc(def.u) : '') +
+    '</b>' +
+  '</span>';
 }
 
 /** 日次の1マス。値が無ければ「—」 */
@@ -6357,28 +6421,15 @@ function renderTeamKpi(){
   var members = teamKpiMembers();
   var roll = teamKpiRollup(members);
 
+  // 21指標を kpi-card（1枚に1指標）で並べると縦に伸びすぎるので、
+  // メンバー別と同じ密なセル並びにして、見比べやすさを揃える。
   var gridHtml = TEAM_KPI.map(function(def){
-    var val = roll[def.key];
-    return '<div class="card kpi-card">' +
-      '<div class="kpi-label">'+esc(def.l)+'</div>' +
-      '<div class="kpi-value-row">' +
-        '<span class="kpi-value" style="color:var(--'+teamKpiColor(def,val)+')">'+esc(teamKpiText(def,val))+'</span>' +
-        (def.u ? '<span class="kpi-unit">'+esc(def.u)+'</span>' : '') +
-        (def.t !== null && def.t !== undefined ? '<span class="kpi-target">目標'+def.t+'</span>' : '') +
-      '</div>' +
-    '</div>';
+    return teamKpiCell(def, roll[def.key]);
   }).join("");
 
   var rows = members.map(function(m){
     var v = teamKpiOf(m.id);
-    var cells = TEAM_KPI.map(function(def){
-      return '<span class="tkpi-cell">' +
-        '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
-        '<b class="tkpi-cell-v" style="color:var(--'+teamKpiColor(def, v[def.key])+')">' +
-          esc(teamKpiText(def, v[def.key])) + (def.u && v[def.key]!=null ? esc(def.u) : '') +
-        '</b>' +
-      '</span>';
-    }).join("");
+    var cells = TEAM_KPI.map(function(def){ return teamKpiCell(def, v[def.key]); }).join("");
     return '<div class="card tkpi-member">' +
       '<div class="tkpi-name">'+avatar(m.id,28)+'<span>'+esc(m.displayName)+'</span></div>' +
       '<div class="tkpi-cells">'+cells+'</div>' +
@@ -6435,13 +6486,18 @@ function renderTeamKpi(){
     renderSyncBar() + warn +
     '<div class="kpi-filter">'+chips+'</div>' +
     '<div class="side-title">チーム集計'+(pl ? '（'+esc(pl)+'）' : '')+'</div>' +
-    '<div class="kpi-grid">'+gridHtml+'</div>' +
+    '<div class="card tkpi-member">' +
+      '<div class="tkpi-name"><span>チーム計</span></div>' +
+      '<div class="tkpi-cells">'+gridHtml+'</div>' +
+    '</div>' +
     renderDailyKpiTable() +
     trend +
     '<div class="side-title">メンバー別（'+members.length+'名）</div>' +
     (rows || emptyState("👥","このチームの数字がありません","")) +
-    '<div class="wk-legend">対応数・手配率は Management Sheet、手配粗利は手配粗利額データ、' +
-      '通話率・作業率は生産性データが出どころです。</div>' +
+    '<div class="wk-legend">月次の出どころは Management Sheet の当月タブ。' +
+      'ただし<b>通話率・作業率・待機率は CC_アクション管理の月間列</b>です' +
+      '（Management Sheet 側は第二CCが 0.00% のままのため）。' +
+      '手配率・手配買取率・ホットレートのチーム計は、率の平均ではなく合計どうしの割り算です。</div>' +
     renderDashboardLink() +
   '</div>';
 }
