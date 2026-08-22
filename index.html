@@ -22,14 +22,128 @@
      トークン定義と共通コンポーネントのクラスが入っており、
      下の <style> はその上に重ねる差分として書いている。
 
-     【ダークモードは持たない】
-     支給されたデザインは暖色のライト1本で、ダークの指定が無い。
-     こちらで勝手に暗い配色を作ると意図から外れるため、
-     media query も data-theme も置いていない。必要になったら
-     --color-* を上書きするブロックを1つ足すだけで対応できる。 -->
+     【ダークモード】
+     支給されたデザインは暖色のライト1本で、ダークの指定は無い。
+     依頼を受けて後から足したもので、支給デザインには含まれない。
+
+     tokens.css には手を入れていない。ハンドオフされたファイルなので、
+     原本を書き換えると次に支給されたときに差分が分からなくなる。
+     下の <style> に :root[data-theme="dark"] を1ブロック置いて、
+     --color-* を上書きするだけにしてある（エイリアスは var() 参照なので
+     自動で追従する）。 -->
 <link rel="stylesheet" href="./tokens.css">
+<!-- 起動直後に data-theme を立てる。
+     アプリ本体は <script type="module"> で、モジュールは defer 相当なので
+     そこで立てると「一瞬明るい画面が出てから暗くなる」白い閃光が起きる。
+     ここだけは同期スクリプトにして、最初の描画より先に決める。
+
+     判定の規則は下の wantsDark() と同じにしてある（保存された選択 →
+     無ければ OS の設定）。**両方を直すこと。** 片方だけ変えると、
+     起動直後の色とボタンの状態が食い違う。 -->
+<script>
+(function(){
+  try{
+    var v = localStorage.getItem("dainiCcHub.theme");
+    var dark = (v === "dark") ||
+      (v !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  }catch(e){}
+})();
+</script>
 <style>
 *{box-sizing:border-box;}
+
+/* ══════════════════════════════════════════════════════════════════
+   ダークモード
+
+   上書きするのは tokens.css の --color-* だけ。旧名エイリアス
+   （--bg / --text / --accent など）は var() で --color-* を指しているので、
+   ここを変えれば全部追従する。個別に足す必要はない。
+
+   OS の設定に追従させる media query は置いていない。代わりに JS が
+   起動時に「保存された選択 → 無ければ OS の設定」を見て data-theme を
+   立てる。CSS を2重に書かずに、切り替えボタンと OS 追従の両方を
+   成立させるため（同じ上書きを media query 側にも書くと、片方だけ
+   直して食い違う事故が起きる）。
+
+   色は元の意味を保つように選んである。粋の水色＝早番、夕暮れの橙＝遅番、
+   江戸紫＝21時、緑＝達成、朱＝警告。暗い地の上で見えるように明度を
+   上げてあるが、色相は動かしていない。
+   ══════════════════════════════════════════════════════════════════ */
+:root[data-theme="dark"]{
+  color-scheme: dark;
+
+  /* 面と文字 */
+  --color-page:          #12161B;
+  --color-bg:            #191E25;
+  --color-surface:       #212832;
+  --color-track:         #2A323D;
+  --color-text:          #E7ECF2;
+  --color-text-sub:      #A2ADB9;
+  /* 12px の補助文字（投稿時刻など）に使う。暗い地では #7B8693 だと
+     4.0:1 しか出ず小さい文字には足りないので、明度を上げてある。 */
+  --color-text-mute:     #98A3AF;
+  --color-border:        #313A46;
+  --color-border-strong: #46515E;
+
+  /* アクセントの「塗り」はライトと同じ値のまま動かさない。
+     水色・朱・緑の上に白文字を置く指定がCSSに10か所ハードコードされて
+     いて（.btn-post .btn-primary .nav-badge .task-box など）、ここを
+     明るくすると白文字とのコントラストが落ちる。ライトでも白×水色は
+     約2.6:1で、それが支給デザインの選択。暗くしても悪くしないために、
+     塗りの色は据え置きにしてある。
+
+     入れ替えるのは tint（淡い地色→暗い地色）と ink（濃い文字→明るい文字）
+     の2つだけ。こちらは必ず「地」と「その上の文字」の対で使われる。 */
+  --color-accent-tint: #12303F;
+  --color-accent-ink:  #8FD3F5;
+  --color-plum-tint:   #241F33;
+  --color-plum-ink:    #BCAEE8;
+  --color-dusk-tint:   #3A2513;
+  --color-dusk-ink:    #F6B788;
+  --color-grow-tint:   #10302A;
+  --color-grow-ink:    #6FD9B6;
+  --color-alert-tint:  #3A1B1E;
+  --color-alert-ink:   #F49AA0;
+
+  /* accent-deep は10か所が文字色、3か所だけが hover の塗り。
+     文字として読める明るさを優先し、hover の塗りは下で個別に暗くする。 */
+  --color-accent-deep: #8AD0F5;
+
+  /* 影は暗い地では見えないので、黒を強めて輪郭を作る */
+  --shadow-card: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-pop:  0 6px 24px rgba(0,0,0,.50);
+
+  /* シフト状態。塗り・文字・枠の3点セットで意味を持つので3つとも入れ替える */
+  --shift-early-bg:     #17384A;
+  --shift-early-fg:     #9AD5F2;
+  --shift-early-border: #235A75;
+  --shift-late-bg:      #3E2716;
+  --shift-late-fg:      #F5B98C;
+  --shift-late-border:  #6A431F;
+  --shift-night-bg:     #2A2340;
+  --shift-night-fg:     #C0B2EC;
+  --shift-night-border: #453A63;
+  --shift-off-bg:       #262C34;
+  --shift-off-fg:       #8B94A0;
+  --shift-off-border:   #313A46;
+}
+
+/* accent-deep を文字向けに明るくした分、それを「塗り」に使う hover だけ
+   個別に戻す。ここに白文字が乗るため、明るい地色では読めなくなる。 */
+:root[data-theme="dark"] .btn-post:hover,
+:root[data-theme="dark"] .btn-primary:hover,
+:root[data-theme="dark"] .comment-send:hover{background:#2A87BA;}
+
+/* 座席表は原本の背景色をそのまま出す（色が凡例の意味を持つため）。
+   暗い地の上で白いマスが浮くが、こちらで塗り替えると
+   「※遅番グレー」「※青PCなし」という原本の凡例が嘘になる。
+   枠と余白だけを暗い地に合わせ、マスの色は触らない。 */
+:root[data-theme="dark"] .seat-scroll{background:var(--color-page);}
+
+/* INさんのイラストは白背景の webp。暗い地だと切り抜きの白が四角く出るので、
+   角を丸めた白い台に乗っているように見せて、意図的な余白として扱う。 */
+:root[data-theme="dark"] .in-art{border-radius:10px;}
 
 /* tokens.css の .input は高さ44pxで固定される（押せる要素の最小寸法）。
    複数行入力はそれに縛られてはいけないので戻す。 */
@@ -78,6 +192,15 @@ body{margin:0;background:var(--color-page);}
   border-radius:var(--radius-md); padding:0 10px; height:36px; font-size:13px; font-weight:700;
   color:var(--color-text-sub); cursor:pointer; font-family:inherit; white-space:nowrap;}
 .signout-btn:hover{background:var(--color-bg);}
+
+/* テーマ切り替え。押せる要素の最小寸法（36px）は守る。
+   文字を入れず絵文字1つにしているのは、ヘッダーの幅が
+   名前とサインアウトで既に埋まっているため。 */
+.theme-btn{width:36px; height:36px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  background:var(--color-surface); border:1px solid var(--color-border-strong);
+  border-radius:var(--radius-md); font-size:15px; line-height:1; cursor:pointer; font-family:inherit;
+  color:var(--color-text-sub);}
+.theme-btn:hover{background:var(--color-bg);}
 
 .content{flex:1; overflow-y:auto;}
 .tab-pad{padding:16px 16px 28px;}
@@ -613,21 +736,26 @@ select.input{padding-right:8px;}
 /* 区分は文字色ではなく背景で塗る。文字を読まずに早/遅が判別できるようにするため。
    色は必ず文字と併記する二重符号化。未提出だけは斜線＋破線枠にしてあり、
    色が見えない環境でも他と区別できる。 */
-.shift-early{background:#DCEFFA; color:#1F6E96; border-color:#BEE0F5; font-weight:700;}
-.shift-late{background:#FBE7D3; color:#A85A1C; border-color:#F5D2B0; font-weight:700;}
-.shift-night{background:#EDE8F7; color:#54467D; border-color:#DCD4EE; font-weight:700; font-size:10px;}
+/* シフト区分の色は必ず --shift-* トークン経由で書く。
+   以前ここは #DCEFFA のような直書きだった。トークンを用意してあるのに
+   使っていなかったため、ダークモードで上書きが効かず、暗い地に淡い水色の
+   マスがそのまま出ていた。塗り・文字・枠の3点セットで意味を持つので、
+   3つとも同じ組から取ること。 */
+.shift-early{background:var(--shift-early-bg); color:var(--shift-early-fg); border-color:var(--shift-early-border); font-weight:700;}
+.shift-late{background:var(--shift-late-bg); color:var(--shift-late-fg); border-color:var(--shift-late-border); font-weight:700;}
+.shift-night{background:var(--shift-night-bg); color:var(--shift-night-fg); border-color:var(--shift-night-border); font-weight:700; font-size:10px;}
 .shift-other{background:var(--color-dusk-tint); color:var(--color-dusk-ink); font-weight:700;
   font-size:9px; line-height:1.2; text-align:center;}
-.shift-off{background:#F4F2ED; color:var(--color-text-sub);}
+.shift-off{background:var(--shift-off-bg); color:var(--shift-off-fg);}
 /* 未提出＝シフト表にその人の行が無い。休み（行はあるが空欄）とは別物として出す。 */
-.shift-none{background:repeating-linear-gradient(135deg,#FFF,#FFF 5px,var(--color-track) 5px,var(--color-track) 10px);
-  color:#8C959E; font-size:10px; border-color:var(--color-border-strong);}
+.shift-none{background:repeating-linear-gradient(135deg,var(--color-surface),var(--color-surface) 5px,var(--color-track) 5px,var(--color-track) 10px);
+  color:var(--color-text-mute); font-size:10px; border-color:var(--color-border-strong);}
 .shift-name-cell.shift-name-none{color:var(--text-4);}
 .shift-count-row{background:var(--input-bg); border-top:2px solid var(--border);}
 .shift-count-row .shift-name-cell{background:var(--input-bg); font-weight:700; color:var(--text-3); font-size:11px;}
 .shift-count-cell{flex-direction:column; gap:1px; font-size:10px; line-height:1.25; font-weight:700;}
-.shift-count-early{color:#1F6E96;}
-.shift-count-late{color:#A85A1C;}
+.shift-count-early{color:var(--shift-early-fg);}
+.shift-count-late{color:var(--shift-late-fg);}
 .shift-legend{display:flex; gap:14px; margin-top:10px; font-size:11px; color:var(--text-4); flex-wrap:wrap;}
 
 /* ── 投稿フォーム ── */
@@ -862,7 +990,7 @@ body.wide .pc-cols:has(.pc-side:empty),
 
 /* 写真・イラストのアバター。頭文字版と同じ寸法・同じ丸みで置き換わる。 */
 .avatar-img{object-fit:cover; border-radius:var(--radius-pill); flex:none;
-  border:1px solid rgba(28,42,56,.08); background:var(--color-track);}
+  border:1px solid var(--color-border); background:var(--color-track);}
 
 /* ── INさん ── */
 .in-char{display:flex; flex-direction:column; align-items:center; gap:6px;}
@@ -1829,7 +1957,73 @@ function configLooksUnset(){
       || String(FIREBASE_CONFIG.apiKey).indexOf("PASTE_") === 0;
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  テーマ（明るい／暗い）
+//
+//  data-theme を <html> に立てるだけ。CSS 側は
+//  :root[data-theme="dark"] の1ブロックで受ける。
+//
+//  【OS 追従を CSS の media query でやらない理由】
+//  同じ上書きを media query 側にも書くことになり、片方だけ直して
+//  食い違う事故が起きる。ここで「保存された選択 → 無ければ OS」を
+//  判定して data-theme を立てれば、CSS は1ブロックで済む。
+//
+//  【localStorage を使う】
+//  Firestore に置くと、未ログインのログイン画面で色が決められない。
+//  端末ごとの見た目の設定なので、そもそも共有する意味も薄い。
+//  旧アプリの残骸を消す loadLegacy() とは別のキーにしてある。
+// ══════════════════════════════════════════════════════════════════
+var THEME_KEY = "dainiCcHub.theme";
+
+/** 保存された選択。"light" | "dark" | null（未選択＝OSに従う） */
+function savedTheme(){
+  try{
+    var v = localStorage.getItem(THEME_KEY);
+    return (v === "light" || v === "dark") ? v : null;
+  }catch(e){ return null; }   // プライベートモードで localStorage が使えない端末
+}
+
+/** いま暗くすべきか。選択が無ければ OS の設定を見る */
+function wantsDark(){
+  var s = savedTheme();
+  if(s) return s === "dark";
+  try{ return window.matchMedia("(prefers-color-scheme: dark)").matches; }catch(e){ return false; }
+}
+
+/**
+ * <html> に data-theme を立てる。
+ * 画面を描き直す前に呼ぶこと。CSS 変数の切り替えだけなので、
+ * DOM を作り直す必要はない（ボタンの絵柄だけ render で追従する）。
+ */
+function applyTheme(){
+  var el = document.documentElement;
+  if(wantsDark()) el.setAttribute("data-theme", "dark");
+  else el.setAttribute("data-theme", "light");
+}
+
+/** ボタンを押したとき。いまの見た目の逆を明示的に保存する */
+function toggleTheme(){
+  var dark = document.documentElement.getAttribute("data-theme") === "dark";
+  try{ localStorage.setItem(THEME_KEY, dark ? "light" : "dark"); }catch(e){}
+  applyTheme();
+  render();
+}
+
+// OS の設定が開いている間に変わったら追従する。
+// ただし自分で選んだ人の設定は上書きしない。
+try{
+  var mqDark = window.matchMedia("(prefers-color-scheme: dark)");
+  if(mqDark.addEventListener){
+    mqDark.addEventListener("change", function(){
+      if(savedTheme()) return;
+      applyTheme();
+      render();
+    });
+  }
+}catch(e){}
+
 function boot(){
+  applyTheme();
   bindEvents();
   if(configLooksUnset()){
     session.status = "config";
@@ -2304,9 +2498,29 @@ function renderHeader(){
           '<div class="header-me-name">'+esc(me.displayName)+'</div>' +
           (isAdmin() ? '<div class="header-me-role">管理者</div>' : '') +
         '</div>' +
+        renderThemeToggle() +
         '<button class="signout-btn" data-act="signout">サインアウト</button>' +
       '</div>' +
     '</div>';
+}
+
+/**
+ * 明るい／暗いの切り替えボタン。
+ *
+ * 押すとその場で切り替わり、選択は localStorage に残る。何も選んで
+ * いないうちは OS の設定に従う（起動時の applyTheme が判定する）。
+ *
+ * アイコンは「押したらどうなるか」を出している。暗いときに ☀ が出て
+ * いれば「押すと明るくなる」。いまの状態を出すと、どちらの意味か
+ * 読み取れない。
+ */
+function renderThemeToggle(){
+  var dark = document.documentElement.getAttribute("data-theme") === "dark";
+  return '<button class="theme-btn" data-act="theme-toggle" ' +
+    'aria-label="'+(dark ? "明るい表示に切り替える" : "暗い表示に切り替える")+'" ' +
+    'title="'+(dark ? "明るい表示にする" : "暗い表示にする")+'">' +
+    (dark ? "☀" : "🌙") +
+  '</button>';
 }
 
 function renderNav(){
@@ -2435,6 +2649,7 @@ function renderTopbar(){
       '<button class="avatar-btn" data-act="avatar-open" data-id="'+esc(me.id)+'" aria-label="アイコンを変更">'+avatar(me.id, 32)+'</button>' +
       '<span class="pc-me-name">'+esc(me.displayName)+'</span>' +
       (isAdmin() ? '<span class="pc-me-role">管理者</span>' : '') +
+      renderThemeToggle() +
       '<button class="pc-signout" data-act="signout">サインアウト</button>' +
     '</div>' +
   '</div>';
@@ -6903,6 +7118,11 @@ function bindEvents(){
     // 認証系はログイン前でも動く必要がある
     if(act==="signin"){ doSignIn(); return; }
     if(act==="signout"){ doSignOut(); return; }
+    // テーマの切り替えはセッションの状態に依らない。
+    // 認証系と同じくここに置いて、ログイン前でも動くようにしておく
+    // （いまボタンはヘッダーにしか無いが、後で別の画面に置いたときに
+    //   「押しても動かない」を作らないため）。
+    if(act==="theme-toggle"){ toggleTheme(); return; }
 
     // ここから先はログイン済みのときだけ
     if(session.status !== "ready") return;
