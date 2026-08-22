@@ -1099,6 +1099,17 @@ body.wide .pc-cols:has(.pc-side:empty),
 .dk-num{font-size:13px; font-weight:700; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
 .dk-ok{color:var(--color-grow-ink);}
 .dk-note{font-size:11px; color:var(--color-text-mute); line-height:1.7; margin-top:6px;}
+
+/* 外部リンクのカード。押せる帯であることが分かるように、
+   カードと同じ面の上に矢印を置く。 */
+.extlink{display:flex; align-items:center; gap:10px; padding:14px 16px; text-decoration:none;
+  color:var(--color-text); border:1px solid var(--color-border); border-radius:var(--radius-lg);
+  background:var(--color-surface);}
+.extlink:hover{background:var(--color-bg); text-decoration:none;}
+.extlink-body{flex:1; min-width:0;}
+.extlink-title{font-size:14px; font-weight:700; line-height:1.5;}
+.extlink-note{font-size:11px; color:var(--color-text-mute); line-height:1.7; margin-top:2px;}
+.extlink-arrow{flex-shrink:0; color:var(--color-text-mute); font-size:13px;}
 .kpi-bar-bg{height:4px; background:var(--color-track); border-radius:var(--radius-pill);}
 .kpi-bar{height:100%; border-radius:99px;}
 .section-label{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em;}
@@ -1269,6 +1280,28 @@ var REACTIONS = [
   "❤️","😂","🙌","☕","📈","👀"
 ];
 var POST_TYPES = ["Thanks","お知らせ","雑談","質問","報告"];
+
+/**
+ * 事業進捗ダッシュボード（別アプリ）へのリンク。
+ *
+ * 【埋め込みではなくリンクにしている理由】
+ * このアプリは https で配信されている。そこに http のページを iframe で
+ * 入れると、ブラウザが混在コンテンツとして遮断する。設定では回避できない。
+ * 画面遷移（別タブで開く）なら制限にかからないので、リンクにしてある。
+ *
+ * 【社内LANからしか開けない】
+ * 192.168.x.x は社外から到達できないアドレス。スマホの4G/5G回線では
+ * 開けない。さらに向こうは開発サーバーで、動かしている端末が起動して
+ * いる間しか生きていない。**開けないのが通常の状態でもある**ので、
+ * 画面にもその旨を書いて、壊れていると誤解されないようにしている。
+ *
+ * 【公開リポジトリに載ること】
+ * private IP なので社外から使えず、鍵でも個人情報でもない。README の
+ * 禁止事項には当たらないと判断して直接書いている。移設したらここを直す。
+ *
+ * 空文字にすると、リンクごと画面から消える。
+ */
+var DASHBOARD_URL = "http://192.168.60.130:5173/";
 // ══════════════════════════════════════════════════════════════════
 //  第二CC の Mission / Vision / Value
 //
@@ -6275,6 +6308,31 @@ function renderDailyKpiTable(){
       (days.length <= 1 ? '日次は取り込みを始めた日から1日ずつ増えます。' : '') + '</div>';
 }
 
+/**
+ * 事業進捗ダッシュボードへのリンク。
+ *
+ * data-act は付けない。アプリのクリック処理は [data-act] を拾って
+ * preventDefault 相当の分岐に入るので、素の <a> にして
+ * ブラウザの遷移にまかせる。
+ *
+ * rel="noopener" は必須。target="_blank" だけだと、開いた先から
+ * window.opener でこちらのページを操作できてしまう。
+ */
+function renderDashboardLink(){
+  if(!DASHBOARD_URL) return "";
+  return '<div class="side-title">関連ツール</div>' +
+    '<a class="extlink" href="'+esc(DASHBOARD_URL)+'" target="_blank" rel="noopener noreferrer">' +
+      '<span>📈</span>' +
+      '<span class="extlink-body">' +
+        '<span class="extlink-title">事業進捗ダッシュボード</span>' +
+        '<span class="extlink-note">全体実績・4拠点比較。' +
+          '<b>社内ネットワークからのみ開けます</b>（スマホの回線では開きません）。' +
+          '配信元の端末が起動していないときも開けません。</span>' +
+      '</span>' +
+      '<span class="extlink-arrow">↗</span>' +
+    '</a>';
+}
+
 function renderTeamKpi(){
   var teams = teamKpiTeams();
   // 選んでいたチームが消えた（異動などで数字が無くなった）ときは全体に戻す
@@ -6384,6 +6442,7 @@ function renderTeamKpi(){
     (rows || emptyState("👥","このチームの数字がありません","")) +
     '<div class="wk-legend">対応数・手配率は Management Sheet、手配粗利は手配粗利額データ、' +
       '通話率・作業率は生産性データが出どころです。</div>' +
+    renderDashboardLink() +
   '</div>';
 }
 
