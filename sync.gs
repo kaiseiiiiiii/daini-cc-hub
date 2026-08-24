@@ -166,7 +166,7 @@ function forceSync() {
 
 function runSync(trigger) {
   var startedAt = new Date();
-  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], unmatched: [] };
+  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], prodBroken: 0, prodSkip: "", unmatched: [] };
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -261,6 +261,8 @@ function runSync(trigger) {
       prodMemberCount: counts.prodMembers || 0,
       prodBlocks: counts.prodBlocks || 0,
       prodMissingBlocks: counts.prodMissing || [],
+      prodBrokenCells: counts.prodBroken || 0,
+      prodSkipReason: counts.prodSkip || "",
       unmatchedNames: counts.unmatched
     });
 
@@ -403,6 +405,27 @@ function hasUnresolvedRefOnly_(values) {
 }
 
 /**
+ * タブ全体が「解決できていない値」だけで埋まっているか。
+ *
+ * hasUnresolvedRefOnly_ は #REF! と #N/A だけを見る。こちらは
+ * Loading... や #ERROR! も含めて判定する。IMPORTRANGE を貼った直後は
+ * 全セルが Loading... になり、それを「本物のデータ」と誤認すると
+ * assertResolved_ 側で例外になって同期が丸ごと落ちる。
+ */
+function hasUnresolvedOnly_(values) {
+  var seen = false;
+  for (var r = 0; r < values.length; r++) {
+    for (var c = 0; c < values[r].length; c++) {
+      var v = String(values[r][c]).trim();
+      if (v === "") continue;
+      if (UNRESOLVED.indexOf(v) >= 0) { seen = true; continue; }
+      return false;
+    }
+  }
+  return seen;
+}
+
+/**
  * 生産性KPI を読む。
  * このシートはチームごとにヘッダーが繰り返される作りなので、
  * 行位置ではなく「A列がメンバーの氏名と一致する行」を拾う。
@@ -463,19 +486,27 @@ function readProductivity_(ss, nameToId, counts) {
  * 「野ざらし」などは氏名と一致しないので、そのまま無視される。
  */
 function readProdKpi_(ss, nameToId, counts) {
+  function skip(reason) { if (counts) counts.prodSkip = reason; return null; }
+
   var sheet = ss.getSheetByName(TAB.prodKpi);
-  if (!sheet) return null;                  // 任意の機能
+  if (!sheet) return skip("タブ " + TAB.prodKpi + " がありません");
   var values = sheet.getDataRange().getValues();
-  if (isEmptyTab_(values)) return null;
-  if (hasUnresolvedRefOnly_(values)) return null;
-  assertResolved_(values, TAB.prodKpi);
+  if (isEmptyTab_(values)) return skip("タブが空です");
+  if (hasUnresolvedOnly_(values)) return skip("IMPORTRANGE が解決していません（アクセス許可か読み込み待ち）");
+
+  // 【全面検査をしない理由】
+  // 原本は 156列 × 200行の作業シートで、こちらが読まない列に #N/A が
+  // 普通に混ざっている。assertResolved_ を全面にかけると、それだけで
+  // 毎時の同期が丸ごと落ちる（readGoal_ で同じ罠を踏んだのと同じ話）。
+  // 実際に読むのは A列と当月列の2つだけ。壊れた値は toRate_ が null に
+  // するので、読む側で取りこぼすだけで済む。
 
   var now = new Date();
   var target = now.getFullYear() + "年" + (now.getMonth() + 1) + "月";
 
   var byMember = {};
   var curKey = null, curCol = -1;
-  var found = [], missing = [];
+  var found = [], missing = [], broken = 0;
 
   for (var r = 0; r < values.length; r++) {
     var head = String(values[r][0] == null ? "" : values[r][0]).trim();
@@ -495,7 +526,12 @@ function readProdKpi_(ss, nameToId, counts) {
 
     var memberId = nameToId[normalizeName_(values[r][0])];
     if (!memberId) continue;                // 全体・拠点・チームの行
-    var v = toRate_(values[r][curCol]);
+    var raw = values[r][curCol];
+    if (typeof raw === "string" && UNRESOLVED.indexOf(raw.trim()) >= 0) {
+      broken++;                             // 読む列が壊れている。0 は入れない
+      continue;
+    }
+    var v = toRate_(raw);
     if (v === null) continue;
     if (!byMember[memberId]) byMember[memberId] = {};
     byMember[memberId][curKey] = v;
@@ -504,6 +540,10 @@ function readProdKpi_(ss, nameToId, counts) {
   if (counts) {
     counts.prodBlocks = found.length;
     counts.prodMissing = missing;
+    counts.prodBroken = broken;
+    if (!found.length) counts.prodSkip = "A列に 通話率 / 作業率 / 待機率 の見出しが見つかりません";
+    else if (!Object.keys(byMember).length) counts.prodSkip = "見出しは見つかったが、氏名が1件も一致しません";
+    else counts.prodSkip = "";
   }
   if (!Object.keys(byMember).length) return null;
   return { month: target, byMember: byMember, memberCount: Object.keys(byMember).length };
@@ -1031,7 +1071,8 @@ function checkSetup() {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   [TAB.cfg, TAB.shiftPrev, TAB.shiftCur, TAB.shiftNext, TAB.productivity,
-   TAB.goalAll, TAB.goalTeamA, TAB.goalTeamB, TAB.goalOther].forEach(function (t) {
+   TAB.goalAll, TAB.goalTeamA, TAB.goalTeamB, TAB.goalOther,
+   TAB.mgmtKpi, TAB.dailyKpi, TAB.prodKpi].forEach(function (t) {
     var sheet = ss.getSheetByName(t);
     if (!sheet) { out.push("無し  タブ " + t); return; }
     var v = sheet.getDataRange().getValues();
