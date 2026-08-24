@@ -39,7 +39,79 @@ var TAB = {
   goalTeamA:    "goal_team_a",
   goalTeamB:    "goal_team_b",
   goalOther:    "goal_other",
+  // メンバー別の主要KPI（Management Sheet から IMPORTRANGE）。
+  // 任意の機能。このタブが無ければ何もしない。
+  mgmtKpi:      "mgmt_kpi",
+  // 日次KPI（各チームのダッシュボードの「今日の状況」を縦に積んだもの）。
+  // 任意の機能。このタブが無ければ何もしない。
+  dailyKpi:     "daily_kpi",
+  // 月間の通話率・作業率・待機率（CC_アクション管理から IMPORTRANGE）。
+  // 任意の機能。このタブが無ければ何もしない。
+  prodKpi:      "prod_kpi",
   log:          "_log"
+};
+
+// prod_kpi の中で、A列に出てくるブロックの見出し → フィールド名。
+// 原本は「見出し行のあと、全体→拠点→チーム→メンバー」が縦に並ぶ形で、
+// 同じ形のブロックが縦に積まれている。
+var PROD_KPI_BLOCKS = {
+  "通話率": "call_rate",
+  "作業率": "work_rate",
+  "待機率": "wait_rate"
+};
+
+// daily_kpi の列見出し → Firestore のフィールド名。
+// 見出しはダッシュボードの表記そのまま。増やすならここに足す。
+var DAILY_KPI_COLS = {
+  "対応数":       { key: "handled",        type: "num"  },
+  "手配数":       { key: "arranged",       type: "num"  },
+  "手配率":       { key: "arrange_rate",   type: "rate" },
+  "通話率":       { key: "call_rate",      type: "rate" },
+  "作業率":       { key: "work_rate",      type: "rate" },
+  "待機率":       { key: "wait_rate",      type: "rate" },
+  "付帯率":       { key: "ancillary_rate", type: "rate" },
+  "接続率":       { key: "connect_rate",   type: "rate" },
+  "平均通話時間": { key: "avg_call",       type: "min"  }
+};
+
+// 見出し行とみなすのに必要な、一致した列見出しの数。
+// 1つや2つでは、たまたま「対応数」と書いてある行を拾ってしまう。
+var DAILY_KPI_MIN_COLS = 3;
+
+// mgmt_kpi から取り込む行のラベル → Firestore のフィールド名。
+// ラベルは原本の表記そのまま（前後の空白は落として突き合わせる）。
+// 原本の言い回しが変わったらここを直す。
+//
+// 似た名前の行が原本にあるので、**完全一致**で拾っている。
+//   手配粗利額 と 出張手配粗利額 ／ ホットレート と 出張_ホットレート
+// 部分一致にすると取り違える。
+//
+// 通話率・作業率・待機率も入れてあるが、第二CCの列では原本が 0.00% に
+// なっている（実績が入っていない）。アプリ側はこの3つを生産性データ
+// （metrics）から取り、原本の値は使っていない。原本が埋まったら
+// アプリ側の src を "mgmt" に変えるだけで切り替わる。
+var MGMT_KPI_ROWS = {
+  "対応数":               { key: "handled",            type: "num"  },
+  "有効案件対応数":        { key: "handled_valid",      type: "num"  },
+  "手配数":               { key: "arranged",           type: "num"  },
+  "出張手配数":            { key: "arranged_visit",     type: "num"  },
+  "手配率":               { key: "arrange_rate",       type: "rate" },
+  "有効案件手配率":        { key: "arrange_rate_valid", type: "rate" },
+  "高額手配率_B案件以上":   { key: "arrange_rate_b",     type: "rate" },
+  "高額手配率_C案件以上":   { key: "arrange_rate_c",     type: "rate" },
+  "高額手配率_期待値":      { key: "arrange_rate_exp",   type: "rate" },
+  "買取数":               { key: "bought",             type: "num"  },
+  "手配買取率":            { key: "buy_rate",           type: "rate" },
+  "通話率":               { key: "call_rate",          type: "rate" },
+  "作業率":               { key: "work_rate",          type: "rate" },
+  "待機率":               { key: "wait_rate",          type: "rate" },
+  "買取粗利単価":          { key: "buy_unit",           type: "num"  },
+  "IS追加数":             { key: "is_add",             type: "num"  },
+  "IS追加比率":            { key: "is_add_rate",        type: "rate" },
+  "ホットリード":          { key: "hot_lead",           type: "num"  },
+  "ホットレート":          { key: "hot_rate",           type: "rate" },
+  "手配粗利額":            { key: "gross_profit",       type: "num"  },
+  "買取粗利額":            { key: "buy_gross",          type: "num"  }
 };
 
 // 生産性シートの列（1始まり）。A列が氏名。
@@ -94,7 +166,7 @@ function forceSync() {
 
 function runSync(trigger) {
   var startedAt = new Date();
-  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, unmatched: [] };
+  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], unmatched: [] };
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -141,6 +213,34 @@ function runSync(trigger) {
     });
     writeDoc_(projectId, token, "goals/current", goals);
 
+    // ── メンバー別KPI（Management Sheet 由来。読めるのは限られた人だけ）──
+    // 他のコレクションと違い memberKpi は全メンバーには読ませない。
+    // 誰が何件・いくら手配したかが一覧で並ぶため、firestore.rules 側で
+    // canSeeTeamKpi を持つ人だけに絞っている。
+    var memberKpi = readMgmtKpi_(ss, nameToId, counts);
+    if (memberKpi) {
+      // 月間の通話率・作業率・待機率だけは別の原本から来る。
+      // Management Sheet の値（第二CCは 0.00%）を上書きする。
+      var prod = readProdKpi_(ss, nameToId, counts);
+      if (prod) {
+        mergeProdKpi_(memberKpi.byMember, prod.byMember);
+        counts.prodMembers = prod.memberCount;
+      }
+      writeDoc_(projectId, token, "memberKpi/current", memberKpi);
+      counts.mgmtMembers = memberKpi.memberCount;
+    }
+
+    // ── 日次のメンバー別KPI ──────────────────────────────────
+    // 1日1ドキュメント（memberKpiDaily/YYYY-MM-DD）。同じ日に何度走っても
+    // 同じIDに上書きするだけなので、毎時実行でも二重計上しない。
+    // 古い日は消さない。消す処理は事故のときに取り返しがつかないので置かない。
+    var daily = readDailyKpi_(ss, nameToId, counts);
+    if (daily) {
+      daily.updatedAt = new Date();
+      writeDoc_(projectId, token, "memberKpiDaily/" + daily.date, daily);
+      counts.dailyMembers = daily.memberCount;
+    }
+
     // ── 同期ステータス ────────────────────────────────────────
     var finishedAt = new Date();
     var durationMs = finishedAt.getTime() - startedAt.getTime();
@@ -154,6 +254,13 @@ function runSync(trigger) {
       shiftMonths: counts.shiftMonths,
       memberCount: counts.members,
       goalTeams: counts.goalTeams,
+      mgmtMemberCount: counts.mgmtMembers || 0,
+      dailyMemberCount: counts.dailyMembers || 0,
+      dailyBlocks: counts.dailyBlocks || 0,
+      dailyStaleBlocks: counts.dailyStale || 0,
+      prodMemberCount: counts.prodMembers || 0,
+      prodBlocks: counts.prodBlocks || 0,
+      prodMissingBlocks: counts.prodMissing || [],
       unmatchedNames: counts.unmatched
     });
 
@@ -329,6 +436,297 @@ function readProductivity_(ss, nameToId, counts) {
   }
 
   return { byMember: byMember, memberCount: Object.keys(byMember).length };
+}
+
+/**
+ * 月間の通話率・作業率・待機率をメンバー別に読む（CC_アクション管理由来）。
+ *
+ * 原本は同じ形のブロックが縦に積まれている。
+ *
+ *   通話率 | 6月月間 | 2026年7月 | 2026年8月 | 20260727週 | …
+ *   全体   |  42.1%  |   42.8%   |   41.9%
+ *   第一東京CC …
+ *   第二東京CC …
+ *   （チーム）
+ *   庄司 祐亮 |  46.3% |  45.8%  |  45.4%
+ *   …
+ *   作業率 | …          ← 次のブロック
+ *
+ * 【列を文字で探す】
+ * 月間の列は月が変わるたびに 35〜36列ずつ右へずれる（B → AK → BU）。
+ * 位置で指定すると毎月直すことになるので、見出し行の中から
+ * 「2026年8月」に一致するセルを探して、その列を読む。
+ * 9月になれば新しく出る「2026年9月」の列に自動で移る。
+ *
+ * 【拠点・チームの行は自動的に外れる】
+ * 拾うのは members の fullName と一致した行だけ。「全体」「第一東京CC」
+ * 「野ざらし」などは氏名と一致しないので、そのまま無視される。
+ */
+function readProdKpi_(ss, nameToId, counts) {
+  var sheet = ss.getSheetByName(TAB.prodKpi);
+  if (!sheet) return null;                  // 任意の機能
+  var values = sheet.getDataRange().getValues();
+  if (isEmptyTab_(values)) return null;
+  if (hasUnresolvedRefOnly_(values)) return null;
+  assertResolved_(values, TAB.prodKpi);
+
+  var now = new Date();
+  var target = now.getFullYear() + "年" + (now.getMonth() + 1) + "月";
+
+  var byMember = {};
+  var curKey = null, curCol = -1;
+  var found = [], missing = [];
+
+  for (var r = 0; r < values.length; r++) {
+    var head = String(values[r][0] == null ? "" : values[r][0]).trim();
+
+    // ブロックの見出しか
+    if (PROD_KPI_BLOCKS[head]) {
+      curKey = PROD_KPI_BLOCKS[head];
+      curCol = -1;
+      for (var c = 1; c < values[r].length; c++) {
+        if (String(values[r][c] == null ? "" : values[r][c]).trim() === target) { curCol = c; break; }
+      }
+      if (curCol < 0) missing.push(head);   // 当月の列がまだ無いブロック
+      else found.push(head);
+      continue;
+    }
+    if (!curKey || curCol < 0) continue;
+
+    var memberId = nameToId[normalizeName_(values[r][0])];
+    if (!memberId) continue;                // 全体・拠点・チームの行
+    var v = toRate_(values[r][curCol]);
+    if (v === null) continue;
+    if (!byMember[memberId]) byMember[memberId] = {};
+    byMember[memberId][curKey] = v;
+  }
+
+  if (counts) {
+    counts.prodBlocks = found.length;
+    counts.prodMissing = missing;
+  }
+  if (!Object.keys(byMember).length) return null;
+  return { month: target, byMember: byMember, memberCount: Object.keys(byMember).length };
+}
+
+/**
+ * Management Sheet 側の値に、月間の生産性の値を上書きする。
+ *
+ * Management Sheet にも通話率・作業率・待機率の行はあるが、第二CCの列は
+ * 0.00% のまま（実績が入っていない）。そのままだと全員0%になるので、
+ * 値のあるほうで上書きする。Management Sheet 側が埋まった日には、
+ * この上書きを外せば向こうの値に戻る。
+ */
+function mergeProdKpi_(base, over) {
+  for (var id in over) {
+    if (!base[id]) base[id] = {};
+    for (var k in over[id]) base[id][k] = over[id][k];
+  }
+}
+
+/** メンバー別の主要KPIを読む（Management Sheet 由来）。
+ *
+ * 原本は「行＝KPI、列＝人・チーム・拠点」のクロス集計。行も列も組織変更の
+ * たびに動くので、位置ではなく **文字** で場所を決める。
+ *   ・列は氏名で照合する（members の fullName と一致した列だけ拾う）
+ *   ・行は KPI のラベルで照合する（MGMT_KPI_ROWS）
+ * どちらかが見つからないときは 0 を入れず、そのキーを持たせない。
+ * 0 を入れると「実績ゼロ」と区別が付かなくなる。
+ *
+ * 【チームの列は読まない】
+ * 原本には「野ざらし」「ユニゾン」などチームの列もあるが、使わない。
+ * 原本の組織の括りは向こうの都合で変わり、変わった瞬間にアプリの集計が
+ * 黙って変わってしまう。チームの正解は Firestore の members.team ひとつに
+ * しておき、束ねるのはアプリ側でやる。ここは人単位だけを持つ。
+ *
+ * 【期間について】
+ * 原本が「当月」を出している前提で取り込み、そのときの月を monthId に
+ * 入れる。原本のフィルタを誰かが動かすと、アプリには先月の数字が当月の顔で
+ * 出てしまう。それに気づけるよう、原本の中に期間らしき表記があれば
+ * periodLabel として一緒に持ち、画面で照合できるようにしている。
+ */
+function readMgmtKpi_(ss, nameToId, counts) {
+  var sheet = ss.getSheetByName(TAB.mgmtKpi);
+  if (!sheet) return null;                  // 任意の機能。タブが無ければ何もしない
+  var values = sheet.getDataRange().getValues();
+  if (isEmptyTab_(values)) return null;
+  if (hasUnresolvedRefOnly_(values)) return null;
+  assertResolved_(values, TAB.mgmtKpi);
+
+  // ── 氏名が並んでいる行を見出しとみなす ──
+  // 一致した人数が一番多い行を選ぶ。1人しか一致しない行は、たまたま
+  // どこかに名前が入っているだけのことがあるので採らない。
+  var headerRow = -1, colToId = {}, best = 0;
+  for (var r = 0; r < values.length; r++) {
+    var found = {}, n = 0;
+    for (var c = 0; c < values[r].length; c++) {
+      var id = nameToId[normalizeName_(values[r][c])];
+      if (id && found[c] === undefined) { found[c] = id; n++; }
+    }
+    if (n > best) { best = n; headerRow = r; colToId = found; }
+  }
+  if (best < 2) {
+    throw new Error(TAB.mgmtKpi + ": 氏名の見出し行が見つかりません（members の fullName と一致する列が2つ以上必要です）");
+  }
+
+  // ── KPI の行を拾う ──
+  var byMember = {};
+  var seen = {};
+  for (var r2 = 0; r2 < values.length; r2++) {
+    if (r2 === headerRow) continue;
+    // ラベルは値の列より左にある。値の列に達したら、その行にラベルは無い。
+    var label = "";
+    for (var c2 = 0; c2 < values[r2].length; c2++) {
+      if (colToId[c2] !== undefined) break;
+      var t = String(values[r2][c2] == null ? "" : values[r2][c2]).trim();
+      if (MGMT_KPI_ROWS[t]) { label = t; break; }
+    }
+    if (!label || seen[label]) continue;   // 同じラベルが複数あれば先に出たほうを採る
+    seen[label] = true;
+
+    var def = MGMT_KPI_ROWS[label];
+    for (var c3 in colToId) {
+      var memberId = colToId[c3];
+      var v = def.type === "rate" ? toRate_(values[r2][c3]) : toNumber_(values[r2][c3]);
+      if (v === null) continue;
+      if (!byMember[memberId]) byMember[memberId] = {};
+      byMember[memberId][def.key] = v;
+    }
+  }
+
+  var missing = [];
+  for (var lbl in MGMT_KPI_ROWS) if (!seen[lbl]) missing.push(lbl);
+
+  return {
+    monthId: monthIdOf_(0),
+    periodLabel: findPeriodLabel_(values, headerRow),
+    byMember: byMember,
+    memberCount: Object.keys(byMember).length,
+    missingRows: missing
+  };
+}
+
+/**
+ * 原本の中から期間の表記を拾う（「2026年8月」など）。
+ * 見出し行より上だけを見る。表の中の日付を期間と読み違えないため。
+ * 見つからなければ空文字。無くても同期は止めない。
+ */
+function findPeriodLabel_(values, headerRow) {
+  var limit = Math.min(headerRow >= 0 ? headerRow : 5, 10);
+  for (var r = 0; r < limit; r++) {
+    for (var c = 0; c < values[r].length; c++) {
+      var t = String(values[r][c] == null ? "" : values[r][c]).trim();
+      var m = t.match(/^(\d{4})\s*年\s*(\d{1,2})\s*月$/);
+      if (m) return m[1] + "年" + Number(m[2]) + "月";
+    }
+  }
+  return "";
+}
+
+/**
+ * 日次のメンバー別KPIを読む（各チームのダッシュボードの「今日の状況」）。
+ *
+ * 原本は「行＝メンバー、列＝指標」。mgmt_kpi とは縦横が逆なので、別の
+ * 読み取りにしてある（無理に共通化すると、どちらかの都合で他方が壊れる）。
+ *
+ * チームごとに1ブロックあり、daily_kpi では縦に積んで取り込む。よって
+ * 見出し行が複数ある。見出しを見つけたらそこから次の見出しまでを1ブロック
+ * として処理する。
+ *
+ * 【古い数字を今日として記録しない】
+ * ダッシュボードには「最終更新: YYYY/MM/DD」がある。それが当日でなければ
+ * そのブロックは飛ばす。祝日や不具合で更新が止まったとき、前日の数字が
+ * 今日の欄に入るのが一番まずい間違いなので、書かないほうを選ぶ。
+ *
+ * 【空欄は 0 にしない】
+ * 休みの人は行があっても値が空。0 を入れると「対応数0件」として
+ * 平均や合計に混ざる。キーを持たせないことで「その日は対象外」を表す。
+ */
+function readDailyKpi_(ss, nameToId, counts) {
+  var sheet = ss.getSheetByName(TAB.dailyKpi);
+  if (!sheet) return null;                 // 任意の機能
+  var values = sheet.getDataRange().getValues();
+  if (isEmptyTab_(values)) return null;
+  if (hasUnresolvedRefOnly_(values)) return null;
+  // #REF! が混じっているときは書かない。ダッシュボードが壊れている状態で
+  // 上書きすると、その日が空のまま確定してしまう。
+  assertResolved_(values, TAB.dailyKpi);
+
+  var today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  var byMember = {};
+  var blocks = 0, skippedStale = 0;
+
+  for (var r = 0; r < values.length; r++) {
+    var map = dailyHeaderMap_(values[r]);
+    if (!map) continue;
+    blocks++;
+    if (!dailyBlockIsToday_(values, r, today)) { skippedStale++; continue; }
+
+    for (var r2 = r + 1; r2 < values.length; r2++) {
+      if (dailyHeaderMap_(values[r2])) break;      // 次のブロックに入った
+      var memberId = dailyRowMemberId_(values[r2], nameToId);
+      if (!memberId) continue;                     // 「目標値」「合計」他チームは無視
+      var rec = {};
+      for (var col in map) {
+        var def = DAILY_KPI_COLS[map[col]];
+        var raw = values[r2][col];
+        var v = def.type === "rate" ? toRate_(raw)
+              : def.type === "min"  ? toMinutes_(raw)
+                                    : toNumber_(raw);
+        if (v !== null) rec[def.key] = v;
+      }
+      if (Object.keys(rec).length) byMember[memberId] = rec;
+    }
+  }
+
+  if (counts) {
+    counts.dailyBlocks = blocks;
+    counts.dailyStale = skippedStale;
+  }
+  if (!Object.keys(byMember).length) return null;   // 当日ぶんが1件も無い
+
+  return { date: today, byMember: byMember, memberCount: Object.keys(byMember).length };
+}
+
+/**
+ * その行が指標の見出し行なら {列番号: 見出し文字} を返す。違えば null。
+ * 一致した数が DAILY_KPI_MIN_COLS 未満のときは見出しとみなさない。
+ */
+function dailyHeaderMap_(row) {
+  var map = {}, n = 0;
+  for (var c = 0; c < row.length; c++) {
+    var t = String(row[c] == null ? "" : row[c]).trim();
+    if (DAILY_KPI_COLS[t] && map[c] === undefined) { map[c] = t; n++; }
+  }
+  return n >= DAILY_KPI_MIN_COLS ? map : null;
+}
+
+/** その行のメンバーID。行頭から数セルの中に氏名があれば返す */
+function dailyRowMemberId_(row, nameToId) {
+  for (var c = 0; c < Math.min(3, row.length); c++) {
+    var id = nameToId[normalizeName_(row[c])];
+    if (id) return id;
+  }
+  return null;
+}
+
+/**
+ * 見出しより上にある「最終更新: YYYY/MM/DD」が当日か。
+ * 日付が見つからなければ true（判定材料が無いときに止めない）。
+ */
+function dailyBlockIsToday_(values, headerRow, today) {
+  var from = Math.max(0, headerRow - 6);
+  for (var r = headerRow - 1; r >= from; r--) {
+    for (var c = 0; c < values[r].length; c++) {
+      var t = String(values[r][c] == null ? "" : values[r][c]).trim();
+      var m = t.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+      if (m) {
+        var d = m[1] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[3]).slice(-2);
+        return d === today;
+      }
+    }
+  }
+  return true;
 }
 
 /** 手配粗利額の目標・実績を読む（1チーム分＝1タブ） */
