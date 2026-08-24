@@ -1083,7 +1083,16 @@ body.wide .pc-cols:has(.pc-side:empty),
    1マスの最小幅は「39.4%」が1行に収まる幅にしてある。 */
 .tkpi-member{padding:10px 12px;}
 .tkpi-name{display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; margin-bottom:8px;}
-.tkpi-cells{display:grid; grid-template-columns:repeat(auto-fit, minmax(56px, 1fr)); gap:6px 4px;}
+.tkpi-cells{display:grid; grid-template-columns:repeat(auto-fit, minmax(104px, 1fr)); gap:8px 10px;}
+/* 指標グループのタブ。チームの chips の下に置く */
+.tkpi-grps{display:flex; flex-wrap:wrap; gap:4px; margin:0 0 12px;
+  padding-bottom:8px; border-bottom:1px solid var(--color-border);}
+.tkpi-grp{font:inherit; font-size:12px; font-weight:700; padding:5px 12px; cursor:pointer;
+  border:1px solid var(--color-border); background:transparent; color:var(--color-text-sub);
+  border-radius:999px; white-space:nowrap;}
+.tkpi-grp:hover{color:var(--color-text); border-color:var(--color-text-4);}
+.tkpi-grp.is-on{background:var(--color-text); color:var(--color-bg); border-color:var(--color-text);}
+.tkpi-grp:focus-visible{outline:2px solid var(--color-accent); outline-offset:2px;}
 .tkpi-cell{display:flex; flex-direction:column; gap:1px; min-width:0;}
 .tkpi-cell-l{font-style:normal; font-size:11px; color:var(--text-4); white-space:nowrap;}
 .tkpi-cell-v{font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
@@ -1686,6 +1695,7 @@ var state = {
   memberKpi:null,           // メンバー別KPI。canSeeTeamKpi を持つ人だけ購読する
   memberKpiDaily:[],        // 日次のメンバー別KPI。新しい日が先頭
   teamKpiTeam:"all",        // チーム実績タブで選んでいるチーム
+  teamKpiGroup:"handle",   // 月次カードで選んでいる指標グループ
   dailyDay:0,               // 日ごとの実績で見ている日。0=最新、1=前日…
   dailyArchiveOpen:false,   // 直近より前の日を開いているか
   feedSort:"new", feedOpenComment:null,
@@ -6046,29 +6056,77 @@ function renderKpiSection(){
  * 買取粗利単価は原本の値と一致する割り算が見つからなかったので
  * 平均にしてある（推測で割り算を作らない）。
  */
-var TEAM_KPI = [
-  { key:"handled",            l:"対応数",     full:"対応数",              u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { key:"handled_valid",      l:"有効対応",   full:"有効案件対応数",       u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { key:"arranged",           l:"手配数",     full:"手配数",              u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { key:"arranged_visit",     l:"出張手配",   full:"出張手配数",          u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { key:"arrange_rate",       l:"手配率",     full:"手配率",              u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged", den:"handled", t:34, g:"high" },
-  { key:"arrange_rate_valid", l:"有効手配率", full:"有効案件手配率",       u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { key:"arrange_rate_b",     l:"高額率B",    full:"高額手配率_B案件以上", u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { key:"arrange_rate_c",     l:"高額率C",    full:"高額手配率_C案件以上", u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { key:"arrange_rate_exp",   l:"高額率期",   full:"高額手配率_期待値",    u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { key:"bought",             l:"買取数",     full:"買取数",              u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { key:"buy_rate",           l:"手配買取率", full:"手配買取率",          u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"bought", den:"arranged" },
-  { key:"call_rate",          l:"通話率",     full:"通話率（月間）",       u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.call_rate.t, g:"high" },
-  { key:"work_rate",          l:"作業率",     full:"作業率（月間）",       u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.work_rate.t, g:"low" },
-  { key:"wait_rate",          l:"待機率",     full:"待機率（月間）",       u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { key:"buy_unit",           l:"粗利単価",   full:"買取粗利単価",        u:"円", src:"kpi", fmt:"int",  agg:"avg" },
-  { key:"is_add",             l:"IS追加",     full:"IS追加数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { key:"is_add_rate",        l:"IS追加率",   full:"IS追加比率",          u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { key:"hot_lead",           l:"ホット数",   full:"ホットリード",        u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { key:"hot_rate",           l:"ホット率",   full:"ホットレート",        u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"hot_lead", den:"arranged" },
-  { key:"gross_profit",       l:"手配粗利",   full:"手配粗利額",          u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
-  { key:"buy_gross",          l:"買取粗利",   full:"買取粗利額",          u:"",   src:"kpi", fmt:"yen",  agg:"sum" }
+/**
+ * 月次の指標グループ。カードの上のタブになる。
+ *
+ * 原本（Management Sheet）には35指標ある。1枚のカードに全部並べると
+ * 1マス56pxまで潰れ、ラベルを「高額率B」のように略さないと入らない。
+ * 略した名前は原本と照合するときに毎回読み替えが必要で、それが事故のもとに
+ * なる。グループで切り替える形にして、**原本どおりの名前**を出している。
+ */
+var TEAM_KPI_GROUPS = [
+  { id:"handle",  label:"対応" },
+  { id:"arrange", label:"手配" },
+  { id:"buy",     label:"買取" },
+  { id:"prod",    label:"生産性" },
+  { id:"hot",     label:"IS・ホット" },
+  { id:"profit",  label:"粗利" }
 ];
+
+var TEAM_KPI = [
+  // ── 対応 ──
+  { grp:"handle",  key:"handled",            l:"対応数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"handle",  key:"handled_valid",      l:"有効案件対応数",     u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"handle",  key:"handled_b",          l:"B案件以上対応数",    u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"handle",  key:"handled_c",          l:"C案件以上対応数",    u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"handle",  key:"ng_rate",            l:"不可率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", g:"low" },
+
+  // ── 手配 ──
+  { grp:"arrange", key:"arranged",           l:"手配数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"arrange", key:"arranged_visit",     l:"出張手配数",         u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"arrange", key:"visit_share",        l:"出張手配構成比",     u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged_visit", den:"arranged" },
+  { grp:"arrange", key:"arrange_rate",       l:"手配率",            u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged", den:"handled", t:34, g:"high" },
+  { grp:"arrange", key:"arrange_rate_valid", l:"有効案件手配率",     u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged", den:"handled_valid" },
+  { grp:"arrange", key:"arrange_rate_b",     l:"高額手配率_B案件以上", u:"%", src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"arrange", key:"arrange_rate_c",     l:"高額手配率_C案件以上", u:"%", src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"arrange", key:"arrange_rate_exp",   l:"高額手配率_期待値",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+
+  // ── 買取 ──
+  { grp:"buy",     key:"bought",             l:"買取数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"buy",     key:"buy_rate",           l:"手配買取率",         u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"bought", den:"arranged" },
+  { grp:"buy",     key:"buy_rate_urgent",    l:"高額買取率_緊急度",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"buy",     key:"buy_rate_exp",       l:"高額買取率_期待値",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"buy",     key:"buy_unit",           l:"買取粗利単価",       u:"円", src:"kpi", fmt:"int",  agg:"avg" },
+
+  // ── 生産性（CC_アクション管理の月間列。他は Management Sheet）──
+  { grp:"prod",    key:"call_rate",          l:"通話率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.call_rate.t, g:"high" },
+  { grp:"prod",    key:"work_rate",          l:"作業率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.work_rate.t, g:"low" },
+  { grp:"prod",    key:"wait_rate",          l:"待機率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+
+  // ── IS・ホット ──
+  { grp:"hot",     key:"is_add",             l:"IS追加数",          u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"hot",     key:"is_add_rate",        l:"IS追加比率",         u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"hot",     key:"hot_lead",           l:"ホットリード",       u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"hot",     key:"hot_rate",           l:"ホットレート",       u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"hot_lead", den:"arranged" },
+  { grp:"hot",     key:"hot_lead_visit",     l:"出張_ホットリード",   u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"hot",     key:"hot_rate_visit",     l:"出張_ホットレート",   u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"hot_lead_visit", den:"arranged_visit" },
+
+  // ── 粗利 ──
+  { grp:"profit",  key:"gross_profit",       l:"手配粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  key:"gross_visit",        l:"出張手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  key:"gross_delivery",     l:"宅配手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  key:"gross_store",        l:"店頭手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  key:"buy_gross",          l:"買取粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  key:"buy_gross_visit",    l:"出張粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  key:"buy_gross_delivery", l:"宅配粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  key:"buy_gross_store",    l:"店頭粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" }
+];
+
+/** いま選ばれているグループの指標だけを返す */
+function teamKpiDefs(){
+  var g = state.teamKpiGroup || TEAM_KPI_GROUPS[0].id;
+  return TEAM_KPI.filter(function(d){ return d.grp === g; });
+}
 
 /** "2026_8" → "2026年8月"。警告文で使う */
 function monthIdLabel(id){
@@ -6119,7 +6177,9 @@ function teamKpiRollup(members){
       }
     });
     // ratio の材料。表に出さない場合もあるので別途足す
-    ["arranged","handled","bought","hot_lead"].forEach(function(f){ add(f, v[f]); });
+    // ratio の分母・分子になる値。表に出さないグループのものも要る。
+    ["arranged","handled","handled_valid","bought","hot_lead",
+     "arranged_visit","hot_lead_visit"].forEach(function(f){ add(f, v[f]); });
   });
 
   function avg(a){
@@ -6251,9 +6311,9 @@ function dailyRollup(day, members){
 /** 月次の1マス。集計カードとメンバー別カードで同じものを使う */
 function teamKpiCell(def, val){
   var has = (val !== null && val !== undefined);
-  // ラベルは1マス60pxに収まる長さに詰めてある。原本どおりの名前は
-  // title に持たせて、PC では指を置けば読めるようにしておく。
-  return '<span class="tkpi-cell" title="'+esc(def.full || def.l)+'">' +
+  // グループで絞るようにしたので、ラベルは原本どおりの名前をそのまま出す。
+  // 略記（高額率B など）は原本と照合するとき読み替えが必要で事故のもとだった。
+  return '<span class="tkpi-cell" title="'+esc(def.l)+'">' +
     '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
     '<b class="tkpi-cell-v" style="color:var(--'+teamKpiColor(def, val)+')">' +
       esc(teamKpiText(def, val)) + (has && def.u ? esc(def.u) : '') +
@@ -6418,18 +6478,28 @@ function renderTeamKpi(){
         '" data-act="tkpi-team" data-id="'+esc(t.id)+'">'+esc(t.label)+'</button>';
     }).join("");
 
+  // 指標グループのタブ。チームの chips とは別の行に置く。
+  // 同じ行に混ぜると「全体」と「対応」が並んで、何を選んでいるのか
+  // 分からなくなる。
+  var curGrp = state.teamKpiGroup || TEAM_KPI_GROUPS[0].id;
+  var grpTabs = '<div class="tkpi-grps">' + TEAM_KPI_GROUPS.map(function(g){
+      return '<button class="tkpi-grp'+(curGrp===g.id?" is-on":"")+
+        '" data-act="tkpi-grp" data-id="'+esc(g.id)+'">'+esc(g.label)+'</button>';
+    }).join("") + '</div>';
+
   var members = teamKpiMembers();
   var roll = teamKpiRollup(members);
 
-  // 21指標を kpi-card（1枚に1指標）で並べると縦に伸びすぎるので、
-  // メンバー別と同じ密なセル並びにして、見比べやすさを揃える。
-  var gridHtml = TEAM_KPI.map(function(def){
+  // 35指標を1枚に並べると1マスが潰れてラベルを略すことになるので、
+  // グループのタブで絞る。集計もメンバー別も同じ並びにして見比べやすくする。
+  var defs = teamKpiDefs();
+  var gridHtml = defs.map(function(def){
     return teamKpiCell(def, roll[def.key]);
   }).join("");
 
   var rows = members.map(function(m){
     var v = teamKpiOf(m.id);
-    var cells = TEAM_KPI.map(function(def){ return teamKpiCell(def, v[def.key]); }).join("");
+    var cells = defs.map(function(def){ return teamKpiCell(def, v[def.key]); }).join("");
     return '<div class="card tkpi-member">' +
       '<div class="tkpi-name">'+avatar(m.id,28)+'<span>'+esc(m.displayName)+'</span></div>' +
       '<div class="tkpi-cells">'+cells+'</div>' +
@@ -6485,6 +6555,7 @@ function renderTeamKpi(){
   return '<div class="tab-pad">' +
     renderSyncBar() + warn +
     '<div class="kpi-filter">'+chips+'</div>' +
+    grpTabs +
     '<div class="side-title">チーム集計'+(pl ? '（'+esc(pl)+'）' : '')+'</div>' +
     '<div class="card tkpi-member">' +
       '<div class="tkpi-name"><span>チーム計</span></div>' +
@@ -7387,6 +7458,7 @@ function bindEvents(){
     else if(act==="mvv-toggle"){ state.mvvOpen = !state.mvvOpen; render(); }
     else if(act==="kpi-section-toggle"){ state.progressKpiOpen = !state.progressKpiOpen; render(); }
     else if(act==="tkpi-team"){ state.teamKpiTeam = id; render(); }
+    else if(act==="tkpi-grp"){ state.teamKpiGroup = id; render(); }
     else if(act==="daily-day"){ state.dailyDay = parseInt(id, 10) || 0; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
