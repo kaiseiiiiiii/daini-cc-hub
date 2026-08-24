@@ -86,15 +86,24 @@ var DAILY_KPI_MIN_COLS = 3;
 //   手配粗利額 と 出張手配粗利額 ／ ホットレート と 出張_ホットレート
 // 部分一致にすると取り違える。
 //
-// 通話率・作業率・待機率も入れてあるが、第二CCの列では原本が 0.00% に
-// なっている（実績が入っていない）。アプリ側はこの3つを生産性データ
-// （metrics）から取り、原本の値は使っていない。原本が埋まったら
-// アプリ側の src を "mgmt" に変えるだけで切り替わる。
+// 通話率・作業率・待機率も入れてあるが、第二CCの列は原本が 0.00% のまま
+// （実績が入っていない）。この3つは prod_kpi（CC_アクション管理の月間列）
+// から取った値で readProdKpi_ / mergeProdKpi_ が上書きする。
+// 原本が埋まった日には mergeProdKpi_ の呼び出しを外せば向こうに戻る。
+//
+// 【似た名前に注意】
+// 手配粗利額 と 出張手配粗利額、買取粗利額 と 出張粗利額、
+// ホットレート と 出張_ホットレート。完全一致で拾っているので
+// 取り違えないが、ラベルを増やすときは既存と衝突しないか確かめる。
 var MGMT_KPI_ROWS = {
   "対応数":               { key: "handled",            type: "num"  },
   "有効案件対応数":        { key: "handled_valid",      type: "num"  },
+  "B案件以上対応数":        { key: "handled_b",          type: "num"  },
+  "C案件以上対応数":        { key: "handled_c",          type: "num"  },
+  "不可率":               { key: "ng_rate",            type: "rate" },
   "手配数":               { key: "arranged",           type: "num"  },
   "出張手配数":            { key: "arranged_visit",     type: "num"  },
+  "出張手配構成比":         { key: "visit_share",        type: "rate" },
   "手配率":               { key: "arrange_rate",       type: "rate" },
   "有効案件手配率":        { key: "arrange_rate_valid", type: "rate" },
   "高額手配率_B案件以上":   { key: "arrange_rate_b",     type: "rate" },
@@ -102,6 +111,8 @@ var MGMT_KPI_ROWS = {
   "高額手配率_期待値":      { key: "arrange_rate_exp",   type: "rate" },
   "買取数":               { key: "bought",             type: "num"  },
   "手配買取率":            { key: "buy_rate",           type: "rate" },
+  "高額買取率_緊急度":      { key: "buy_rate_urgent",    type: "rate" },
+  "高額買取率_期待値":      { key: "buy_rate_exp",       type: "rate" },
   "通話率":               { key: "call_rate",          type: "rate" },
   "作業率":               { key: "work_rate",          type: "rate" },
   "待機率":               { key: "wait_rate",          type: "rate" },
@@ -110,8 +121,16 @@ var MGMT_KPI_ROWS = {
   "IS追加比率":            { key: "is_add_rate",        type: "rate" },
   "ホットリード":          { key: "hot_lead",           type: "num"  },
   "ホットレート":          { key: "hot_rate",           type: "rate" },
+  "出張_ホットリード":      { key: "hot_lead_visit",     type: "num"  },
+  "出張_ホットレート":      { key: "hot_rate_visit",     type: "rate" },
   "手配粗利額":            { key: "gross_profit",       type: "num"  },
-  "買取粗利額":            { key: "buy_gross",          type: "num"  }
+  "出張手配粗利額":         { key: "gross_visit",        type: "num"  },
+  "宅配手配粗利額":         { key: "gross_delivery",     type: "num"  },
+  "店頭手配粗利額":         { key: "gross_store",        type: "num"  },
+  "買取粗利額":            { key: "buy_gross",          type: "num"  },
+  "出張粗利額":            { key: "buy_gross_visit",    type: "num"  },
+  "宅配粗利額":            { key: "buy_gross_delivery", type: "num"  },
+  "店頭粗利額":            { key: "buy_gross_store",    type: "num"  }
 };
 
 // 生産性シートの列（1始まり）。A列が氏名。
