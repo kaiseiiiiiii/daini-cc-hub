@@ -185,7 +185,7 @@ function forceSync() {
 
 function runSync(trigger) {
   var startedAt = new Date();
-  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], prodBroken: 0, prodSkip: "", unmatched: [] };
+  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, mgmtActualRow: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], prodBroken: 0, prodSkip: "", unmatched: [] };
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -282,6 +282,7 @@ function runSync(trigger) {
       prodMissingBlocks: counts.prodMissing || [],
       prodBrokenCells: counts.prodBroken || 0,
       prodSkipReason: counts.prodSkip || "",
+      mgmtActualRow: counts.mgmtActualRow || 0,
       unmatchedNames: counts.unmatched
     });
 
@@ -628,11 +629,26 @@ function readMgmtKpi_(ss, nameToId, counts) {
     throw new Error(TAB.mgmtKpi + ": 氏名の見出し行が見つかりません（members の fullName と一致する列が2つ以上必要です）");
   }
 
+  // ── 予算ブロックを飛ばす ──
+  // 原本は同じ指標の並びが2回ある。上が予算（第二CCの列は 0 や、人ごとに
+  // 計算されていない仮の率が入っている）、A列に「実績」と書かれた行から
+  // 下が実績。ラベルだけで拾うと予算のほうを先に掴むので、実績の開始行より
+  // 下だけを見る。
+  //
+  // これを入れる前は、有効案件対応数が全員 0、手配率が 39.4/36.3 の
+  // 2種類しか出ない、という状態になっていた（どちらも予算側の値）。
+  var actualFrom = -1;
+  for (var ar = 0; ar < values.length; ar++) {
+    if (String(values[ar][0] == null ? "" : values[ar][0]).trim() === "実績") { actualFrom = ar; break; }
+  }
+  if (counts) counts.mgmtActualRow = actualFrom + 1;   // 1始まりで記録
+
   // ── KPI の行を拾う ──
   var byMember = {};
   var seen = {};
   for (var r2 = 0; r2 < values.length; r2++) {
     if (r2 === headerRow) continue;
+    if (actualFrom >= 0 && r2 <= actualFrom) continue;   // 予算ブロック
     // ラベルは値の列より左にある。値の列に達したら、その行にラベルは無い。
     var label = "";
     for (var c2 = 0; c2 < values[r2].length; c2++) {
@@ -655,6 +671,7 @@ function readMgmtKpi_(ss, nameToId, counts) {
 
   var missing = [];
   for (var lbl in MGMT_KPI_ROWS) if (!seen[lbl]) missing.push(lbl);
+  if (actualFrom < 0) missing.push("(A列に「実績」の行が見つかりません。予算側を読んでいる可能性があります)");
 
   return {
     monthId: monthIdOf_(0),
