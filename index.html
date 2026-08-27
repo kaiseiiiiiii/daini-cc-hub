@@ -1085,6 +1085,16 @@ body.wide .pc-cols:has(.pc-side:empty),
 .tkpi-name{display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; margin-bottom:8px;}
 .tkpi-cells{display:grid; grid-template-columns:repeat(auto-fit, minmax(104px, 1fr)); gap:8px 10px;}
 /* 指標グループのタブ。チームの chips の下に置く */
+.tkpi-bar{position:relative; display:block; height:3px; margin-top:3px;
+  background:var(--color-border); border-radius:2px; overflow:visible;}
+.tkpi-bar-f{position:absolute; left:0; top:0; height:100%; border-radius:2px;
+  background:var(--color-text-4);}
+.tkpi-bar-f.is-good{background:var(--color-grow-ink);}
+.tkpi-bar-m{position:absolute; top:-2px; width:1px; height:7px; background:var(--color-text);
+  opacity:0.55;}
+.tkpi-sub{display:block; font-style:normal; font-size:10px; color:var(--text-4);
+  margin-top:2px; white-space:nowrap; font-variant-numeric:tabular-nums;}
+.tkpi-modes{display:flex; gap:4px; margin-left:auto;}
 .tkpi-grps{display:flex; flex-wrap:wrap; gap:4px; margin:0 0 12px;
   padding-bottom:8px; border-bottom:1px solid var(--color-border);}
 .tkpi-grp{font:inherit; font-size:12px; font-weight:700; padding:5px 12px; cursor:pointer;
@@ -1696,6 +1706,7 @@ var state = {
   memberKpiDaily:[],        // 日次のメンバー別KPI。新しい日が先頭
   teamKpiTeam:"all",        // チーム実績タブで選んでいるチーム
   teamKpiGroup:"handle",   // 月次カードで選んでいる指標グループ
+  teamKpiMode:"actual",    // 月次カードの表示モード（actual = 実績 / budget = 予算比）
   dailyDay:0,               // 日ごとの実績で見ている日。0=最新、1=前日…
   dailyArchiveOpen:false,   // 直近より前の日を開いているか
   feedSort:"new", feedOpenComment:null,
@@ -6122,6 +6133,23 @@ var TEAM_KPI = [
   { grp:"profit",  key:"buy_gross_store",    l:"店頭粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" }
 ];
 
+/**
+ * 当月の経過ペース（0〜1）。
+ *
+ * 予算は月末までの目標なので、月の途中で達成率だけ見ても
+ * 「遅れているのか、まだ日があるだけなのか」が分からない。
+ * 件数・金額のバーには、今日時点であるべき位置を目印として出す。
+ *
+ * 営業日ではなく暦日で出している。営業日にするにはカレンダーが要り、
+ * 祝日の扱いで揉める。暦日なら誰でも同じ数字を再現できる。
+ * 率の指標にはペースの概念が無い（月初でも目標率には乗るべき）ので使わない。
+ */
+function monthPace(){
+  var now = new Date();
+  var days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return now.getDate() / days;
+}
+
 /** いま選ばれているグループの指標だけを返す */
 function teamKpiDefs(){
   var g = state.teamKpiGroup || TEAM_KPI_GROUPS[0].id;
@@ -6135,8 +6163,11 @@ function monthIdLabel(id){
 }
 
 /** memberId → このタブで使う5指標。無い値は undefined のままにする */
-function teamKpiOf(memberId){
-  var k = ((state.memberKpi && state.memberKpi.byMember) || {})[memberId] || {};
+function teamKpiOf(memberId, which){
+  // which に "budget" を渡すと予算ブロックの値を返す。
+  // 実績と同じ形・同じキーで入っているので、読み出し先を変えるだけでよい。
+  var src = (which === "budget") ? "budgetByMember" : "byMember";
+  var k = ((state.memberKpi && state.memberKpi[src]) || {})[memberId] || {};
   var x = ((state.metrics && state.metrics.byMember) || {})[memberId] || {};
   var out = {};
   TEAM_KPI.forEach(function(def){
@@ -6164,12 +6195,12 @@ function hasTeamKpi(memberId){
  * 率の平均にすると、対応数が10件の人と600件の人の率が同じ重みで効き、
  * チームの実勢とずれる。
  */
-function teamKpiRollup(members){
+function teamKpiRollup(members, which){
   var sum = {}, has = {}, bag = {};
   function add(f, v){ if(typeof v !== "number") return; sum[f] = (sum[f]||0) + v; has[f] = true; }
 
   members.forEach(function(m){
-    var v = teamKpiOf(m.id);
+    var v = teamKpiOf(m.id, which);
     TEAM_KPI.forEach(function(def){
       if(def.agg === "sum") add(def.key, v[def.key]);
       else if(def.agg === "avg"){
@@ -6318,6 +6349,63 @@ function teamKpiCell(def, val){
     '<b class="tkpi-cell-v" style="color:var(--'+teamKpiColor(def, val)+')">' +
       esc(teamKpiText(def, val)) + (has && def.u ? esc(def.u) : '') +
     '</b>' +
+  '</span>';
+}
+
+/**
+ * 予算比の1マス。達成率とバーを出す。
+ *
+ * 【予算が 0 のときは「予算なし」】
+ * 原本の予算ブロックには、通話率や IS追加数のように目標が置かれていない
+ * 指標があり 0 で入っている。0 で割ると無限大になるし、0 を目標として
+ * 「達成率∞%」と出すのは嘘になる。予算が無いことを、そう表示する。
+ *
+ * 【ペースの目印】
+ * 件数・金額（合計する指標）は月末までの積み上げなので、今日時点で
+ * あるべき位置に目印を置く。率は月初から目標率に乗っているべきなので
+ * 目印は100%。この違いを出さないと、月半ばの達成率50%が
+ * 「順調」なのか「遅れ」なのか読めない。
+ */
+function teamKpiBudgetCell(def, actual, budget){
+  var hasB = (typeof budget === "number" && budget > 0);
+  var hasA = (typeof actual === "number");
+
+  if(!hasB){
+    return '<span class="tkpi-cell" title="'+esc(def.l)+'（予算が設定されていません）">' +
+      '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
+      '<b class="tkpi-cell-v" style="color:var(--color-text-4)">予算なし</b>' +
+    '</span>';
+  }
+  if(!hasA){
+    return '<span class="tkpi-cell" title="'+esc(def.l)+'">' +
+      '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
+      '<b class="tkpi-cell-v" style="color:var(--color-text-4)">—</b>' +
+    '</span>';
+  }
+
+  var pct  = actual / budget * 100;
+  var isSum = (def.agg === "sum");
+  var pace = isSum ? monthPace() * 100 : 100;
+
+  // 低いほうが良い指標（作業率・待機率・不可率）は、予算を超えたら赤。
+  var low = (def.g === "low");
+  var good = low ? (pct <= pace) : (pct >= pace);
+  var color = good ? "color-grow-ink" : "color-text-sub";
+
+  var bar = Math.max(0, Math.min(100, pct));
+  var mark = Math.max(0, Math.min(100, pace));
+  var tip = def.l + ' 実績 ' + teamKpiText(def, actual) + (def.u||'') +
+            ' / 予算 ' + teamKpiText(def, budget) + (def.u||'') +
+            (isSum ? '（今日時点の目安 ' + Math.round(pace) + '%）' : '');
+
+  return '<span class="tkpi-cell" title="'+esc(tip)+'">' +
+    '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
+    '<b class="tkpi-cell-v" style="color:var(--'+color+')">'+ (Math.round(pct*10)/10) +'%</b>' +
+    '<span class="tkpi-bar">' +
+      '<i class="tkpi-bar-f'+(good?" is-good":"")+'" style="width:'+bar+'%"></i>' +
+      '<i class="tkpi-bar-m" style="left:'+mark+'%"></i>' +
+    '</span>' +
+    '<i class="tkpi-sub">'+esc(teamKpiText(def, actual))+' / '+esc(teamKpiText(def, budget))+'</i>' +
   '</span>';
 }
 
@@ -6482,10 +6570,25 @@ function renderTeamKpi(){
   // 同じ行に混ぜると「全体」と「対応」が並んで、何を選んでいるのか
   // 分からなくなる。
   var curGrp = state.teamKpiGroup || TEAM_KPI_GROUPS[0].id;
+  var curMode = state.teamKpiMode || "actual";
+  // 予算が1件も来ていなければ切り替えを出さない。押しても何も変わらない
+  // ボタンがあるほうが分かりにくい。
+  var hasBudget = Object.keys((state.memberKpi && state.memberKpi.budgetByMember) || {}).length > 0;
+  if(!hasBudget) curMode = "actual";
+
   var grpTabs = '<div class="tkpi-grps">' + TEAM_KPI_GROUPS.map(function(g){
       return '<button class="tkpi-grp'+(curGrp===g.id?" is-on":"")+
         '" data-act="tkpi-grp" data-id="'+esc(g.id)+'">'+esc(g.label)+'</button>';
-    }).join("") + '</div>';
+    }).join("") +
+    (hasBudget
+      ? '<span class="tkpi-modes">' +
+        '<button class="tkpi-grp'+(curMode==="actual"?" is-on":"")+
+          '" data-act="tkpi-mode" data-id="actual">実績</button>' +
+        '<button class="tkpi-grp'+(curMode==="budget"?" is-on":"")+
+          '" data-act="tkpi-mode" data-id="budget">予算比</button>' +
+        '</span>'
+      : '') +
+    '</div>';
 
   var members = teamKpiMembers();
   var roll = teamKpiRollup(members);
@@ -6493,13 +6596,21 @@ function renderTeamKpi(){
   // 35指標を1枚に並べると1マスが潰れてラベルを略すことになるので、
   // グループのタブで絞る。集計もメンバー別も同じ並びにして見比べやすくする。
   var defs = teamKpiDefs();
+  var budgetMode = (curMode === "budget");
+  var rollB = budgetMode ? teamKpiRollup(members, "budget") : null;
+
   var gridHtml = defs.map(function(def){
-    return teamKpiCell(def, roll[def.key]);
+    return budgetMode ? teamKpiBudgetCell(def, roll[def.key], rollB[def.key])
+                      : teamKpiCell(def, roll[def.key]);
   }).join("");
 
   var rows = members.map(function(m){
     var v = teamKpiOf(m.id);
-    var cells = defs.map(function(def){ return teamKpiCell(def, v[def.key]); }).join("");
+    var b = budgetMode ? teamKpiOf(m.id, "budget") : null;
+    var cells = defs.map(function(def){
+      return budgetMode ? teamKpiBudgetCell(def, v[def.key], b[def.key])
+                        : teamKpiCell(def, v[def.key]);
+    }).join("");
     return '<div class="card tkpi-member">' +
       '<div class="tkpi-name">'+avatar(m.id,28)+'<span>'+esc(m.displayName)+'</span></div>' +
       '<div class="tkpi-cells">'+cells+'</div>' +
@@ -7459,6 +7570,7 @@ function bindEvents(){
     else if(act==="kpi-section-toggle"){ state.progressKpiOpen = !state.progressKpiOpen; render(); }
     else if(act==="tkpi-team"){ state.teamKpiTeam = id; render(); }
     else if(act==="tkpi-grp"){ state.teamKpiGroup = id; render(); }
+    else if(act==="tkpi-mode"){ state.teamKpiMode = id; render(); }
     else if(act==="daily-day"){ state.dailyDay = parseInt(id, 10) || 0; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
