@@ -185,7 +185,7 @@ function forceSync() {
 
 function runSync(trigger) {
   var startedAt = new Date();
-  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, mgmtActualRow: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], prodBroken: 0, prodSkip: "", unmatched: [] };
+  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, mgmtActualRow: 0, mgmtBudgetMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], prodBroken: 0, prodSkip: "", unmatched: [] };
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -283,6 +283,7 @@ function runSync(trigger) {
       prodBrokenCells: counts.prodBroken || 0,
       prodSkipReason: counts.prodSkip || "",
       mgmtActualRow: counts.mgmtActualRow || 0,
+      mgmtBudgetMemberCount: counts.mgmtBudgetMembers || 0,
       unmatchedNames: counts.unmatched
     });
 
@@ -643,43 +644,66 @@ function readMgmtKpi_(ss, nameToId, counts) {
   }
   if (counts) counts.mgmtActualRow = actualFrom + 1;   // 1始まりで記録
 
-  // ── KPI の行を拾う ──
-  var byMember = {};
-  var seen = {};
-  for (var r2 = 0; r2 < values.length; r2++) {
-    if (r2 === headerRow) continue;
-    if (actualFrom >= 0 && r2 <= actualFrom) continue;   // 予算ブロック
+  // ── 実績と予算を別々に拾う ──
+  // 実績は「実績」の行より下、予算はそれより上。範囲を渡して同じ処理を2回。
+  var actual = collectMgmtRows_(values, colToId, headerRow,
+                                actualFrom >= 0 ? actualFrom + 1 : 0, values.length);
+  var budget = (actualFrom > 0)
+    ? collectMgmtRows_(values, colToId, headerRow, 0, actualFrom)
+    : null;
+
+  var missing = [];
+  for (var lbl in MGMT_KPI_ROWS) if (!actual.seen[lbl]) missing.push(lbl);
+  if (actualFrom < 0) missing.push("(A列に「実績」の行が見つかりません。予算側を読んでいる可能性があります)");
+
+  if (counts) counts.mgmtBudgetMembers = budget ? Object.keys(budget.byMember).length : 0;
+
+  return {
+    monthId: monthIdOf_(0),
+    periodLabel: findPeriodLabel_(values, headerRow),
+    byMember: actual.byMember,
+    // 予算（月間の目標値）。実績と同じラベル・同じ列並びで上の段に入っている。
+    // 通話率や IS追加数のように目標が置かれていない指標は 0 で入る。
+    // 0 を「予算なし」と読み替えるのはアプリ側の仕事にしてある
+    //（ここで捨てると、本当に0が目標の指標が出てきたときに区別できない）。
+    budgetByMember: budget ? budget.byMember : {},
+    memberCount: Object.keys(actual.byMember).length,
+    budgetMemberCount: budget ? Object.keys(budget.byMember).length : 0,
+    missingRows: missing
+  };
+}
+
+/**
+ * mgmt_kpi の指定した行範囲から、ラベルに一致する行を拾う。
+ * 予算ブロックと実績ブロックで同じ処理を使うために切り出してある。
+ *
+ * from 以上 to 未満を見る。見出し行は飛ばす。
+ * 同じラベルが範囲内に複数あれば、先に出たほうを採る。
+ */
+function collectMgmtRows_(values, colToId, headerRow, from, to) {
+  var byMember = {}, seen = {};
+  for (var r = from; r < to; r++) {
+    if (r === headerRow) continue;
     // ラベルは値の列より左にある。値の列に達したら、その行にラベルは無い。
     var label = "";
-    for (var c2 = 0; c2 < values[r2].length; c2++) {
-      if (colToId[c2] !== undefined) break;
-      var t = String(values[r2][c2] == null ? "" : values[r2][c2]).trim();
+    for (var c = 0; c < values[r].length; c++) {
+      if (colToId[c] !== undefined) break;
+      var t = String(values[r][c] == null ? "" : values[r][c]).trim();
       if (MGMT_KPI_ROWS[t]) { label = t; break; }
     }
-    if (!label || seen[label]) continue;   // 同じラベルが複数あれば先に出たほうを採る
+    if (!label || seen[label]) continue;
     seen[label] = true;
 
     var def = MGMT_KPI_ROWS[label];
-    for (var c3 in colToId) {
-      var memberId = colToId[c3];
-      var v = def.type === "rate" ? toRate_(values[r2][c3]) : toNumber_(values[r2][c3]);
+    for (var cc in colToId) {
+      var memberId = colToId[cc];
+      var v = def.type === "rate" ? toRate_(values[r][cc]) : toNumber_(values[r][cc]);
       if (v === null) continue;
       if (!byMember[memberId]) byMember[memberId] = {};
       byMember[memberId][def.key] = v;
     }
   }
-
-  var missing = [];
-  for (var lbl in MGMT_KPI_ROWS) if (!seen[lbl]) missing.push(lbl);
-  if (actualFrom < 0) missing.push("(A列に「実績」の行が見つかりません。予算側を読んでいる可能性があります)");
-
-  return {
-    monthId: monthIdOf_(0),
-    periodLabel: findPeriodLabel_(values, headerRow),
-    byMember: byMember,
-    memberCount: Object.keys(byMember).length,
-    missingRows: missing
-  };
+  return { byMember: byMember, seen: seen };
 }
 
 /**
