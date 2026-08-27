@@ -1083,29 +1083,35 @@ body.wide .pc-cols:has(.pc-side:empty),
    1マスの最小幅は「39.4%」が1行に収まる幅にしてある。 */
 .tkpi-member{padding:10px 12px;}
 .tkpi-name{display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; margin-bottom:8px;}
-.tkpi-cells{display:grid; grid-template-columns:repeat(auto-fit, minmax(104px, 1fr)); gap:8px 10px;}
+.tkpi-cells{display:grid; grid-template-columns:repeat(auto-fit, minmax(112px, 1fr)); gap:14px 12px;}
 /* 指標グループのタブ。チームの chips の下に置く */
-.tkpi-bar{position:relative; display:block; height:3px; margin-top:3px;
-  background:var(--color-border); border-radius:2px; overflow:visible;}
-.tkpi-bar-f{position:absolute; left:0; top:0; height:100%; border-radius:2px;
-  background:var(--color-text-4);}
+/* 予算比のマス。
+   達成率の数字は状況にかかわらず本文色で出す。未達を薄い色にすると、
+   月半ばは大半が未達なので画面全体が読めなくなる（実際にそうなった）。
+   達成しているかどうかはバーの色で示す。 */
+.tkpi-bar{position:relative; display:block; height:6px; margin-top:5px;
+  background:var(--color-border); border-radius:3px; overflow:visible;}
+.tkpi-bar-f{position:absolute; left:0; top:0; height:100%; border-radius:3px;
+  background:var(--color-accent-deep);}
 .tkpi-bar-f.is-good{background:var(--color-grow-ink);}
-.tkpi-bar-m{position:absolute; top:-2px; width:1px; height:7px; background:var(--color-text);
-  opacity:0.55;}
-.tkpi-sub{display:block; font-style:normal; font-size:10px; color:var(--text-4);
-  margin-top:2px; white-space:nowrap; font-variant-numeric:tabular-nums;}
+/* 今日時点であるべき位置。バーより上下に出して、塗りに埋もれないようにする */
+.tkpi-bar-m{position:absolute; top:-3px; width:2px; height:12px; border-radius:1px;
+  background:var(--color-text); opacity:0.7;}
+.tkpi-sub{display:block; font-style:normal; font-size:11px; color:var(--color-text-sub);
+  margin-top:4px; white-space:nowrap; font-variant-numeric:tabular-nums;}
+.tkpi-nob{color:var(--color-text-sub); font-weight:400;}
 .tkpi-modes{display:flex; gap:4px; margin-left:auto;}
 .tkpi-grps{display:flex; flex-wrap:wrap; gap:4px; margin:0 0 12px;
   padding-bottom:8px; border-bottom:1px solid var(--color-border);}
 .tkpi-grp{font:inherit; font-size:12px; font-weight:700; padding:5px 12px; cursor:pointer;
   border:1px solid var(--color-border); background:transparent; color:var(--color-text-sub);
   border-radius:999px; white-space:nowrap;}
-.tkpi-grp:hover{color:var(--color-text); border-color:var(--color-text-4);}
+.tkpi-grp:hover{color:var(--color-text); border-color:var(--color-text-mute);}
 .tkpi-grp.is-on{background:var(--color-text); color:var(--color-bg); border-color:var(--color-text);}
 .tkpi-grp:focus-visible{outline:2px solid var(--color-accent); outline-offset:2px;}
 .tkpi-cell{display:flex; flex-direction:column; gap:1px; min-width:0;}
-.tkpi-cell-l{font-style:normal; font-size:11px; color:var(--text-4); white-space:nowrap;}
-.tkpi-cell-v{font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.tkpi-cell-l{font-style:normal; font-size:11px; color:var(--color-text-sub); white-space:nowrap;}
+.tkpi-cell-v{font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
 
 /* ── 日ごとの実績（チーム集計） ──
    4列固定。日付だけ左寄せ、数字は右寄せにして桁を比べやすくする。 */
@@ -1304,23 +1310,23 @@ var POST_TYPES = ["Thanks","お知らせ","雑談","質問","報告"];
  * 事業進捗ダッシュボード（別アプリ）へのリンク。
  *
  * 【埋め込みではなくリンクにしている理由】
- * このアプリは https で配信されている。そこに http のページを iframe で
- * 入れると、ブラウザが混在コンテンツとして遮断する。設定では回避できない。
- * 画面遷移（別タブで開く）なら制限にかからないので、リンクにしてある。
+ * Apps Script の Web アプリは X-Frame-Options で iframe 埋め込みを
+ * 禁じている。こちらの設定では回避できないので、別タブで開くリンクにする。
  *
- * 【社内LANからしか開けない】
- * 192.168.x.x は社外から到達できないアドレス。スマホの4G/5G回線では
- * 開けない。さらに向こうは開発サーバーで、動かしている端末が起動して
- * いる間しか生きていない。**開けないのが通常の状態でもある**ので、
- * 画面にもその旨を書いて、壊れていると誤解されないようにしている。
+ * 【以前は社内LANだった】
+ * 2026-08-27 まで http://192.168.x.x:5173 の開発サーバーを指していた。
+ * 社外から開けず、配信元の端末が動いている間しか生きていなかった。
+ * Apps Script に移ったので、その制限は無くなっている。
+ * 画面の注記もあわせて直した（古い注記を残すと、開けるものを
+ * 「開けない」と案内してしまう）。
  *
  * 【公開リポジトリに載ること】
- * private IP なので社外から使えず、鍵でも個人情報でもない。README の
- * 禁止事項には当たらないと判断して直接書いている。移設したらここを直す。
+ * /a/macros/<ドメイン>/ の URL は、会社の Google アカウントで
+ * ログインしていなければ開けない。鍵でも個人情報でもないので直接書く。
  *
  * 空文字にすると、リンクごと画面から消える。
  */
-var DASHBOARD_URL = "http://192.168.60.130:5173/";
+var DASHBOARD_URL = "https://script.google.com/a/macros/marketenterprise.co.jp/s/AKfycbyLTkq-aMT5jA5wuiYhBcx3h7zBjocb_f3thRD7IVnwSwYtSB6NFRLeVKpoqBWLbj8EyA/exec";
 // ══════════════════════════════════════════════════════════════════
 //  第二CC の Mission / Vision / Value
 //
@@ -6373,13 +6379,13 @@ function teamKpiBudgetCell(def, actual, budget){
   if(!hasB){
     return '<span class="tkpi-cell" title="'+esc(def.l)+'（予算が設定されていません）">' +
       '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
-      '<b class="tkpi-cell-v" style="color:var(--color-text-4)">予算なし</b>' +
+      '<b class="tkpi-cell-v tkpi-nob">予算なし</b>' +
     '</span>';
   }
   if(!hasA){
     return '<span class="tkpi-cell" title="'+esc(def.l)+'">' +
       '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
-      '<b class="tkpi-cell-v" style="color:var(--color-text-4)">—</b>' +
+      '<b class="tkpi-cell-v tkpi-nob">—</b>' +
     '</span>';
   }
 
@@ -6387,10 +6393,9 @@ function teamKpiBudgetCell(def, actual, budget){
   var isSum = (def.agg === "sum");
   var pace = isSum ? monthPace() * 100 : 100;
 
-  // 低いほうが良い指標（作業率・待機率・不可率）は、予算を超えたら赤。
+  // 低いほうが良い指標（作業率・待機率・不可率）は、予算を超えたら未達。
   var low = (def.g === "low");
   var good = low ? (pct <= pace) : (pct >= pace);
-  var color = good ? "color-grow-ink" : "color-text-sub";
 
   var bar = Math.max(0, Math.min(100, pct));
   var mark = Math.max(0, Math.min(100, pace));
@@ -6400,7 +6405,7 @@ function teamKpiBudgetCell(def, actual, budget){
 
   return '<span class="tkpi-cell" title="'+esc(tip)+'">' +
     '<i class="tkpi-cell-l">'+esc(def.l)+'</i>' +
-    '<b class="tkpi-cell-v" style="color:var(--'+color+')">'+ (Math.round(pct*10)/10) +'%</b>' +
+    '<b class="tkpi-cell-v">'+ (Math.round(pct*10)/10) +'%</b>' +
     '<span class="tkpi-bar">' +
       '<i class="tkpi-bar-f'+(good?" is-good":"")+'" style="width:'+bar+'%"></i>' +
       '<i class="tkpi-bar-m" style="left:'+mark+'%"></i>' +
@@ -6538,8 +6543,8 @@ function renderDashboardLink(){
       '<span class="extlink-body">' +
         '<span class="extlink-title">事業進捗ダッシュボード</span>' +
         '<span class="extlink-note">全体実績・4拠点比較。' +
-          '<b>社内ネットワークからのみ開けます</b>（スマホの回線では開きません）。' +
-          '配信元の端末が起動していないときも開けません。</span>' +
+          '<b>会社のGoogleアカウント</b>でログインした状態で開きます。' +
+          'スマホからでも見られます。</span>' +
       '</span>' +
       '<span class="extlink-arrow">↗</span>' +
     '</a>';
