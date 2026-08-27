@@ -5757,10 +5757,17 @@ function renderProgress(){
           ? '<span class="prog-marker" style="left:'+Math.min(100, p.plannedPct)+'%" ' +
             'title="'+esc(p.lastActualDate)+' 時点の想定ライン"></span>' : '') +
       '</div>' +
+      // 「−12.3pt」だけでは何のポイントか分からないので、金額でも出す。
+      // 想定額 = 月間目標 × 想定進捗率。そこにいくら足りないかが本題。
       (p.lastActualDate && p.plannedPct > 0
-        ? '<div class="prog-plan">想定 '+(Math.round(p.plannedPct*10)/10)+'% ・ '+
-          (p.pct - p.plannedPct >= 0 ? "+" : "−")+
-          (Math.round(Math.abs(p.pct - p.plannedPct)*10)/10)+'pt</div>' : '') +
+        ? (function(){
+            var needAmt = p.monthTarget * p.plannedPct / 100;
+            var diff = needAmt - p.actual;
+            return '<div class="prog-plan">想定 '+(Math.round(p.plannedPct*10)/10)+'% ・ '+
+              (diff > 0 ? '目安まであと '+esc(yenShort(diff))
+                        : '目安より '+esc(yenShort(-diff))+' 先行') +
+            '</div>';
+          })() : '') +
       '<div class="prog-bar-labels">' +
         '<span>実績 '+esc(yen(p.actual))+'</span>' +
         '<span>目標 '+esc(yen(p.monthTarget))+'</span>' +
@@ -6415,8 +6422,9 @@ var ISSUE_MAX = 3;
  *   is      IS追加・ホット     quality 不可率
  *
  * 【並び順】
- * 予算との差（ポイント）が大きい順。差をそのまま画面に出すので、
- * なぜその順なのかが読み手に分かる。
+ * 達成率が目標からどれだけ離れているかの大きい順。件数と金額と率を
+ * 同じ物差しで並べるために、比率で比べている（円と件を直接比べられない）。
+ * 画面に出すのは比率ではなく「あと◯件」。並び順の根拠と表示は別物。
  */
 function teamKpiIssues(v, b, teamRoll, memberCount){
   if(typeof v.handled !== "number" || v.handled < ISSUE_MIN_HANDLED){
@@ -6446,7 +6454,25 @@ function teamKpiIssues(v, b, teamRoll, memberCount){
     var belowTeam    = low ? (a > tmCmp)    : (a < tmCmp);
     if(!behindBudget || !belowTeam) return;
 
-    list.push({ def: def, gap: Math.round(Math.abs(pct - target) * 10) / 10 });
+    // 【画面には「あと◯件」を出す】
+    // 達成率の差（ポイント）は、それ自体が何を指すのか説明が要る。
+    // 「あと71件」なら単位があり、そのまま行動に移せる。
+    //
+    // need … 今日時点で届いていてほしい量。
+    //         件数・金額は 予算 × 経過ペース、率は 予算そのもの。
+    // short … 不足量（低いほうが良い指標は超過量）。
+    var need  = (def.agg === "sum") ? bg * target / 100 : bg;
+    var short = low ? (a - need) : (need - a);
+
+    list.push({
+      def: def,
+      gap: Math.round(Math.abs(pct - target) * 10) / 10,   // 並び順にだけ使う
+      need: need,
+      short: short,
+      actual: a,
+      budget: bg,
+      pace: pace
+    });
   });
 
   list.sort(function(x, y){ return y.gap - x.gap; });
@@ -6473,10 +6499,42 @@ function teamKpiIssueChips(v, b, teamRoll, memberCount){
   }
   if(!r.list.length) return "";
   return '<div class="tkpi-issues">' + r.list.map(function(x){
-    return '<span class="tkpi-issue" title="' +
-      esc(x.def.l + ' は予算のペースに ' + x.gap + 'ポイント届かず、チーム平均も下回っています') +
-      '">' + esc(x.def.l) + ' <b>-' + x.gap + 'pt</b></span>';
+    return '<span class="tkpi-issue" title="'+esc(issueTip(x))+'">' +
+      esc(x.def.l) + ' <b>' + esc(issueShortText(x)) + '</b></span>';
   }).join("") + '</div>';
+}
+
+/**
+ * 不足量の表示。単位を付けて、そのまま読めるようにする。
+ *
+ *   件数   あと71件
+ *   金額   あと420万
+ *   率     目標まで3.1%
+ *   低いほうが良い率  目標超過4.0%
+ */
+function issueShortText(x){
+  var d = x.def, s = Math.abs(x.short);
+  if(d.g === "low") return "目標超過" + (Math.round(s * 10) / 10) + "%";
+  if(d.fmt === "yen") return "あと" + yenShort(s);
+  if(d.fmt === "int") return "あと" + Math.round(s).toLocaleString("ja-JP") + "件";
+  return "目標まで" + (Math.round(s * 10) / 10) + "%";
+}
+
+/** チップにマウスを置いたときの説明。数字の出どころを全部書く */
+function issueTip(x){
+  var d = x.def;
+  var unit = (d.fmt === "yen") ? "" : (d.u || "");
+  var actual = teamKpiText(d, x.actual) + unit;
+  var need   = teamKpiText(d, Math.round(x.need * 10) / 10) + unit;
+  if(d.agg === "sum"){
+    return d.l + "は" + actual + "。今日時点の目安 " + need +
+      "（予算 " + teamKpiText(d, x.budget) + unit + " × 経過 " + Math.round(x.pace) + "%）に届いていません。" +
+      "チーム平均も下回っています。";
+  }
+  if(d.g === "low"){
+    return d.l + "は" + actual + "で、予算 " + need + " を超えています。チーム平均より高い状態です。";
+  }
+  return d.l + "は" + actual + "で、予算 " + need + " に届いていません。チーム平均も下回っています。";
 }
 function teamKpiBudgetCell(def, actual, budget){
   var hasB = (typeof budget === "number" && budget > 0);
@@ -6797,7 +6855,9 @@ function renderTeamKpi(){
       '（Management Sheet 側は第二CCが 0.00% のままのため）。' +
       '手配率・手配買取率・ホットレートのチーム計は、率の平均ではなく合計どうしの割り算です。' +
       '<br><b>赤いチップ</b>は、予算のペースに届かず<b>かつ</b>チーム平均も下回っている指標です' +
-      '（35指標すべてから上位3件。数値は予算ペースとの差）。' +
+      '（35指標すべてから、原因のまとまりごとに1件・最大3件）。' +
+      '「あと◯件」は<b>今日時点の目安</b>（予算×経過日数の割合）までの不足で、月末までの不足ではありません。' +
+      '率は予算そのものとの差です。マウスを置くと計算の内訳が出ます。' +
       '対応数が' + ISSUE_MIN_HANDLED + '件に届かない人は、率が安定しないため判定していません。</div>' +
     renderDashboardLink() +
   '</div>';
