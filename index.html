@@ -6418,7 +6418,7 @@ var ISSUE_MAX = 3;
  * 予算との差（ポイント）が大きい順。差をそのまま画面に出すので、
  * なぜその順なのかが読み手に分かる。
  */
-function teamKpiIssues(v, b, teamRoll){
+function teamKpiIssues(v, b, teamRoll, memberCount){
   if(typeof v.handled !== "number" || v.handled < ISSUE_MIN_HANDLED){
     return { few: true, list: [] };
   }
@@ -6435,8 +6435,15 @@ function teamKpiIssues(v, b, teamRoll){
     var target = (def.agg === "sum") ? pace : 100;
     var low = (def.g === "low");
 
+    // 【合計する指標は「平均」と比べる】
+    // teamRoll は件数・金額ではチームの合計。個人がチーム合計を下回るのは
+    // 当たり前なので、そのまま比べると「チーム平均より低い」の条件が
+    // 素通りしてしまう。人数で割って1人あたりにする。
+    // 率（avg / ratio）は teamRoll がすでにチームの率なのでそのまま使う。
+    var tmCmp = (def.agg === "sum" && memberCount > 0) ? (tm / memberCount) : tm;
+
     var behindBudget = low ? (pct > target) : (pct < target);
-    var belowTeam    = low ? (a > tm)       : (a < tm);
+    var belowTeam    = low ? (a > tmCmp)    : (a < tmCmp);
     if(!behindBudget || !belowTeam) return;
 
     list.push({ def: def, gap: Math.round(Math.abs(pct - target) * 10) / 10 });
@@ -6456,8 +6463,8 @@ function teamKpiIssues(v, b, teamRoll){
 }
 
 /** 課題のチップ。メンバーカードの氏名の下に出す */
-function teamKpiIssueChips(v, b, teamRoll){
-  var r = teamKpiIssues(v, b, teamRoll);
+function teamKpiIssueChips(v, b, teamRoll, memberCount){
+  var r = teamKpiIssues(v, b, teamRoll, memberCount);
   if(r.few){
     return '<div class="tkpi-issues">' +
       '<span class="tkpi-issue is-few" title="対応数が' + ISSUE_MIN_HANDLED +
@@ -6718,7 +6725,7 @@ function renderTeamKpi(){
     }).join("");
     // 課題は35指標すべてから拾う。いま開いているグループには限らない
     //（「対応」を見ているときに粗利の課題を見落とすのを防ぐ）。
-    var issues = hasBudget ? teamKpiIssueChips(v, b, roll) : "";
+    var issues = hasBudget ? teamKpiIssueChips(v, b, roll, members.length) : "";
     return '<div class="card tkpi-member">' +
       '<div class="tkpi-name">'+avatar(m.id,28)+'<span>'+esc(m.displayName)+'</span></div>' +
       issues +
