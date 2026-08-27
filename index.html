@@ -1100,6 +1100,16 @@ body.wide .pc-cols:has(.pc-side:empty),
 .tkpi-sub{display:block; font-style:normal; font-size:11px; color:var(--color-text-sub);
   margin-top:4px; white-space:nowrap; font-variant-numeric:tabular-nums;}
 .tkpi-nob{color:var(--color-text-sub); font-weight:400;}
+/* 課題のチップ。氏名とマスの間に置く。
+   予算に遅れていて、かつチーム平均より低い指標だけが出る。 */
+.tkpi-issues{display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px;}
+.tkpi-issue{display:inline-flex; align-items:center; gap:5px; font-size:11px;
+  padding:3px 9px; border-radius:999px; white-space:nowrap;
+  background:var(--color-alert-tint); color:var(--color-alert-ink);
+  border:1px solid var(--color-alert-tint);}
+.tkpi-issue b{font-weight:700; font-variant-numeric:tabular-nums;}
+.tkpi-issue.is-few{background:transparent; color:var(--color-text-sub);
+  border-color:var(--color-border);}
 .tkpi-modes{display:flex; gap:4px; margin-left:auto;}
 .tkpi-grps{display:flex; flex-wrap:wrap; gap:4px; margin:0 0 12px;
   padding-bottom:8px; border-bottom:1px solid var(--color-border);}
@@ -6092,51 +6102,51 @@ var TEAM_KPI_GROUPS = [
 
 var TEAM_KPI = [
   // ── 対応 ──
-  { grp:"handle",  key:"handled",            l:"対応数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"handle",  key:"handled_valid",      l:"有効案件対応数",     u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"handle",  key:"handled_b",          l:"B案件以上対応数",    u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"handle",  key:"handled_c",          l:"C案件以上対応数",    u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"handle",  key:"ng_rate",            l:"不可率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", g:"low" },
+  { grp:"handle",  fam:"volume", key:"handled",            l:"対応数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"handle",  fam:"volume", key:"handled_valid",      l:"有効案件対応数",     u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"handle",  fam:"volume", key:"handled_b",          l:"B案件以上対応数",    u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"handle",  fam:"volume", key:"handled_c",          l:"C案件以上対応数",    u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"handle",  fam:"quality", key:"ng_rate",            l:"不可率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", g:"low" },
 
   // ── 手配 ──
-  { grp:"arrange", key:"arranged",           l:"手配数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"arrange", key:"arranged_visit",     l:"出張手配数",         u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"arrange", key:"visit_share",        l:"出張手配構成比",     u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged_visit", den:"arranged" },
-  { grp:"arrange", key:"arrange_rate",       l:"手配率",            u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged", den:"handled", t:34, g:"high" },
-  { grp:"arrange", key:"arrange_rate_valid", l:"有効案件手配率",     u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged", den:"handled_valid" },
-  { grp:"arrange", key:"arrange_rate_b",     l:"高額手配率_B案件以上", u:"%", src:"kpi", fmt:"rate", agg:"avg" },
-  { grp:"arrange", key:"arrange_rate_c",     l:"高額手配率_C案件以上", u:"%", src:"kpi", fmt:"rate", agg:"avg" },
-  { grp:"arrange", key:"arrange_rate_exp",   l:"高額手配率_期待値",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"arrange", fam:"arrange", key:"arranged",           l:"手配数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"arrange", fam:"arrange", key:"arranged_visit",     l:"出張手配数",         u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"arrange", fam:"arrange", key:"visit_share",        l:"出張手配構成比",     u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged_visit", den:"arranged" },
+  { grp:"arrange", fam:"arrange", key:"arrange_rate",       l:"手配率",            u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged", den:"handled", t:34, g:"high" },
+  { grp:"arrange", fam:"arrange", key:"arrange_rate_valid", l:"有効案件手配率",     u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"arranged", den:"handled_valid" },
+  { grp:"arrange", fam:"arrange", key:"arrange_rate_b",     l:"高額手配率_B案件以上", u:"%", src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"arrange", fam:"arrange", key:"arrange_rate_c",     l:"高額手配率_C案件以上", u:"%", src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"arrange", fam:"arrange", key:"arrange_rate_exp",   l:"高額手配率_期待値",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
 
   // ── 買取 ──
-  { grp:"buy",     key:"bought",             l:"買取数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"buy",     key:"buy_rate",           l:"手配買取率",         u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"bought", den:"arranged" },
-  { grp:"buy",     key:"buy_rate_urgent",    l:"高額買取率_緊急度",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { grp:"buy",     key:"buy_rate_exp",       l:"高額買取率_期待値",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { grp:"buy",     key:"buy_unit",           l:"買取粗利単価",       u:"円", src:"kpi", fmt:"int",  agg:"avg" },
+  { grp:"buy",     fam:"buy", key:"bought",             l:"買取数",            u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"buy",     fam:"buy", key:"buy_rate",           l:"手配買取率",         u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"bought", den:"arranged" },
+  { grp:"buy",     fam:"buy", key:"buy_rate_urgent",    l:"高額買取率_緊急度",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"buy",     fam:"buy", key:"buy_rate_exp",       l:"高額買取率_期待値",   u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"buy",     fam:"buy", key:"buy_unit",           l:"買取粗利単価",       u:"円", src:"kpi", fmt:"int",  agg:"avg" },
 
   // ── 生産性（CC_アクション管理の月間列。他は Management Sheet）──
-  { grp:"prod",    key:"call_rate",          l:"通話率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.call_rate.t, g:"high" },
-  { grp:"prod",    key:"work_rate",          l:"作業率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.work_rate.t, g:"low" },
-  { grp:"prod",    key:"wait_rate",          l:"待機率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"prod",    fam:"prod", key:"call_rate",          l:"通話率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.call_rate.t, g:"high" },
+  { grp:"prod",    fam:"prod", key:"work_rate",          l:"作業率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg", t:KPI_DEF.work_rate.t, g:"low" },
+  { grp:"prod",    fam:"prod", key:"wait_rate",          l:"待機率",            u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
 
   // ── IS・ホット ──
-  { grp:"hot",     key:"is_add",             l:"IS追加数",          u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"hot",     key:"is_add_rate",        l:"IS追加比率",         u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
-  { grp:"hot",     key:"hot_lead",           l:"ホットリード",       u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"hot",     key:"hot_rate",           l:"ホットレート",       u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"hot_lead", den:"arranged" },
-  { grp:"hot",     key:"hot_lead_visit",     l:"出張_ホットリード",   u:"件", src:"kpi", fmt:"int",  agg:"sum" },
-  { grp:"hot",     key:"hot_rate_visit",     l:"出張_ホットレート",   u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"hot_lead_visit", den:"arranged_visit" },
+  { grp:"hot",     fam:"is", key:"is_add",             l:"IS追加数",          u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"hot",     fam:"is", key:"is_add_rate",        l:"IS追加比率",         u:"%",  src:"kpi", fmt:"rate", agg:"avg" },
+  { grp:"hot",     fam:"is", key:"hot_lead",           l:"ホットリード",       u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"hot",     fam:"is", key:"hot_rate",           l:"ホットレート",       u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"hot_lead", den:"arranged" },
+  { grp:"hot",     fam:"is", key:"hot_lead_visit",     l:"出張_ホットリード",   u:"件", src:"kpi", fmt:"int",  agg:"sum" },
+  { grp:"hot",     fam:"is", key:"hot_rate_visit",     l:"出張_ホットレート",   u:"%",  src:"kpi", fmt:"rate", agg:"ratio", num:"hot_lead_visit", den:"arranged_visit" },
 
   // ── 粗利 ──
-  { grp:"profit",  key:"gross_profit",       l:"手配粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
-  { grp:"profit",  key:"gross_visit",        l:"出張手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
-  { grp:"profit",  key:"gross_delivery",     l:"宅配手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
-  { grp:"profit",  key:"gross_store",        l:"店頭手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
-  { grp:"profit",  key:"buy_gross",          l:"買取粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
-  { grp:"profit",  key:"buy_gross_visit",    l:"出張粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
-  { grp:"profit",  key:"buy_gross_delivery", l:"宅配粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
-  { grp:"profit",  key:"buy_gross_store",    l:"店頭粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" }
+  { grp:"profit",  fam:"arrange", key:"gross_profit",       l:"手配粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  fam:"arrange", key:"gross_visit",        l:"出張手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  fam:"arrange", key:"gross_delivery",     l:"宅配手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  fam:"arrange", key:"gross_store",        l:"店頭手配粗利額",     u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  fam:"buy", key:"buy_gross",          l:"買取粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  fam:"buy", key:"buy_gross_visit",    l:"出張粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  fam:"buy", key:"buy_gross_delivery", l:"宅配粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" },
+  { grp:"profit",  fam:"buy", key:"buy_gross_store",    l:"店頭粗利額",         u:"",   src:"kpi", fmt:"yen",  agg:"sum" }
 ];
 
 /**
@@ -6372,6 +6382,95 @@ function teamKpiCell(def, val){
  * 目印は100%。この違いを出さないと、月半ばの達成率50%が
  * 「順調」なのか「遅れ」なのか読めない。
  */
+// 課題として拾うのに必要な対応数。これを下回る人は判定しない。
+// 手配率や高額手配率は分母が小さいと1件の増減で大きく動くので、
+// 少ない人を「課題あり」と並べると、運の範囲の話が課題に見えてしまう。
+var ISSUE_MIN_HANDLED = 50;
+
+// 1人あたりに出す課題の上限。全部出すと読まれない。
+var ISSUE_MAX = 3;
+
+/**
+ * メンバーの課題を抽出する。
+ *
+ * 【2つとも満たすものだけ】
+ *   1. 予算に対して遅れている（件数・金額はペース比、率は100%比）
+ *   2. チーム平均より低い
+ *
+ * 1 だけだと、チーム全体が遅れている月に全員へ同じ項目が並ぶ。
+ * 2 だけだと、全員が好調でも誰かが必ず下位になる。
+ * 両方にすると「その人固有の弱み」だけが残る。
+ *
+ * 【低いほうが良い指標は逆に見る】
+ * 作業率・待機率・不可率は、予算を超えていて、かつチーム平均より
+ * 高いときが課題。
+ *
+ * 【同じ原因のものは1件にまとめる】
+ * 手配数が遅れれば手配粗利額も出張手配粗利額も遅れる。3枠が1つの原因で
+ * 埋まると、他の課題が押し出される。fam（原因のまとまり）ごとに
+ * 最も差が大きい1件だけ残す。
+ *
+ *   volume  対応数まわり      arrange 手配数・手配率・手配粗利
+ *   buy     買取・買取粗利     prod    通話率・作業率・待機率
+ *   is      IS追加・ホット     quality 不可率
+ *
+ * 【並び順】
+ * 予算との差（ポイント）が大きい順。差をそのまま画面に出すので、
+ * なぜその順なのかが読み手に分かる。
+ */
+function teamKpiIssues(v, b, teamRoll){
+  if(typeof v.handled !== "number" || v.handled < ISSUE_MIN_HANDLED){
+    return { few: true, list: [] };
+  }
+  var pace = monthPace() * 100;
+  var list = [];
+
+  TEAM_KPI.forEach(function(def){
+    var a = v[def.key], bg = b[def.key], tm = teamRoll[def.key];
+    if(typeof a !== "number") return;
+    if(typeof bg !== "number" || bg <= 0) return;   // 予算が置かれていない指標
+    if(typeof tm !== "number") return;
+
+    var pct = a / bg * 100;
+    var target = (def.agg === "sum") ? pace : 100;
+    var low = (def.g === "low");
+
+    var behindBudget = low ? (pct > target) : (pct < target);
+    var belowTeam    = low ? (a > tm)       : (a < tm);
+    if(!behindBudget || !belowTeam) return;
+
+    list.push({ def: def, gap: Math.round(Math.abs(pct - target) * 10) / 10 });
+  });
+
+  list.sort(function(x, y){ return y.gap - x.gap; });
+
+  // fam ごとに先頭（＝差が最大）の1件だけ残す
+  var seenFam = {}, picked = [];
+  list.forEach(function(x){
+    var f = x.def.fam || x.def.key;
+    if(seenFam[f]) return;
+    seenFam[f] = true;
+    picked.push(x);
+  });
+  return { few: false, list: picked.slice(0, ISSUE_MAX) };
+}
+
+/** 課題のチップ。メンバーカードの氏名の下に出す */
+function teamKpiIssueChips(v, b, teamRoll){
+  var r = teamKpiIssues(v, b, teamRoll);
+  if(r.few){
+    return '<div class="tkpi-issues">' +
+      '<span class="tkpi-issue is-few" title="対応数が' + ISSUE_MIN_HANDLED +
+        '件に届かないため、率が安定せず判定していません">対応数が少なく判定対象外</span>' +
+    '</div>';
+  }
+  if(!r.list.length) return "";
+  return '<div class="tkpi-issues">' + r.list.map(function(x){
+    return '<span class="tkpi-issue" title="' +
+      esc(x.def.l + ' は予算のペースに ' + x.gap + 'ポイント届かず、チーム平均も下回っています') +
+      '">' + esc(x.def.l) + ' <b>-' + x.gap + 'pt</b></span>';
+  }).join("") + '</div>';
+}
 function teamKpiBudgetCell(def, actual, budget){
   var hasB = (typeof budget === "number" && budget > 0);
   var hasA = (typeof actual === "number");
@@ -6611,13 +6710,18 @@ function renderTeamKpi(){
 
   var rows = members.map(function(m){
     var v = teamKpiOf(m.id);
-    var b = budgetMode ? teamKpiOf(m.id, "budget") : null;
+    // 予算は課題の判定に常に要るので、表示モードに関係なく取る。
+    var b = teamKpiOf(m.id, "budget");
     var cells = defs.map(function(def){
       return budgetMode ? teamKpiBudgetCell(def, v[def.key], b[def.key])
                         : teamKpiCell(def, v[def.key]);
     }).join("");
+    // 課題は35指標すべてから拾う。いま開いているグループには限らない
+    //（「対応」を見ているときに粗利の課題を見落とすのを防ぐ）。
+    var issues = hasBudget ? teamKpiIssueChips(v, b, roll) : "";
     return '<div class="card tkpi-member">' +
       '<div class="tkpi-name">'+avatar(m.id,28)+'<span>'+esc(m.displayName)+'</span></div>' +
+      issues +
       '<div class="tkpi-cells">'+cells+'</div>' +
     '</div>';
   }).join("");
@@ -6684,7 +6788,10 @@ function renderTeamKpi(){
     '<div class="wk-legend">月次の出どころは Management Sheet の当月タブ。' +
       'ただし<b>通話率・作業率・待機率は CC_アクション管理の月間列</b>です' +
       '（Management Sheet 側は第二CCが 0.00% のままのため）。' +
-      '手配率・手配買取率・ホットレートのチーム計は、率の平均ではなく合計どうしの割り算です。</div>' +
+      '手配率・手配買取率・ホットレートのチーム計は、率の平均ではなく合計どうしの割り算です。' +
+      '<br><b>赤いチップ</b>は、予算のペースに届かず<b>かつ</b>チーム平均も下回っている指標です' +
+      '（35指標すべてから上位3件。数値は予算ペースとの差）。' +
+      '対応数が' + ISSUE_MIN_HANDLED + '件に届かない人は、率が安定しないため判定していません。</div>' +
     renderDashboardLink() +
   '</div>';
 }
