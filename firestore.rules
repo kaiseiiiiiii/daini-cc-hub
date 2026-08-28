@@ -74,6 +74,19 @@ service cloud.firestore {
       return isMember() && me().role == 'admin';
     }
 
+    // メンバー別の実績（誰が何件・いくら手配したか）を見られるか。
+    //
+    // admin とは別の軸にしてある。admin は「投稿を消せる」権限で、
+    // 成績を見られることとは意味が違う。片方に相乗りさせると、
+    // 掲示板の管理を任せた人に成績まで開くことになる。
+    //
+    // 既定は false。フィールドを持たない人は見られない（get の第2引数）。
+    // 付け外しは Firebase コンソールからのみ（members はクライアントから
+    // 書けない）。
+    function canSeeTeamKpi() {
+      return isMember() && me().get('canSeeTeamKpi', false) == true;
+    }
+
     // 既存ドキュメントの作成者が自分か。
     function isAuthor() {
       return isMember() && resource.data.authorId == myMemberId();
@@ -331,6 +344,68 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ========================================================================
+    // メンバー別の主要KPI（対応数・手配数・手配率・手配粗利額）
+    //   ドキュメントID = "current"
+    //   フィールド: monthId, periodLabel, byMember{memberId: {...}},
+    //               memberCount, missingRows
+    //
+    // ここだけは「メンバーなら読める」ではない。
+    // 誰がいくら手配したかが一覧で並ぶため、canSeeTeamKpi を持つ人だけ。
+    //
+    // 画面に出さないだけでは足りない。リポジトリが公開されているので、
+    // アプリのコードを読めば取得のしかたは誰でも分かる。読み取り自体を
+    // ここで拒否しないと、開発者ツールから普通に取れてしまう。
+    //
+    // なお対応数・通話率・作業率は metrics 側にもあり、そちらは今までどおり
+    // 全メンバーが読める（合意のうえ現状維持）。ここで守っているのは
+    // 手配率と手配粗利額の2つ。
+    // ========================================================================
+    match /memberKpi/{docId=**} {
+      allow read: if canSeeTeamKpi();
+      allow write: if false;          // 書き込みは GAS（サービスアカウント）のみ
+    }
+
+    // ========================================================================
+    // 日次のメンバー別KPI
+    //   ドキュメントID = "YYYY-MM-DD"（1日1件）
+    //   フィールド: date, byMember{memberId: {...}}, memberCount, updatedAt
+    //
+    // memberKpi と同じ扱い。canSeeTeamKpi を持つ人だけ。
+    // 日ごとに分けているのは、GAS が同じ日を何度書いても同じIDに上書きする
+    // だけで済むようにするため（毎時実行でも二重計上しない）。
+    // ========================================================================
+    match /memberKpiDaily/{docId} {
+      allow read: if canSeeTeamKpi();
+      allow write: if false;
+    }
+
+    // ========================================================================
+    // 着地シナリオ（月次の着地見込シミュレーター）
+    //   ドキュメントID = "YYYY_M"（月ごと）
+    //   フィールド: monthId, byMember{memberId: {days, remain, perDay,
+    //               arrangeRate, unitPrice}}, updatedAt, updatedBy
+    //
+    // 【ここだけ画面から書き込める】
+    // 他のKPI系は GAS が書いて画面は読むだけだが、これは入力ツールなので
+    // 画面から書く。書けるのは canSeeTeamKpi を持つ人だけ。
+    //
+    // 【読みも canSeeTeamKpi に絞る】
+    // 中身は人ごとの手配粗利の着地予測で、memberKpi と同じ機微さがある。
+    // 画面に出さないだけでは足りない（リポジトリが公開されているので、
+    // 取得のしかたはコードを読めば分かる）。読み取り自体をここで拒否する。
+    //
+    // 【全員ぶんを1ドキュメントに入れている】
+    // メンバーごとに分けると、1人が保存するたびに人数分の書き込みが要る。
+    // 同時編集は起きうるが、想定利用者はリーダーと管理職の数人で、
+    // 1on1 の場で使うものなので、最後に保存した内容が残る形でよい。
+    // ========================================================================
+    match /landingScenario/{monthId} {
+      allow read:  if canSeeTeamKpi();
+      allow write: if canSeeTeamKpi()
+                   && request.resource.data.monthId == monthId
+                   && request.resource.data.updatedBy == myMemberId();
+    }
     match /syncStatus/{docId=**} {
       allow read: if isMember();
       allow write: if false;
