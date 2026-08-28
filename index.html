@@ -2302,7 +2302,12 @@ async function loadMasters(){
   var tsnap = await getDocs(query(collection(db, "teams"), orderBy("order")));
   session.teams = tsnap.docs.map(function(d){
     var v = d.data();
-    return { id:d.id, label:v.label || d.id, order:v.order || 0, colorKey:v.colorKey || "none" };
+    return { id:d.id, label:v.label || d.id, order:v.order || 0, colorKey:v.colorKey || "none",
+             // KPIの測定対象にするか。未設定なら対象。
+             // 管理職チームのように、同じ予算で測っても意味がない括りを
+             // false にすると、着地シナリオと課題チップから丸ごと外れる。
+             // メンバー1人ずつ設定しなくて済むよう、チーム側に置いてある。
+             kpiTarget: v.kpiTarget !== false };
   });
 
   var msnap = await getDocs(query(collection(db, "members"), orderBy("order")));
@@ -6535,10 +6540,11 @@ var ISSUE_MAX = 3;
  * 画面に出すのは比率ではなく「あと◯件」。並び順の根拠と表示は別物。
  */
 function teamKpiIssues(v, b, member){
-  // 管理職や他拠点扱いの人は判定しない（Firestore の kpiIssueTarget）。
-  // 役割が違う人を同じ予算で測っても、出てくるのは仕事の違いであって課題ではない。
-  if(member && member.kpiIssueTarget === false) return { off: true, few: false, list: [] };
-  if(member && member.role === "admin")         return { off: true, few: false, list: [] };
+  // 管理職や他拠点扱いの人は判定しない。判定の条件は isKpiTarget にまとめてある
+  //（role が admin ／ members.kpiIssueTarget が false ／ 所属チームの
+  //   kpiTarget が false）。着地シナリオと同じ基準にしておかないと、
+  // 片方には出て片方には出ない、という分かりにくい状態になる。
+  if(member && !isKpiTarget(member)) return { off: true, few: false, list: [] };
   if(typeof v.handled !== "number" || v.handled < ISSUE_MIN_HANDLED){
     return { few: true, list: [] };
   }
@@ -6881,6 +6887,26 @@ function landSnapshot(members){
     return setDoc(doc(db, "landingScenario", payload.monthId), payload);
   }, true);
 }
+/**
+ * KPIの測定対象か。
+ *
+ * 次のいずれかに当てはまる人は外す。
+ *   ・role が admin
+ *   ・members の kpiIssueTarget が false
+ *   ・所属チームの kpiTarget が false（管理職チームなど）
+ *
+ * 役割の違う人を同じ予算で測っても、出てくるのは仕事の違いであって
+ * 課題でも着地でもない。入力欄が並ぶだけ邪魔になる。
+ */
+function isKpiTarget(m){
+  if(!m) return false;
+  if(m.role === "admin") return false;
+  if(m.kpiIssueTarget === false) return false;
+  var t = (session.teams || []).filter(function(x){ return x.id === m.team; })[0];
+  if(t && t.kpiTarget === false) return false;
+  return true;
+}
+
 /** 入力欄と計算値で同じ書式を使う。kind: num / rate / yen */
 function landFmt(x, kind){
   if(x === null || x === undefined || !isFinite(x)) return "";
@@ -7012,6 +7038,14 @@ function renderLanding(members, teams){
     r.bud = teamKpiOf(m.id, "budget").gross_profit;
     r.id = m.id;
     return r;
+  }
+
+  // 測定対象だけを並べる。管理職などは行ごと出さない。
+  // 入力欄が並んでいると「入れなければいけない」と読めてしまう。
+  members = members.filter(isKpiTarget);
+  if(!members.length){
+    return '<div class="side-title">着地シナリオ</div>' +
+      '<div class="lnd-note">このチームに測定対象のメンバーがいません。</div>';
   }
 
   var body = "";
@@ -8309,7 +8343,7 @@ function bindEvents(){
     else if(act==="tkpi-team"){ state.teamKpiTeam = id; render(); }
     else if(act==="tkpi-grp"){ state.teamKpiGroup = id; render(); }
     else if(act==="tkpi-mode"){ state.teamKpiMode = id; render(); }
-    else if(act==="land-snap"){ landSnapshot(teamKpiMembers()); }
+    else if(act==="land-snap"){ landSnapshot(teamKpiMembers().filter(isKpiTarget)); }
     else if(act==="daily-day"){ state.dailyDay = parseInt(id, 10) || 0; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
