@@ -48,6 +48,10 @@ var TAB = {
   // 月間の通話率・作業率・待機率（CC_アクション管理から IMPORTRANGE）。
   // 任意の機能。このタブが無ければ何もしない。
   prodKpi:      "prod_kpi",
+  // 工数（稼働日数）と残日数。手入力するタブ。
+  // シフトから自動計算もできるが、半休や研修の扱いが運用で決まっていない
+  // うちは手で入れたほうが早い。仕組みが固まったら自動化する。
+  workdays:     "workdays",
   log:          "_log"
 };
 
@@ -185,7 +189,7 @@ function forceSync() {
 
 function runSync(trigger) {
   var startedAt = new Date();
-  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, mgmtActualRow: 0, mgmtBudgetMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], prodBroken: 0, prodSkip: "", unmatched: [] };
+  var counts = { shiftMonths: 0, members: 0, goalTeams: 0, mgmtMembers: 0, mgmtActualRow: 0, mgmtBudgetMembers: 0, workdaysMembers: 0, dailyMembers: 0, dailyBlocks: 0, dailyStale: 0, prodMembers: 0, prodBlocks: 0, prodMissing: [], prodBroken: 0, prodSkip: "", unmatched: [] };
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -245,6 +249,10 @@ function runSync(trigger) {
         mergeProdKpi_(memberKpi.byMember, prod.byMember);
         counts.prodMembers = prod.memberCount;
       }
+      // 工数・残日数（手入力）。着地見込の計算に使う。
+      var wd = readWorkdays_(ss, nameToId, counts);
+      memberKpi.workdaysByMember = wd ? wd.byMember : {};
+
       writeDoc_(projectId, token, "memberKpi/current", memberKpi);
       counts.mgmtMembers = memberKpi.memberCount;
     }
@@ -284,6 +292,7 @@ function runSync(trigger) {
       prodSkipReason: counts.prodSkip || "",
       mgmtActualRow: counts.mgmtActualRow || 0,
       mgmtBudgetMemberCount: counts.mgmtBudgetMembers || 0,
+      workdaysMemberCount: counts.workdaysMembers || 0,
       unmatchedNames: counts.unmatched
     });
 
@@ -583,6 +592,44 @@ function mergeProdKpi_(base, over) {
     if (!base[id]) base[id] = {};
     for (var k in over[id]) base[id][k] = over[id][k];
   }
+}
+
+/**
+ * 工数と残日数を読む（手入力の workdays タブ）。
+ *
+ *   氏名        工数   残日数
+ *   金兒 胤栄    18     4
+ *   根岸 吉寿    14.5   2
+ *
+ * 【氏名で照合する】
+ * 行の順番が変わっても壊れないように、A列の氏名で members と突き合わせる。
+ * 見出し行や空行は氏名と一致しないので、そのまま無視される。
+ *
+ * 【0 と未入力を区別する】
+ * 工数が空の人はキーごと持たせない。0 を入れると、着地の計算で
+ * 「1日あたり = 手配粗利 ÷ 0」になって無限大が出る。
+ */
+function readWorkdays_(ss, nameToId, counts) {
+  var sheet = ss.getSheetByName(TAB.workdays);
+  if (!sheet) return null;                 // 任意の機能
+  var values = sheet.getDataRange().getValues();
+  if (isEmptyTab_(values)) return null;
+
+  var byMember = {};
+  for (var r = 0; r < values.length; r++) {
+    var memberId = nameToId[normalizeName_(values[r][0])];
+    if (!memberId) continue;
+    var days   = toNumber_(values[r][1]);
+    var remain = toNumber_(values[r][2]);
+    var rec = {};
+    if (days   !== null && days   > 0) rec.days   = days;
+    if (remain !== null && remain >= 0) rec.remain = remain;
+    if (Object.keys(rec).length) byMember[memberId] = rec;
+  }
+
+  if (counts) counts.workdaysMembers = Object.keys(byMember).length;
+  if (!Object.keys(byMember).length) return null;
+  return { byMember: byMember };
 }
 
 /** メンバー別の主要KPIを読む（Management Sheet 由来）。
@@ -1132,7 +1179,7 @@ function checkSetup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   [TAB.cfg, TAB.shiftPrev, TAB.shiftCur, TAB.shiftNext, TAB.productivity,
    TAB.goalAll, TAB.goalTeamA, TAB.goalTeamB, TAB.goalOther,
-   TAB.mgmtKpi, TAB.dailyKpi, TAB.prodKpi].forEach(function (t) {
+   TAB.mgmtKpi, TAB.dailyKpi, TAB.prodKpi, TAB.workdays].forEach(function (t) {
     var sheet = ss.getSheetByName(t);
     if (!sheet) { out.push("無し  タブ " + t); return; }
     var v = sheet.getDataRange().getValues();
