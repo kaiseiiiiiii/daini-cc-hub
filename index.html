@@ -2195,7 +2195,11 @@ async function onAuthChanged(user){
       // いる。members に項目を足したら **両方** に足すこと。片方だけだと、
       // 一覧には出るのに自分の判定には効かない（実際それで
       // 「権限を付けたのにタブが出ない」を出した）。
-      canSeeTeamKpi: m.canSeeTeamKpi === true
+      canSeeTeamKpi: m.canSeeTeamKpi === true,
+      // 課題（赤いチップ）の対象にするか。既定は対象にする。
+      // 管理職や、他拠点扱いで比べても意味がない人は Firestore 側で
+      // false にする。氏名をコードに書かないための項目。
+      kpiIssueTarget: m.kpiIssueTarget !== false
     };
     await loadMasters();
     loadLegacy();
@@ -2250,6 +2254,9 @@ async function loadMasters(){
       active: v.active !== false,
       // シフト表に載せるか。未設定なら載せる（既存メンバーの挙動を変えないため）。
       inShift: v.inShift !== false,
+      // 課題（赤いチップ）の対象にするか。未設定なら対象にする。
+      // 管理職や他拠点扱いの人は false にすると、チップも赤いマスも出ない。
+      kpiIssueTarget: v.kpiIssueTarget !== false,
       // チーム実績タブを見られるか。既定は false（持っていない人は見られない）。
       // 画面の出し分けはここを見るが、実際の可否は firestore.rules 側が
       // 独立に判定している。ここを書き換えても data は取れない。
@@ -6391,10 +6398,10 @@ function teamKpiCell(def, val){
  * 目印は100%。この違いを出さないと、月半ばの達成率50%が
  * 「順調」なのか「遅れ」なのか読めない。
  */
-// 「大幅な乖離」とみなす境目（達成率が目安から何ポイント離れているか）。
-// 月の途中で数ポイント下振れするのは普通なので、そこを拾うと全員に
-// チップが並んで読まれなくなる。ここを上げれば厳しく、下げれば広く出る。
-var ISSUE_GAP_MIN = 15;
+// 課題として拾う最小の乖離。0 より大きい値にすると「予算に届いていない
+// だけ」の指標を落とせる。いまは 0 にして、予算に届いていないものの中から
+// 乖離の大きい順に ISSUE_MAX 件を必ず出す（上位3件を見たい、という運用）。
+var ISSUE_GAP_MIN = 0;
 
 // 課題から外す指標。
 // 買取粗利額とその内訳は KGI（最終的な成果）であって、直接手を打つ対象では
@@ -6420,12 +6427,14 @@ var ISSUE_MAX = 3;
  * メンバーの課題を抽出する。
  *
  * 【拾う条件】
- * 予算に対して ISSUE_GAP_MIN ポイント以上の乖離があるもの。
+ * 予算に届いていない指標のうち、乖離の大きい順に最大 ISSUE_MAX 件。
  * 件数・金額は経過ペース比、率は予算そのものとの比で見る。
  *
  * チーム平均との比較はしない。チーム内の相対順位ではなく、
- * 会社が置いた予算に届いているかを見たいため。全員が予算から
- * 離れていれば全員に出るし、それが事実。
+ * 会社が置いた予算に届いているかを見たいため。
+ *
+ * 予算に届いている指標は出さない。3件に満たない人は満たないまま出す。
+ * 好調な人に無理やり3件並べると、赤が「課題」を意味しなくなる。
  *
  * 【低いほうが良い指標は逆に見る】
  * 作業率・待機率・不可率は、予算を超えているときが課題。
@@ -6447,7 +6456,11 @@ var ISSUE_MAX = 3;
  * 同じ物差しで並べるために、比率で比べている（円と件を直接比べられない）。
  * 画面に出すのは比率ではなく「あと◯件」。並び順の根拠と表示は別物。
  */
-function teamKpiIssues(v, b){
+function teamKpiIssues(v, b, member){
+  // 管理職や他拠点扱いの人は判定しない（Firestore の kpiIssueTarget）。
+  // 役割が違う人を同じ予算で測っても、出てくるのは仕事の違いであって課題ではない。
+  if(member && member.kpiIssueTarget === false) return { off: true, few: false, list: [] };
+  if(member && member.role === "admin")         return { off: true, few: false, list: [] };
   if(typeof v.handled !== "number" || v.handled < ISSUE_MIN_HANDLED){
     return { few: true, list: [] };
   }
@@ -6465,7 +6478,7 @@ function teamKpiIssues(v, b){
     var low = (def.g === "low");
 
     var gap = low ? (pct - target) : (target - pct);   // 正の値 = 予算から離れている
-    if(gap < ISSUE_GAP_MIN) return;
+    if(gap <= 0 || gap < ISSUE_GAP_MIN) return;   // 予算に届いているものは出さない
 
     // 【画面には「あと◯件」を出す】
     // 達成率の差（ポイント）は、それ自体が何を指すのか説明が要る。
@@ -6502,8 +6515,9 @@ function teamKpiIssues(v, b){
 }
 
 /** 課題のチップ。メンバーカードの氏名の下に出す */
-function teamKpiIssueChips(v, b){
-  var r = teamKpiIssues(v, b);
+function teamKpiIssueChips(v, b, member){
+  var r = teamKpiIssues(v, b, member);
+  if(r.off) return "";        // 対象外の人は何も出さない
   if(r.few){
     return '<div class="tkpi-issues">' +
       '<span class="tkpi-issue is-few" title="対応数が' + ISSUE_MIN_HANDLED +
@@ -6549,7 +6563,7 @@ function issueTip(x){
   }
   return d.l + "は" + actual + "で、予算 " + need + " に届いていません" + gapTxt;
 }
-function teamKpiBudgetCell(def, actual, budget){
+function teamKpiBudgetCell(def, actual, budget, badKeys){
   var hasB = (typeof budget === "number" && budget > 0);
   var hasA = (typeof actual === "number");
 
@@ -6573,10 +6587,10 @@ function teamKpiBudgetCell(def, actual, budget){
   // 低いほうが良い指標（作業率・待機率・不可率）は、予算を超えたら未達。
   var low = (def.g === "low");
   var good = low ? (pct <= pace) : (pct >= pace);
-  // 予算から大きく離れているものは赤。課題チップと同じ基準にしてある
-  //（チップに出ている指標が、マスでも赤くなる）。
-  var gapPt = low ? (pct - pace) : (pace - pct);
-  var bad = !ISSUE_EXCLUDE[def.key] && gapPt >= ISSUE_GAP_MIN;
+  // 赤くするのは「その人の課題上位3件」に入っているマスだけ。
+  // チップと同じ集合を渡しているので、チップに出ている指標が
+  // マスでも赤くなる。基準を2か所に書くと必ずずれるので集合で渡す。
+  var bad = !!(badKeys && badKeys[def.key]);
 
   var bar = Math.max(0, Math.min(100, pct));
   var mark = Math.max(0, Math.min(100, pace));
@@ -6786,7 +6800,9 @@ function renderTeamKpi(){
   var rollB = budgetMode ? teamKpiRollup(members, "budget") : null;
 
   var gridHtml = defs.map(function(def){
-    return budgetMode ? teamKpiBudgetCell(def, roll[def.key], rollB[def.key])
+    // チーム計に赤は付けない。課題は個人ごとの上位3件という定義なので、
+    // 集計行に同じ色を出すと意味が変わってしまう。
+    return budgetMode ? teamKpiBudgetCell(def, roll[def.key], rollB[def.key], null)
                       : teamKpiCell(def, roll[def.key]);
   }).join("");
 
@@ -6794,13 +6810,17 @@ function renderTeamKpi(){
     var v = teamKpiOf(m.id);
     // 予算は課題の判定に常に要るので、表示モードに関係なく取る。
     var b = teamKpiOf(m.id, "budget");
-    var cells = defs.map(function(def){
-      return budgetMode ? teamKpiBudgetCell(def, v[def.key], b[def.key])
-                        : teamKpiCell(def, v[def.key]);
-    }).join("");
     // 課題は35指標すべてから拾う。いま開いているグループには限らない
     //（「対応」を見ているときに粗利の課題を見落とすのを防ぐ）。
-    var issues = hasBudget ? teamKpiIssueChips(v, b) : "";
+    var ir = hasBudget ? teamKpiIssues(v, b, m) : { list: [] };
+    var badKeys = {};
+    (ir.list || []).forEach(function(x){ badKeys[x.def.key] = true; });
+
+    var cells = defs.map(function(def){
+      return budgetMode ? teamKpiBudgetCell(def, v[def.key], b[def.key], badKeys)
+                        : teamKpiCell(def, v[def.key]);
+    }).join("");
+    var issues = hasBudget ? teamKpiIssueChips(v, b, m) : "";
     return '<div class="card tkpi-member">' +
       '<div class="tkpi-name">'+avatar(m.id,28)+'<span>'+esc(m.displayName)+'</span></div>' +
       issues +
@@ -6871,9 +6891,10 @@ function renderTeamKpi(){
       'ただし<b>通話率・作業率・待機率は CC_アクション管理の月間列</b>です' +
       '（Management Sheet 側は第二CCが 0.00% のままのため）。' +
       '手配率・手配買取率・ホットレートのチーム計は、率の平均ではなく合計どうしの割り算です。' +
-      '<br><b>赤いチップ</b>は、<b>予算から' + ISSUE_GAP_MIN + 'ポイント以上離れている</b>指標です' +
-      '（35指標すべてから、原因のまとまりごとに1件・最大3件）。' +
-      '買取粗利額とその内訳はKGI（結果）なので対象外にしています。' +
+      '<br><b>赤いチップ</b>は、その人が<b>予算に最も届いていない指標の上位3件</b>です' +
+      '（35指標すべてから、原因のまとまりごとに1件）。同じ指標は予算比のマスも赤くなります。' +
+      '予算に届いている指標は出しません。買取粗利額とその内訳はKGI（結果）なので対象外です。' +
+      '管理職と、Firestore で kpiIssueTarget を false にした人は判定しません。' +
       '「あと◯件」は<b>今日時点の目安</b>（予算×経過日数の割合）までの不足で、月末までの不足ではありません。' +
       '率は予算そのものとの差です。マウスを置くと計算の内訳が出ます。' +
       '対応数が' + ISSUE_MIN_HANDLED + '件に届かない人は、率が安定しないため判定していません。</div>' +
