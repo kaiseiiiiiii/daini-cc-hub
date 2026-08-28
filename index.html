@@ -1104,6 +1104,35 @@ body.wide .pc-cols:has(.pc-side:empty),
 .tkpi-nob{color:var(--color-text-sub); font-weight:400;}
 /* 課題のチップ。氏名とマスの間に置く。
    予算から大きく離れている指標だけが出る（KGI の買取粗利額は除く）。 */
+/* 着地シナリオの表。原本の予実シートと同じ列並び */
+.ln-tbl{font-size:12px;}
+.ln-tbl th,.ln-tbl td{padding:5px 7px;}
+/* 見出しの色。
+   .lnd-tbl thead th（詳細度 0,1,2）のほうが .ln-head2 th（0,1,1）より強く、
+   そのままだと補助テキスト色に負けてライトで 4.4:1 になる。
+   テーブルのクラスを足して詳細度で勝たせる。 */
+.lnd-tbl thead tr.ln-head2 th{font-size:11px; font-weight:700; text-align:center;
+  color:var(--color-text); border-bottom:2px solid var(--color-border-strong);
+  padding-bottom:4px;}
+.lnd-tbl.ln-tbl thead th{color:var(--color-text);}
+.ln-tbl .ln-sep{border-left:2px solid var(--color-border-strong);}
+.ln-group{background:var(--color-bg-sub); font-weight:700;}
+.ln-group th{font-weight:700;}
+.ln-calc{color:var(--color-text);}
+/* 入力できるマス。色が付いているところだけ触る、と一目で分かるようにする */
+.ln-in{background:var(--color-accent-tint); padding:2px 4px;}
+.ln-in input{width:58px; font:inherit; font-size:12px; text-align:right;
+  font-variant-numeric:tabular-nums; padding:3px 5px; border-radius:5px;
+  border:1px solid var(--color-border-strong); background:var(--color-bg);
+  color:var(--color-text);}
+.ln-in input:focus{outline:2px solid var(--color-accent); outline-offset:1px;}
+.ln-in input::placeholder{color:var(--color-text-sub); opacity:1;}
+.ln-land{font-weight:700; color:var(--color-accent-ink);}
+.ln-saved{margin-left:10px; font-size:11px; font-weight:400; color:var(--color-grow-ink);}
+.ln-bar{display:flex; align-items:center; gap:10px; margin:0 0 10px;}
+.ln-snap{font-size:12px; padding:5px 12px;}
+.ln-snapat{font-size:11px; color:var(--color-text-sub);}
+.lnd-tbl .ln-down{color:var(--color-alert-ink); font-weight:700;}
 /* 着地見込の表 */
 .tbl-wrap{overflow-x:auto; margin:0 0 18px;}
 .lnd-tbl{border-collapse:collapse; width:100%; font-size:13px;
@@ -1736,6 +1765,8 @@ var state = {
   todayShiftOpen:false,
   metrics:null, goals:null, syncStatus:null, syncedAtMs:null,
   memberKpi:null,           // メンバー別KPI。canSeeTeamKpi を持つ人だけ購読する
+  landing:null,             // 着地シナリオの入力値（landingScenario/YYYY_M）
+  landingSavedAt:0,         // 直近で保存した時刻。画面に「保存しました」を出すため
   memberKpiDaily:[],        // 日次のメンバー別KPI。新しい日が先頭
   teamKpiTeam:"all",        // チーム実績タブで選んでいるチーム
   teamKpiGroup:"handle",   // 月次カードで選んでいる指標グループ
@@ -2378,6 +2409,8 @@ function attachSyncedData(){
   if(canSeeTeamKpi()){
     subscribeDoc("memberKpi", "current",   function(v){ state.memberKpi = v; });
     subscribeDailyKpi();
+    // 着地シナリオ。当月ぶんだけ。書き込みもここを見ている人が行う。
+    subscribeDoc("landingScenario", monthOf(0).id, function(v){ state.landing = v; });
   }
   subscribeDoc("goals", "current",         function(v){ state.goals = v; });
   subscribeDoc("syncStatus", "spreadsheet", function(v){
@@ -6619,114 +6652,371 @@ function monthDays(){
            total: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() };
 }
 
-// 予実サマリに出す指標。scale=true の行だけ日数で伸ばす。
-var LANDING_ROWS = [
-  { key:"handled",      l:"対応数",       u:"件", fmt:"int",  scale:true  },
-  { key:"arranged",     l:"手配数",       u:"件", fmt:"int",  scale:true  },
-  { key:"arrange_rate", l:"手配率",       u:"%",  fmt:"rate", scale:false },
-  { key:"gross_profit", l:"手配粗利額",   u:"",   fmt:"yen",  scale:true  },
-  { key:"bought",       l:"買取数",       u:"件", fmt:"int",  scale:true  },
-  { key:"buy_rate",     l:"手配買取率",   u:"%",  fmt:"rate", scale:false },
-  { key:"buy_unit",     l:"買取粗利単価", u:"円", fmt:"int",  scale:false },
-  { key:"buy_gross",    l:"買取粗利額",   u:"",   fmt:"yen",  scale:true  }
-];
+/** 数値として使える値を返す。空文字・null・NaN は fallback を返す */
+function numOr(v, fb){
+  return (typeof v === "number" && isFinite(v)) ? v : fb;
+}
+
+// 原本の =IFERROR(a/b,"") と同じ。0除算と欠損は空にする。
+function ldiv(a, b){
+  return (typeof a === "number" && typeof b === "number" && b !== 0) ? a / b : null;
+}
+function lpct(a, b){
+  var r = ldiv(a, b);
+  return r === null ? null : r * 100;
+}
+function lmul(a, b){
+  return (typeof a === "number" && typeof b === "number") ? a * b : null;
+}
 
 /**
- * メンバー1人の着地見込。
+ * メンバー1人ぶんの計算。
  *
- *   着地 = 実績 + 残日数 × （実績 ÷ 工数）
+ * 【実績】原本の1枚目
+ *   工数・対応数・手配数・手配粗利 … 手入力（アプリでは工数だけ手入力、
+ *   残り3つは Firestore から入る。値そのものは同じ）
+ *   対応数/1Day  = 対応数 ÷ 工数
+ *   手配率       = 手配数 ÷ 対応数
+ *   手配粗利/1人  = 手配粗利 ÷ 工数
+ *   手配粗利単価  = 手配粗利 ÷ 手配数
  *
- * 工数が無い人は着地を出さない。0 で割ると無限大になるし、
- * 「工数を入れ忘れている」のか「本当に0日」なのかを数字で誤魔化さない。
+ * 【これから】原本の2枚目
+ *   残日数・1Day・手配率・手配粗利単価 … 手入力
+ *   対応数 = 1Day × 残日数
+ *   手配数 = 対応数 × 手配率
+ *   手配粗利 = 手配数 × 手配粗利単価
+ *   手配粗利/1人 = 手配粗利 ÷ 残日数
+ *
+ * これからの1Day・手配率・単価が未入力なら実績の値を使う。
+ * ＝いまのペースのまま行った場合。
  */
-function landingOf(v, wd){
-  var days   = (wd && typeof wd.days   === "number") ? wd.days   : null;
-  var remain = (wd && typeof wd.remain === "number") ? wd.remain : null;
-  if(days === null || days <= 0) return null;
+function landCalcMember(v, s){
+  s = s || {};
+  var days = numOr(s.days, null);
+  var A = { days:days, handled:v.handled, arranged:v.arranged, gross:v.gross_profit };
+  A.perDay  = ldiv(A.handled, days);
+  A.rate    = lpct(A.arranged, A.handled);
+  A.perHead = ldiv(A.gross, days);
+  A.unit    = ldiv(A.gross, A.arranged);
 
-  var out = { days: days, remain: remain };
-  var gp = v.gross_profit;
-  if(typeof gp === "number"){
-    out.perDay  = gp / days;
-    out.landing = (remain === null) ? gp : gp + remain * out.perDay;
+  var remain = numOr(s.remain, null);
+  var F = { remain:remain,
+            perDay: numOr(s.perDay,      A.perDay),
+            rate:   numOr(s.arrangeRate, A.rate),
+            unit:   numOr(s.unitPrice,   A.unit) };
+  F.handled  = lmul(F.perDay, remain);
+  F.arranged = (F.handled !== null && typeof F.rate === "number") ? F.handled * F.rate / 100 : null;
+  F.gross    = lmul(F.arranged, F.unit);
+  F.perHead  = ldiv(F.gross, remain);
+
+  var landing = (typeof A.gross === "number")
+    ? A.gross + (typeof F.gross === "number" ? F.gross : 0) : null;
+  return { A:A, F:F, landing:landing };
+}
+
+/**
+ * チーム行・全体行。
+ *
+ * 【メンバーの合計から作る】
+ * 原本は 工数・対応数・手配数・手配粗利・残日数・これからの各数量・予算・着地を
+ * すべて SUM している。チーム行の入力欄から計算し直すのではない。
+ * 1Day をメンバーごとに変えたとき、合計が合わなくなるため。
+ *
+ * 率と単価だけは SUM できないので、合計どうしの割り算にする。
+ *   実績 1Day    = 対応数計 ÷ 工数計
+ *   実績 手配率   = 手配数計 ÷ 対応数計
+ *   これから 1Day = これから対応数計 ÷ 残日数計
+ *   単価         = 手配粗利計 ÷ 手配数計
+ *
+ *   これから 粗利/1人 = これから手配粗利計 ÷ 残日数計
+ *
+ * 率・単価・1人あたりは合計できないので、すべて合計どうしの割り算にする。
+ * 個人の値を足し合わせると意味を成さない数字になる。
+ */
+function landAggregate(list){
+  function sum(pick){
+    var t = null;
+    list.forEach(function(r){ var x = pick(r); if(typeof x === "number") t = (t||0) + x; });
+    return t;
   }
-  if(typeof v.handled === "number") out.perDayHandled = v.handled / days;
-  return out;
-}
-/** 着地見込セクション全体 */
-function renderLanding(members, roll, rollB){
-  var wdAll = (state.memberKpi && state.memberKpi.workdaysByMember) || {};
-  var md = monthDays();
+  var A = { days:     sum(function(r){ return r.A.days; }),
+            handled:  sum(function(r){ return r.A.handled; }),
+            arranged: sum(function(r){ return r.A.arranged; }),
+            gross:    sum(function(r){ return r.A.gross; }) };
+  A.perDay  = ldiv(A.handled, A.days);
+  A.rate    = lpct(A.arranged, A.handled);
+  A.perHead = ldiv(A.gross, A.days);
+  A.unit    = ldiv(A.gross, A.arranged);
 
-  // ── 予実サマリ（暦日で伸ばす）──
-  var rows = LANDING_ROWS.map(function(r){
-    var act = roll[r.key], bud = rollB ? rollB[r.key] : null;
-    var land = (typeof act === "number")
-      ? (r.scale ? act / md.passed * md.total : act) : null;
-    var rate = (typeof act === "number" && typeof bud === "number" && bud > 0)
-      ? Math.round(act / bud * 1000) / 10 : null;
-    function f(val){
-      if(val === null || val === undefined) return "—";
-      if(r.fmt === "yen") return yenShort(val);
-      if(r.fmt === "int") return Math.round(val).toLocaleString("ja-JP") + r.u;
-      return (Math.round(val * 10) / 10) + r.u;
+  var F = { remain:   sum(function(r){ return r.F.remain; }),
+            handled:  sum(function(r){ return r.F.handled; }),
+            arranged: sum(function(r){ return r.F.arranged; }),
+            gross:    sum(function(r){ return r.F.gross; }) };
+  F.perDay  = ldiv(F.handled, F.remain);
+  F.rate    = lpct(F.arranged, F.handled);
+  F.perHead = ldiv(F.gross, F.remain);
+  F.unit    = ldiv(F.gross, F.arranged);
+
+  return { A:A, F:F,
+           landing: sum(function(r){ return r.landing; }),
+           bud:     sum(function(r){ return r.bud; }) };
+}
+// 入力のたびに書くと、1文字打つごとに Firestore へ行ってしまう。
+// 手が止まってからまとめて1回書く。
+var landSaveTimer = null;
+var landPending = null;
+
+/**
+ * 着地シナリオの入力を保存する。
+ *
+ * 全員ぶんを1ドキュメントに入れている。メンバーごとに分けると、
+ * 1人ぶん直すたびに人数分の書き込みが要る。同時編集は起きうるが、
+ * 使うのはリーダーと管理職の数人で 1on1 の場なので、
+ * 最後に保存した内容が残る形でよい（rules 側も同じ前提）。
+ *
+ * 空欄は「未入力」。0 とは区別する。0 を保存すると
+ * 「0日で計算する」意味になってしまう。
+ */
+function landSave(memberId, field, raw){
+  if(!canSeeTeamKpi()) return;
+  var cur = (state.landing && state.landing.byMember) || {};
+  if(!landPending){
+    landPending = {};
+    for(var k in cur) landPending[k] = Object.assign({}, cur[k]);
+  }
+  if(!landPending[memberId]) landPending[memberId] = {};
+
+  var s = String(raw == null ? "" : raw).trim();
+  if(s === ""){
+    delete landPending[memberId][field];        // 未入力に戻す
+  }else{
+    var n = Number(s);
+    if(!isFinite(n)) return;                    // 数字にならない入力は捨てる
+    landPending[memberId][field] = n;
+  }
+
+  // 画面はすぐ更新する。保存の往復を待たせない。
+  state.landing = Object.assign({}, state.landing || {}, { byMember: landPending });
+
+  if(landSaveTimer) clearTimeout(landSaveTimer);
+  landSaveTimer = setTimeout(function(){
+    landSaveTimer = null;
+    var payload = {
+      monthId: monthOf(0).id,
+      byMember: landPending,
+      snapshot: (state.landing && state.landing.snapshot) || {},
+      snapshotLabel: (state.landing && state.landing.snapshotLabel) || "",
+      updatedAt: serverTimestamp(),
+      updatedBy: currentUserId()
+    };
+    landPending = null;
+    write("着地シナリオ", function(){
+      return setDoc(doc(db, "landingScenario", payload.monthId), payload);
+    }, false).then(function(ok){
+      if(!ok) return;
+      state.landingSavedAt = Date.now();
+      render();
+      setTimeout(function(){ state.landingSavedAt = 0; render(); }, 2500);
+    });
+  }, 700);
+}
+/**
+ * いまの着地を「基準」として控える。
+ *
+ * 原本は前回1on1シートの同じセルを直接参照しているが、アプリには
+ * 前回シートが無い。押した時点の着地をメンバーごとに保存して、
+ * 次からそことの差を出す。
+ *
+ * 上書きなので、押した瞬間から基準が入れ替わる。
+ * 1on1 の直前に押す運用を想定している。
+ */
+function landSnapshot(members){
+  if(!canSeeTeamKpi()) return;
+  var sc = (state.landing && state.landing.byMember) || {};
+  var wd = (state.memberKpi && state.memberKpi.workdaysByMember) || {};
+  var snap = {};
+  members.forEach(function(m){
+    var s = sc[m.id] || {}, w = wd[m.id] || {};
+    var r = landCalcMember(teamKpiOf(m.id), {
+      days:        numOr(s.days,   numOr(w.days, null)),
+      remain:      numOr(s.remain, numOr(w.remain, null)),
+      perDay:      numOr(s.perDay, null),
+      arrangeRate: numOr(s.arrangeRate, null),
+      unitPrice:   numOr(s.unitPrice, null)
+    });
+    if(typeof r.landing === "number") snap[m.id] = Math.round(r.landing);
+  });
+  var payload = {
+    monthId: monthOf(0).id,
+    byMember: sc,
+    snapshot: snap,
+    snapshotLabel: (function(){ var d = new Date();
+      return (d.getMonth()+1)+"月"+d.getDate()+"日 "+d.getHours()+"時"+
+             ("0"+d.getMinutes()).slice(-2)+"分"; })(),
+    updatedAt: serverTimestamp(),
+    updatedBy: currentUserId()
+  };
+  write("着地の記録", function(){
+    return setDoc(doc(db, "landingScenario", payload.monthId), payload);
+  }, true);
+}
+/**
+ * 着地シナリオの1行。
+ * R は landCalcMember / landAggregate の戻り値。
+ * mid が null の行（チーム・全体）は入力欄を出さず、計算値だけ見せる。
+ */
+function landRow(label, R, bud, s, mid, prev){
+  var isGroup = (mid === null || mid === undefined);
+  var A = R.A, F = R.F;
+  var rate = lpct(R.landing, bud);
+  var diff = (typeof R.landing === "number" && typeof prev === "number")
+    ? R.landing - prev : null;
+
+  function n(x){ return (typeof x === "number") ? Math.round(x).toLocaleString("ja-JP") : "—"; }
+  function p(x){ return (typeof x === "number") ? (Math.round(x*10)/10)+"%" : "—"; }
+  function y(x){ return (typeof x === "number") ? yenShort(x) : "—"; }
+
+  // 入力できるマス。保存した値だけを value に入れ、実際に使う値は placeholder。
+  // 実績から埋めた値を value に入れると、誰かが指定したように見えてしまう。
+  function inp(field, kind, eff, w){
+    function fmt(x){
+      if(x === null || x === undefined) return "";
+      if(kind === "rate") return (Math.round(x*10)/10) + "%";
+      if(kind === "yen")  return Math.round(x).toLocaleString("ja-JP");
+      return (Math.round(x*10)/10) + "";
     }
-    return '<tr>' +
-      '<th>'+esc(r.l)+'</th>' +
-      '<td>'+esc(f(bud))+'</td>' +
-      '<td>'+esc(f(act))+'</td>' +
-      '<td class="lnd-em">'+esc(f(land))+'</td>' +
-      '<td>'+(rate===null?"—":esc(rate+"%"))+'</td>' +
-    '</tr>';
-  }).join("");
+    if(isGroup) return '<td class="ln-calc">'+esc(fmt(eff) || "—")+'</td>';
+    var saved = numOr(s && s[field], null);
+    return '<td class="ln-in"><input type="number" step="any" inputmode="decimal" ' +
+      'data-land="'+esc(field)+'" data-mid="'+esc(mid)+'" ' +
+      'value="'+(saved===null?"":esc(Math.round(saved*100)/100+""))+'" ' +
+      'placeholder="'+esc(fmt(eff))+'" ' +
+      'title="'+esc(fmt(eff)+"（空欄なら実績と同じ値で計算します）")+'" ' +
+      'style="width:'+(w||58)+'px"></td>';
+  }
 
-  var summary =
-    '<div class="lnd-note">実績は' + md.passed + '日経過時点（全' + md.total + '日）。' +
-      '着地見込は<b>実績 ÷ 経過日数 × 総日数</b>。率と単価は日数で伸ばしません。' +
-      '達成率は<b>実績 ÷ 予算</b>です。</div>' +
-    '<div class="tbl-wrap"><table class="lnd-tbl">' +
-      '<thead><tr><th>指標</th><th>予算</th><th>実績</th><th>着地見込</th><th>達成率</th></tr></thead>' +
-      '<tbody>'+rows+'</tbody>' +
-    '</table></div>';
-
-  // ── メンバー別（工数・残日数で伸ばす）──
-  var body = members.map(function(m){
-    var v = teamKpiOf(m.id);
-    var b = teamKpiOf(m.id, "budget");
-    var L = landingOf(v, wdAll[m.id]);
-    function n(x){ return (typeof x === "number") ? Math.round(x).toLocaleString("ja-JP") : "—"; }
-    function y(x){ return (typeof x === "number") ? yenShort(x) : "—"; }
-    function r1(x){ return (typeof x === "number") ? (Math.round(x*10)/10)+"%" : "—"; }
-    var bud = b.gross_profit;
-    var rate = (L && typeof L.landing === "number" && typeof bud === "number" && bud > 0)
-      ? Math.round(L.landing / bud * 1000) / 10 : null;
-    return '<tr>' +
-      '<th>'+esc(m.displayName)+'</th>' +
-      '<td>'+(L?esc(L.days+""):'<span class="lnd-miss">未入力</span>')+'</td>' +
-      '<td>'+(L&&L.remain!==null?esc(L.remain+""):"—")+'</td>' +
-      '<td>'+esc(n(v.handled))+'</td>' +
-      '<td>'+esc(L&&L.perDayHandled!==undefined?n(L.perDayHandled):"—")+'</td>' +
-      '<td>'+esc(r1(v.arrange_rate))+'</td>' +
-      '<td>'+esc(n(v.arranged))+'</td>' +
-      '<td>'+esc(y(v.gross_profit))+'</td>' +
-      '<td>'+esc(y(bud))+'</td>' +
-      '<td class="lnd-em">'+esc(L?y(L.landing):"—")+'</td>' +
-      '<td>'+(rate===null?"—":esc(rate+"%"))+'</td>' +
-    '</tr>';
-  }).join("");
-
-  var perMember =
-    '<div class="lnd-note">メンバー別の着地は<b>実績 ＋ 残日数 × (実績 ÷ 工数)</b>。' +
-      '人によって出勤日数が違うので、こちらは暦日ではなく工数で伸ばします。' +
-      '工数は同期用スプレッドシートの <code>workdays</code> タブに入れます。</div>' +
-    '<div class="tbl-wrap"><table class="lnd-tbl">' +
-      '<thead><tr><th>メンバー</th><th>工数</th><th>残日</th><th>対応数</th><th>1Day</th>' +
-      '<th>手配率</th><th>手配数</th><th>手配粗利</th><th>予算</th><th>着地</th><th>達成率</th></tr></thead>' +
-      '<tbody>'+body+'</tbody>' +
-    '</table></div>';
-
-  return '<div class="side-title">着地見込</div>' + summary + perMember;
+  return '<tr'+(isGroup?' class="ln-group"':'')+'>' +
+    '<th>'+esc(label)+'</th>' +
+    // ── 実績 ──
+    inp("days","num",A.days,52) +
+    '<td class="ln-calc">'+esc(n(A.handled))+'</td>' +
+    '<td class="ln-calc">'+esc(n(A.perDay))+'</td>' +
+    '<td class="ln-calc">'+esc(p(A.rate))+'</td>' +
+    '<td class="ln-calc">'+esc(n(A.arranged))+'</td>' +
+    '<td class="ln-calc">'+esc(y(A.gross))+'</td>' +
+    '<td class="ln-calc">'+esc(n(A.perHead))+'</td>' +
+    '<td class="ln-calc ln-sep">'+esc(n(A.unit))+'</td>' +
+    // ── これから ──
+    inp("remain","num",F.remain,52) +
+    '<td class="ln-calc">'+esc(n(F.handled))+'</td>' +
+    inp("perDay","num",F.perDay,58) +
+    inp("arrangeRate","rate",F.rate,62) +
+    '<td class="ln-calc">'+esc(n(F.arranged))+'</td>' +
+    '<td class="ln-calc">'+esc(y(F.gross))+'</td>' +
+    '<td class="ln-calc">'+esc(n(F.perHead))+'</td>' +
+    inp("unitPrice","yen",F.unit,74) +
+    // ── 着地 ──
+    '<td class="ln-calc ln-sep">'+esc(y(bud))+'</td>' +
+    '<td class="ln-land">'+esc(y(R.landing))+'</td>' +
+    '<td class="ln-calc">'+esc(p(rate))+'</td>' +
+    '<td class="'+(diff !== null && diff < 0 ? "ln-down" : "ln-calc")+'">' +
+      (diff === null ? "—" : esc((diff >= 0 ? "+" : "−") + yenShort(Math.abs(diff)))) +
+    '</td>' +
+  '</tr>';
 }
+
+/**
+ * 着地シナリオの表。原本の予実シートと同じ列並び。
+ *
+ * 【着地見込差】
+ * 原本は 'リユース1ON1 8/3'!V16 との差、つまり前回1on1シートの着地との差。
+ * アプリには前回シートが無いので、「今の着地を記録」で snapshot に控え、
+ * それとの差を出す。記録が無ければ空欄にする（0 と書くと
+ * 「動いていない」と読めてしまう）。
+ */
+function renderLanding(members, teams){
+  var sc = (state.landing && state.landing.byMember) || {};
+  var wd = (state.memberKpi && state.memberKpi.workdaysByMember) || {};
+  var snap = (state.landing && state.landing.snapshot) || {};
+  var snapAt = state.landing && state.landing.snapshotLabel;
+
+  function inputsOf(id){
+    var s = sc[id] || {}, w = wd[id] || {};
+    // workdays タブの値は初期値。画面で保存した値があればそちらが勝つ。
+    return { days:        numOr(s.days,   numOr(w.days, null)),
+             remain:      numOr(s.remain, numOr(w.remain, null)),
+             perDay:      numOr(s.perDay, null),
+             arrangeRate: numOr(s.arrangeRate, null),
+             unitPrice:   numOr(s.unitPrice, null) };
+  }
+  function calcOf(m){
+    var v = teamKpiOf(m.id);
+    var r = landCalcMember(v, inputsOf(m.id));
+    r.bud = teamKpiOf(m.id, "budget").gross_profit;
+    r.id = m.id;
+    return r;
+  }
+
+  var body = "";
+  var allCalc = members.map(calcOf);
+  var g = landAggregate(allCalc);
+  body += landRow("全体", g, g.bud, null, null, sumSnap(allCalc, snap));
+
+  (teams || []).forEach(function(t){
+    var list = members.filter(function(m){ return m.team === t.id; });
+    if(!list.length) return;
+    var cs = list.map(calcOf);
+    var tg = landAggregate(cs);
+    body += landRow(t.label, tg, tg.bud, null, null, sumSnap(cs, snap));
+    body += cs.map(function(r, i){
+      return landRow(list[i].displayName, r, r.bud, inputsOf(r.id), r.id,
+                     numOr(snap[r.id], null));
+    }).join("");
+  });
+
+  function sumSnap(list, sn){
+    var t = null;
+    list.forEach(function(r){ var x = sn[r.id]; if(typeof x === "number") t = (t||0) + x; });
+    return t;
+  }
+
+  var head =
+    '<thead>' +
+      '<tr class="ln-head2">' +
+        '<th></th><th colspan="8">実績</th>' +
+        '<th colspan="8">これから</th><th colspan="4">着地</th>' +
+      '</tr>' +
+      '<tr>' +
+        '<th></th>' +
+        '<th>工数</th><th>対応数</th><th>1Day</th><th>手配率</th><th>手配数</th>' +
+        '<th>手配粗利</th><th>粗利/1人</th><th class="ln-sep">粗利単価</th>' +
+        '<th>残日数</th><th>対応数</th><th>1Day</th><th>手配率</th><th>手配数</th>' +
+        '<th>手配粗利</th><th>粗利/1人</th><th>粗利単価</th>' +
+        '<th class="ln-sep">予算</th><th>着地</th><th>達成率</th><th>着地見込差</th>' +
+      '</tr>' +
+    '</thead>';
+
+  var saved = state.landingSavedAt ? '<span class="ln-saved">保存しました</span>' : '';
+  var snapBtn = '<button class="btn-ghost ln-snap" data-act="land-snap">いまの着地を記録</button>' +
+    (snapAt ? '<span class="ln-snapat">基準: '+esc(snapAt)+'</span>'
+            : '<span class="ln-snapat">基準が未記録です</span>');
+
+  return '<div class="side-title">着地シナリオ'+saved+'</div>' +
+    '<div class="lnd-note">' +
+      '<b>色の付いたマスだけ入力</b>します。ほかは計算で出ます。' +
+      'これからの1Day・手配率・粗利単価は、空欄なら実績と同じ値で計算します' +
+      '（＝いまのペースのまま行った場合）。打ち替えるとその場で着地が動きます。' +
+      '<br>着地 ＝ 実績の手配粗利 ＋ これからの手配粗利。達成率 ＝ 着地 ÷ 予算。' +
+      'チーム行と全体行はメンバーの合計で、入力できません。' +
+      '<br><b>着地見込差</b>は、記録した時点の着地からいくら動いたかです。' +
+      '1on1の前に「いまの着地を記録」を押すと、次回そこからの増減が出ます。' +
+      '入力は自動保存され、チームタブを見られる人に共有されます。' +
+    '</div>' +
+    '<div class="ln-bar">'+snapBtn+'</div>' +
+    '<div class="tbl-wrap"><table class="lnd-tbl ln-tbl">'+head+'<tbody>'+body+'</tbody></table></div>';
+}
+/** 予算比の1マス。達成率とバーを出す。
+ *  赤くするのは、その人の課題上位3件に入っているマスだけ。 */
 function teamKpiBudgetCell(def, actual, budget, badKeys){
   var hasB = (typeof budget === "number" && budget > 0);
   var hasA = (typeof actual === "number");
@@ -7052,7 +7342,7 @@ function renderTeamKpi(){
     trend +
     '<div class="side-title">メンバー別（'+members.length+'名）</div>' +
     (rows || emptyState("👥","このチームの数字がありません","")) +
-    (hasBudget ? renderLanding(members, roll, rollB) : "") +
+    (hasBudget ? renderLanding(members, teams) : "") +
     '<div class="wk-legend">月次の出どころは Management Sheet の当月タブ。' +
       'ただし<b>通話率・作業率・待機率は CC_アクション管理の月間列</b>です' +
       '（Management Sheet 側は第二CCが 0.00% のままのため）。' +
@@ -7955,6 +8245,7 @@ function bindEvents(){
     else if(act==="tkpi-team"){ state.teamKpiTeam = id; render(); }
     else if(act==="tkpi-grp"){ state.teamKpiGroup = id; render(); }
     else if(act==="tkpi-mode"){ state.teamKpiMode = id; render(); }
+    else if(act==="land-snap"){ landSnapshot(teamKpiMembers()); }
     else if(act==="daily-day"){ state.dailyDay = parseInt(id, 10) || 0; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
@@ -7964,6 +8255,14 @@ function bindEvents(){
   app.addEventListener("change", function(e){
     if(session.status !== "ready") return;
     if(!e.target.closest) return;
+    // 着地シナリオの入力。input ではなく change で拾う。
+    // 1文字ごとに再描画すると、打っている最中にフォーカスが飛ぶ。
+    var ln = e.target.closest("[data-land]");
+    if(ln){
+      landSave(ln.getAttribute("data-mid"), ln.getAttribute("data-land"), ln.value);
+      render();
+      return;
+    }
     var av = e.target.closest('[data-act="avatar-file"]');
     if(av){ pickAvatarFile(av.files && av.files[0], av.getAttribute("data-id")); return; }
     var bi = e.target.closest('[data-act="board-img-file"]');
