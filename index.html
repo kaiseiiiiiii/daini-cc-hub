@@ -1104,6 +1104,21 @@ body.wide .pc-cols:has(.pc-side:empty),
 .tkpi-nob{color:var(--color-text-sub); font-weight:400;}
 /* 課題のチップ。氏名とマスの間に置く。
    予算から大きく離れている指標だけが出る（KGI の買取粗利額は除く）。 */
+/* 着地見込の表 */
+.tbl-wrap{overflow-x:auto; margin:0 0 18px;}
+.lnd-tbl{border-collapse:collapse; width:100%; font-size:13px;
+  font-variant-numeric:tabular-nums; white-space:nowrap;}
+.lnd-tbl th,.lnd-tbl td{padding:7px 10px; border-bottom:1px solid var(--color-border);
+  text-align:right;}
+.lnd-tbl thead th{font-size:11px; font-weight:700; color:var(--color-text-sub);
+  text-align:right; border-bottom:1px solid var(--color-border-strong);}
+.lnd-tbl tbody th{text-align:left; font-weight:700;}
+.lnd-tbl thead th:first-child,.lnd-tbl tbody th{text-align:left;}
+.lnd-em{font-weight:700; color:var(--color-accent-ink);}
+.lnd-miss{color:var(--color-alert-ink); font-size:11px;}
+.lnd-note{font-size:12px; color:var(--color-text-sub); line-height:1.7; margin:0 0 8px;}
+.lnd-note code{font-family:ui-monospace,monospace; font-size:11px;
+  background:var(--color-bg-sub); padding:1px 5px; border-radius:4px;}
 .tkpi-issues{display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px;}
 .tkpi-issue{display:inline-flex; align-items:center; gap:5px; font-size:11px;
   padding:3px 9px; border-radius:999px; white-space:nowrap;
@@ -6231,6 +6246,12 @@ function teamKpiRollup(members, which){
   var sum = {}, has = {}, bag = {};
   function add(f, v){ if(typeof v !== "number") return; sum[f] = (sum[f]||0) + v; has[f] = true; }
 
+  // TEAM_KPI で既に合計している項目。ratio の材料を足すときに、
+  // ここに載っているものを二度足さないための表。これが無いと
+  // 対応数・手配数・買取数・ホットリードが2倍になる（実際なった）。
+  var summed = {};
+  TEAM_KPI.forEach(function(def){ if(def.agg === "sum") summed[def.key] = true; });
+
   members.forEach(function(m){
     var v = teamKpiOf(m.id, which);
     TEAM_KPI.forEach(function(def){
@@ -6239,10 +6260,12 @@ function teamKpiRollup(members, which){
         if(typeof v[def.key] === "number"){ (bag[def.key] = bag[def.key] || []).push(v[def.key]); }
       }
     });
-    // ratio の材料。表に出さない場合もあるので別途足す
-    // ratio の分母・分子になる値。表に出さないグループのものも要る。
+    // ratio の分母・分子になる値。TEAM_KPI に出てこない項目があっても
+    // 集計できるように別途足す。既に合計したものは飛ばす。
     ["arranged","handled","handled_valid","bought","hot_lead",
-     "arranged_visit","hot_lead_visit"].forEach(function(f){ add(f, v[f]); });
+     "arranged_visit","hot_lead_visit"].forEach(function(f){
+      if(!summed[f]) add(f, v[f]);
+    });
   });
 
   function avg(a){
@@ -6563,6 +6586,147 @@ function issueTip(x){
   }
   return d.l + "は" + actual + "で、予算 " + need + " に届いていません" + gapTxt;
 }
+// ══════════════════════════════════════════════════════════════════
+//  着地見込
+//
+//  チームダッシュボードの予実表の計算を、そのまま持ってきた。
+//  検算した式は以下。すべて 2026/08/27 時点の原本と一致している。
+//
+//  【デジタル着見 ＝ 実績 ÷ 経過日数 × 総日数】
+//    対応数      3,566 ÷ 27 × 31 = 4,094           （原本 4,094）
+//    手配数      1,194 ÷ 27 × 31 = 1,371           （原本 1,371）
+//    手配粗利額  26,877,295 ÷ 27 × 31 = 30,859,116 （原本 30,859,116）
+//    買取数      899 ÷ 27 × 31 = 1,032             （原本 1,032）
+//    買取粗利額  26,139,447 ÷ 27 × 31 = 30,011,958 （原本 30,011,958）
+//
+//  【率と単価は割り戻さない】
+//  手配率・手配買取率・買取粗利単価は実績のまま横に流す。日数で伸ばすのは
+//  積み上がる量だけ。率を日数で伸ばすのは意味を成さない。
+//
+//  【予算差異 ＝ 実績 ÷ 予算】
+//  着見ではなく実績と比べる。原本もそうなっている
+//  （対応数 3,566÷4,140＝86.1%、手配粗利額 72.8%、買取粗利額 70.8%）。
+//
+//  【メンバー別だけ基準が違う】
+//  全体は暦日（27日→31日）で伸ばすが、メンバー別は工数と残日数で伸ばす。
+//  人によって出勤日数が違うので、暦日で伸ばすと休みの多い人が過大に出る。
+// ══════════════════════════════════════════════════════════════════
+
+/** 当月の経過日数と総日数 */
+function monthDays(){
+  var now = new Date();
+  return { passed: now.getDate(),
+           total: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() };
+}
+
+// 予実サマリに出す指標。scale=true の行だけ日数で伸ばす。
+var LANDING_ROWS = [
+  { key:"handled",      l:"対応数",       u:"件", fmt:"int",  scale:true  },
+  { key:"arranged",     l:"手配数",       u:"件", fmt:"int",  scale:true  },
+  { key:"arrange_rate", l:"手配率",       u:"%",  fmt:"rate", scale:false },
+  { key:"gross_profit", l:"手配粗利額",   u:"",   fmt:"yen",  scale:true  },
+  { key:"bought",       l:"買取数",       u:"件", fmt:"int",  scale:true  },
+  { key:"buy_rate",     l:"手配買取率",   u:"%",  fmt:"rate", scale:false },
+  { key:"buy_unit",     l:"買取粗利単価", u:"円", fmt:"int",  scale:false },
+  { key:"buy_gross",    l:"買取粗利額",   u:"",   fmt:"yen",  scale:true  }
+];
+
+/**
+ * メンバー1人の着地見込。
+ *
+ *   着地 = 実績 + 残日数 × （実績 ÷ 工数）
+ *
+ * 工数が無い人は着地を出さない。0 で割ると無限大になるし、
+ * 「工数を入れ忘れている」のか「本当に0日」なのかを数字で誤魔化さない。
+ */
+function landingOf(v, wd){
+  var days   = (wd && typeof wd.days   === "number") ? wd.days   : null;
+  var remain = (wd && typeof wd.remain === "number") ? wd.remain : null;
+  if(days === null || days <= 0) return null;
+
+  var out = { days: days, remain: remain };
+  var gp = v.gross_profit;
+  if(typeof gp === "number"){
+    out.perDay  = gp / days;
+    out.landing = (remain === null) ? gp : gp + remain * out.perDay;
+  }
+  if(typeof v.handled === "number") out.perDayHandled = v.handled / days;
+  return out;
+}
+/** 着地見込セクション全体 */
+function renderLanding(members, roll, rollB){
+  var wdAll = (state.memberKpi && state.memberKpi.workdaysByMember) || {};
+  var md = monthDays();
+
+  // ── 予実サマリ（暦日で伸ばす）──
+  var rows = LANDING_ROWS.map(function(r){
+    var act = roll[r.key], bud = rollB ? rollB[r.key] : null;
+    var land = (typeof act === "number")
+      ? (r.scale ? act / md.passed * md.total : act) : null;
+    var rate = (typeof act === "number" && typeof bud === "number" && bud > 0)
+      ? Math.round(act / bud * 1000) / 10 : null;
+    function f(val){
+      if(val === null || val === undefined) return "—";
+      if(r.fmt === "yen") return yenShort(val);
+      if(r.fmt === "int") return Math.round(val).toLocaleString("ja-JP") + r.u;
+      return (Math.round(val * 10) / 10) + r.u;
+    }
+    return '<tr>' +
+      '<th>'+esc(r.l)+'</th>' +
+      '<td>'+esc(f(bud))+'</td>' +
+      '<td>'+esc(f(act))+'</td>' +
+      '<td class="lnd-em">'+esc(f(land))+'</td>' +
+      '<td>'+(rate===null?"—":esc(rate+"%"))+'</td>' +
+    '</tr>';
+  }).join("");
+
+  var summary =
+    '<div class="lnd-note">実績は' + md.passed + '日経過時点（全' + md.total + '日）。' +
+      '着地見込は<b>実績 ÷ 経過日数 × 総日数</b>。率と単価は日数で伸ばしません。' +
+      '達成率は<b>実績 ÷ 予算</b>です。</div>' +
+    '<div class="tbl-wrap"><table class="lnd-tbl">' +
+      '<thead><tr><th>指標</th><th>予算</th><th>実績</th><th>着地見込</th><th>達成率</th></tr></thead>' +
+      '<tbody>'+rows+'</tbody>' +
+    '</table></div>';
+
+  // ── メンバー別（工数・残日数で伸ばす）──
+  var body = members.map(function(m){
+    var v = teamKpiOf(m.id);
+    var b = teamKpiOf(m.id, "budget");
+    var L = landingOf(v, wdAll[m.id]);
+    function n(x){ return (typeof x === "number") ? Math.round(x).toLocaleString("ja-JP") : "—"; }
+    function y(x){ return (typeof x === "number") ? yenShort(x) : "—"; }
+    function r1(x){ return (typeof x === "number") ? (Math.round(x*10)/10)+"%" : "—"; }
+    var bud = b.gross_profit;
+    var rate = (L && typeof L.landing === "number" && typeof bud === "number" && bud > 0)
+      ? Math.round(L.landing / bud * 1000) / 10 : null;
+    return '<tr>' +
+      '<th>'+esc(m.displayName)+'</th>' +
+      '<td>'+(L?esc(L.days+""):'<span class="lnd-miss">未入力</span>')+'</td>' +
+      '<td>'+(L&&L.remain!==null?esc(L.remain+""):"—")+'</td>' +
+      '<td>'+esc(n(v.handled))+'</td>' +
+      '<td>'+esc(L&&L.perDayHandled!==undefined?n(L.perDayHandled):"—")+'</td>' +
+      '<td>'+esc(r1(v.arrange_rate))+'</td>' +
+      '<td>'+esc(n(v.arranged))+'</td>' +
+      '<td>'+esc(y(v.gross_profit))+'</td>' +
+      '<td>'+esc(y(bud))+'</td>' +
+      '<td class="lnd-em">'+esc(L?y(L.landing):"—")+'</td>' +
+      '<td>'+(rate===null?"—":esc(rate+"%"))+'</td>' +
+    '</tr>';
+  }).join("");
+
+  var perMember =
+    '<div class="lnd-note">メンバー別の着地は<b>実績 ＋ 残日数 × (実績 ÷ 工数)</b>。' +
+      '人によって出勤日数が違うので、こちらは暦日ではなく工数で伸ばします。' +
+      '工数は同期用スプレッドシートの <code>workdays</code> タブに入れます。</div>' +
+    '<div class="tbl-wrap"><table class="lnd-tbl">' +
+      '<thead><tr><th>メンバー</th><th>工数</th><th>残日</th><th>対応数</th><th>1Day</th>' +
+      '<th>手配率</th><th>手配数</th><th>手配粗利</th><th>予算</th><th>着地</th><th>達成率</th></tr></thead>' +
+      '<tbody>'+body+'</tbody>' +
+    '</table></div>';
+
+  return '<div class="side-title">着地見込</div>' + summary + perMember;
+}
 function teamKpiBudgetCell(def, actual, budget, badKeys){
   var hasB = (typeof budget === "number" && budget > 0);
   var hasA = (typeof actual === "number");
@@ -6797,7 +6961,8 @@ function renderTeamKpi(){
   // グループのタブで絞る。集計もメンバー別も同じ並びにして見比べやすくする。
   var defs = teamKpiDefs();
   var budgetMode = (curMode === "budget");
-  var rollB = budgetMode ? teamKpiRollup(members, "budget") : null;
+  // 予算の集計は着地見込セクションでも使うので、モードに関係なく作る。
+  var rollB = hasBudget ? teamKpiRollup(members, "budget") : null;
 
   var gridHtml = defs.map(function(def){
     // チーム計に赤は付けない。課題は個人ごとの上位3件という定義なので、
@@ -6887,6 +7052,7 @@ function renderTeamKpi(){
     trend +
     '<div class="side-title">メンバー別（'+members.length+'名）</div>' +
     (rows || emptyState("👥","このチームの数字がありません","")) +
+    (hasBudget ? renderLanding(members, roll, rollB) : "") +
     '<div class="wk-legend">月次の出どころは Management Sheet の当月タブ。' +
       'ただし<b>通話率・作業率・待機率は CC_アクション管理の月間列</b>です' +
       '（Management Sheet 側は第二CCが 0.00% のままのため）。' +
