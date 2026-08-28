@@ -1121,10 +1121,11 @@ body.wide .pc-cols:has(.pc-side:empty),
 .ln-calc{color:var(--color-text);}
 /* 入力できるマス。色が付いているところだけ触る、と一目で分かるようにする */
 .ln-in{background:var(--color-accent-tint); padding:2px 4px;}
-.ln-in input{width:58px; font:inherit; font-size:12px; text-align:right;
-  font-variant-numeric:tabular-nums; padding:3px 5px; border-radius:5px;
-  border:1px solid var(--color-border-strong); background:var(--color-bg);
-  color:var(--color-text);}
+/* 計算値のマスと同じ字面にする。数字が縦に揃わないと表として読めない。 */
+.ln-in input{width:58px; font-family:inherit; font-size:12px; font-weight:inherit;
+  text-align:right; font-variant-numeric:tabular-nums; padding:3px 6px;
+  border-radius:5px; border:1px solid var(--color-border-strong);
+  background:var(--color-bg); color:var(--color-text); line-height:1.4;}
 .ln-in input:focus{outline:2px solid var(--color-accent); outline-offset:1px;}
 .ln-in input::placeholder{color:var(--color-text-sub); opacity:1;}
 .ln-land{font-weight:700; color:var(--color-accent-ink);}
@@ -6786,12 +6787,11 @@ function landSave(memberId, field, raw){
   }
   if(!landPending[memberId]) landPending[memberId] = {};
 
-  var s = String(raw == null ? "" : raw).trim();
-  if(s === ""){
+  var n = landParse(raw);
+  if(n === undefined) return;                   // 数字にならない入力は捨てる
+  if(n === null){
     delete landPending[memberId][field];        // 未入力に戻す
   }else{
-    var n = Number(s);
-    if(!isFinite(n)) return;                    // 数字にならない入力は捨てる
     landPending[memberId][field] = n;
   }
 
@@ -6860,6 +6860,30 @@ function landSnapshot(members){
     return setDoc(doc(db, "landingScenario", payload.monthId), payload);
   }, true);
 }
+/** 入力欄と計算値で同じ書式を使う。kind: num / rate / yen */
+function landFmt(x, kind){
+  if(x === null || x === undefined || !isFinite(x)) return "";
+  if(kind === "rate") return (Math.round(x*10)/10) + "%";
+  if(kind === "yen")  return Math.round(x).toLocaleString("ja-JP");
+  return (Math.round(x*10)/10) + "";
+}
+
+/**
+ * 入力された文字から数値を取り出す。
+ * 「39.3」「39.3%」「29,770」「２９７７０」のどれでも受ける。
+ * 空文字は null（＝未入力に戻す）。
+ */
+function landParse(raw){
+  var s = String(raw == null ? "" : raw).trim();
+  // 全角数字・全角記号を半角に
+  s = s.replace(/[０-９．－]/g, function(ch){
+    return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+  });
+  s = s.replace(/[,%\s円]/g, "");
+  if(s === "") return null;
+  var n = Number(s);
+  return isFinite(n) ? n : undefined;   // undefined = 数字にならない（無視する）
+}
 /**
  * 着地シナリオの1行。
  * R は landCalcMember / landAggregate の戻り値。
@@ -6876,22 +6900,29 @@ function landRow(label, R, bud, s, mid, prev){
   function p(x){ return (typeof x === "number") ? (Math.round(x*10)/10)+"%" : "—"; }
   function y(x){ return (typeof x === "number") ? yenShort(x) : "—"; }
 
-  // 入力できるマス。保存した値だけを value に入れ、実際に使う値は placeholder。
-  // 実績から埋めた値を value に入れると、誰かが指定したように見えてしまう。
+  // 入力できるマス。
+  //
+  // 【type="number" ではなく text】
+  // number だと「39.3%」「29,770」のように単位や桁区切りを付けられず、
+  // 計算値のマスと見た目が揃わない。text にして整形し、読むときは
+  // 数字だけ取り出す。入力は「39.3」でも「39.3%」でも受ける。
+  //
+  // 【保存した値だけを value に入れる】
+  // 実績から埋めた値を value に入れると、誰かが指定したように見えるし、
+  // そのまま保存すると実績が動いても追従しなくなる。
+  // 未入力は空欄にして、実際に使う値は placeholder で見せる。
   function inp(field, kind, eff, w){
-    function fmt(x){
-      if(x === null || x === undefined) return "";
-      if(kind === "rate") return (Math.round(x*10)/10) + "%";
-      if(kind === "yen")  return Math.round(x).toLocaleString("ja-JP");
-      return (Math.round(x*10)/10) + "";
-    }
-    if(isGroup) return '<td class="ln-calc">'+esc(fmt(eff) || "—")+'</td>';
+    if(isGroup) return '<td class="ln-calc">'+esc(landFmt(eff, kind) || "—")+'</td>';
     var saved = numOr(s && s[field], null);
-    return '<td class="ln-in"><input type="number" step="any" inputmode="decimal" ' +
+    // data-nokeep … render のたびに入力値を引き継ぐ仕組み（captureForms）から
+    // 外す。引き継がれると、打った生の文字「45」がそのまま残り、
+    // 整形した「45%」に置き換わらない。値は state に入っているので、
+    // 引き継がなくても消えない。
+    return '<td class="ln-in"><input type="text" inputmode="decimal" data-nokeep ' +
       'data-land="'+esc(field)+'" data-mid="'+esc(mid)+'" ' +
-      'value="'+(saved===null?"":esc(Math.round(saved*100)/100+""))+'" ' +
-      'placeholder="'+esc(fmt(eff))+'" ' +
-      'title="'+esc(fmt(eff)+"（空欄なら実績と同じ値で計算します）")+'" ' +
+      'value="'+esc(landFmt(saved, kind))+'" ' +
+      'placeholder="'+esc(landFmt(eff, kind))+'" ' +
+      'title="'+esc(landFmt(eff, kind)+"（空欄なら実績と同じ値で計算します）")+'" ' +
       'style="width:'+(w||58)+'px"></td>';
   }
 
@@ -8252,11 +8283,21 @@ function bindEvents(){
   });
 
   // ファイル選択は click ではなく change で拾う
+  // 整形済みの文字が入っているので、触ったら全部選ぶ。
+  // 「39.3%」の % を消してから打ち直す、という手間をなくす。
+  app.addEventListener("focusin", function(e){
+    if(!e.target.closest) return;
+    var li = e.target.closest("input[data-land]");
+    if(li) setTimeout(function(){ try{ li.select(); }catch(_){ } }, 0);
+  });
+
   app.addEventListener("change", function(e){
     if(session.status !== "ready") return;
     if(!e.target.closest) return;
     // 着地シナリオの入力。input ではなく change で拾う。
     // 1文字ごとに再描画すると、打っている最中にフォーカスが飛ぶ。
+    // 表示は「39.3%」のように整形してあるので、触ったら全選択して
+    // そのまま打ち替えられるようにする（focusin は下で拾う）。
     var ln = e.target.closest("[data-land]");
     if(ln){
       landSave(ln.getAttribute("data-mid"), ln.getAttribute("data-land"), ln.value);
