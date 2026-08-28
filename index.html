@@ -1155,6 +1155,19 @@ body.wide .pc-cols:has(.pc-side:empty),
 .ln-tbl .ln-group .ln-fix{background:var(--color-surface);}
 .ln-tbl thead .ln-fix{background:var(--color-bg); z-index:3;}
 .ln-tbl tbody .ln-l1{font-weight:700;}
+
+/* 【スマホでは右4列の固定を外す】
+   予算〜着地見込差で 304px、名前列で 70px。画面幅が 400px 前後の端末では
+   これだけで埋まってしまい、真ん中の列に指が届かない（横に動かせない）。
+   狭い画面では名前列だけ残して、あとは普通に流す。 */
+@media (max-width: 760px){
+  .ln-tbl .ln-r1,.ln-tbl .ln-r2,.ln-tbl .ln-r3,.ln-tbl .ln-r4,.ln-tbl .ln-rall{
+    position:static; width:auto; min-width:0; right:auto; box-shadow:none;}
+  .ln-tbl .ln-r4{border-left:2px solid var(--color-border-strong);}
+  /* 指で掴む余地を確保する */
+  .ln-tbl th,.ln-tbl td{padding:6px 8px;}
+  .ln-in input{width:52px;}
+}
 /* 着地見込の表 */
 .tbl-wrap{overflow-x:auto; margin:0 0 18px;}
 .lnd-tbl{border-collapse:collapse; width:100%; font-size:13px;
@@ -7554,6 +7567,13 @@ function render(){
 
   var contentEl = document.getElementById("content");
   var keepScroll = (contentEl && renderedTab === state.tab) ? contentEl.scrollTop : 0;
+  // 横に広い表（着地シナリオ）のスクロール位置。
+  // 再描画で 0 に戻ると、数字を1つ入れるたびに左端まで飛ばされる。
+  // スマホでは「入力したら戻った」としか見えない。
+  var keepScrollX = [];
+  document.querySelectorAll(".tbl-wrap").forEach(function(el, i){
+    keepScrollX[i] = el.scrollLeft;
+  });
 
   // ログインしていない／許可されていない間は、アプリの中身を一切描画しない。
   // 画面が入れ替わるので、覚えている位置は捨てる。
@@ -7597,7 +7617,7 @@ function render(){
       '</div>' +
       renderConfirmDialog() + renderAvatarDialog() + renderLightbox();
     if(keep) restoreForms(keep);
-    afterRender(keepScroll);
+    afterRender(keepScroll, keepScrollX);
     return;
   }
 
@@ -7605,14 +7625,19 @@ function render(){
     '<div class="content" id="content">'+body+'</div>' + renderNav() +
     renderConfirmDialog() + renderAvatarDialog() + renderLightbox();
   if(keep) restoreForms(keep);
-  afterRender(keepScroll);
+  afterRender(keepScroll, keepScrollX);
 }
 
 /**
  * 描き直したあとの後始末。2か所（広い画面／狭い画面）から呼ぶので
  * まとめてある。片方だけに書くと、画面幅によって挙動が変わる。
  */
-function afterRender(keepScroll){
+function afterRender(keepScroll, keepScrollX){
+  if(keepScrollX && keepScrollX.length){
+    document.querySelectorAll(".tbl-wrap").forEach(function(el, i){
+      if(keepScrollX[i]) el.scrollLeft = keepScrollX[i];
+    });
+  }
   renderedTab = state.tab;
   var el = document.getElementById("content");
   if(el && keepScroll) el.scrollTop = keepScroll;
