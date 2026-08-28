@@ -1116,7 +1116,9 @@ body.wide .pc-cols:has(.pc-side:empty),
   padding-bottom:4px;}
 .lnd-tbl.ln-tbl thead th{color:var(--color-text);}
 .ln-tbl .ln-sep{border-left:2px solid var(--color-border-strong);}
-.ln-group{background:var(--color-bg-sub); font-weight:700;}
+/* チーム行・全体行。--color-bg-sub は存在しないトークンで、指定しても
+   無効値になり背景が消えていた（貼り付けた列が透けた）。 */
+.ln-group{background:var(--color-surface); font-weight:700;}
 .ln-group th{font-weight:700;}
 .ln-calc{color:var(--color-text);}
 /* 入力できるマス。色が付いているところだけ触る、と一目で分かるようにする */
@@ -1133,7 +1135,26 @@ body.wide .pc-cols:has(.pc-side:empty),
 .ln-bar{display:flex; align-items:center; gap:10px; margin:0 0 10px;}
 .ln-snap{font-size:12px; padding:5px 12px;}
 .ln-snapat{font-size:11px; color:var(--color-text-sub);}
+.ln-snapat.ln-warn{color:var(--color-alert-ink);}
 .lnd-tbl .ln-down{color:var(--color-alert-ink); font-weight:700;}
+
+/* 【左右を貼り付ける】
+   21列あって横スクロールが要る。誰の行かと、予算・着地・達成率は
+   常に見えていないと使えないので、左端と右端4列を貼り付ける。
+   幅は固定にしないと right のずらし量が計算できない。 */
+.ln-tbl .ln-fix{position:sticky; z-index:2; background:var(--color-bg);}
+.ln-tbl .ln-l1{left:0; box-shadow:1px 0 0 var(--color-border);}
+.ln-tbl .ln-r1{right:0;    width:86px; min-width:86px;}
+.ln-tbl .ln-r2{right:86px; width:58px; min-width:58px;}
+.ln-tbl .ln-r3{right:144px;width:80px; min-width:80px;}
+.ln-tbl .ln-r4{right:224px;width:80px; min-width:80px;
+  box-shadow:-1px 0 0 var(--color-border-strong);}
+.ln-tbl .ln-rall{right:0; width:304px; min-width:304px;
+  box-shadow:-1px 0 0 var(--color-border-strong);}
+/* 貼り付けたマスは地色が要る。透けると下の列が重なって読めなくなる */
+.ln-tbl .ln-group .ln-fix{background:var(--color-surface);}
+.ln-tbl thead .ln-fix{background:var(--color-bg); z-index:3;}
+.ln-tbl tbody .ln-l1{font-weight:700;}
 /* 着地見込の表 */
 .tbl-wrap{overflow-x:auto; margin:0 0 18px;}
 .lnd-tbl{border-collapse:collapse; width:100%; font-size:13px;
@@ -1148,7 +1169,7 @@ body.wide .pc-cols:has(.pc-side:empty),
 .lnd-miss{color:var(--color-alert-ink); font-size:11px;}
 .lnd-note{font-size:12px; color:var(--color-text-sub); line-height:1.7; margin:0 0 8px;}
 .lnd-note code{font-family:ui-monospace,monospace; font-size:11px;
-  background:var(--color-bg-sub); padding:1px 5px; border-radius:4px;}
+  background:var(--color-surface); padding:1px 5px; border-radius:4px;}
 .tkpi-issues{display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px;}
 .tkpi-issue{display:inline-flex; align-items:center; gap:5px; font-size:11px;
   padding:3px 9px; border-radius:999px; white-space:nowrap;
@@ -6918,16 +6939,21 @@ function landRow(label, R, bud, s, mid, prev){
     // 外す。引き継がれると、打った生の文字「45」がそのまま残り、
     // 整形した「45%」に置き換わらない。値は state に入っているので、
     // 引き継がなくても消えない。
+    // 【placeholder は出さない】
+    // 薄い文字で実績値を出していたが、入っていない欄に数字が見えるので
+    // 「入力済み」と読み違える。実際そう指摘された。空欄は空欄のまま見せて、
+    // 実際に使う値はマウスを乗せたときだけ出す。
     return '<td class="ln-in"><input type="text" inputmode="decimal" data-nokeep ' +
       'data-land="'+esc(field)+'" data-mid="'+esc(mid)+'" ' +
       'value="'+esc(landFmt(saved, kind))+'" ' +
-      'placeholder="'+esc(landFmt(eff, kind))+'" ' +
-      'title="'+esc(landFmt(eff, kind)+"（空欄なら実績と同じ値で計算します）")+'" ' +
+      'title="'+esc(saved === null
+        ? "未入力。いまは実績と同じ " + (landFmt(eff, kind) || "—") + " で計算しています"
+        : "入力値 " + landFmt(saved, kind))+'" ' +
       'style="width:'+(w||58)+'px"></td>';
   }
 
   return '<tr'+(isGroup?' class="ln-group"':'')+'>' +
-    '<th>'+esc(label)+'</th>' +
+    '<th class="ln-fix ln-l1">'+esc(label)+'</th>' +
     // ── 実績 ──
     inp("days","num",A.days,52) +
     '<td class="ln-calc">'+esc(n(A.handled))+'</td>' +
@@ -6947,10 +6973,10 @@ function landRow(label, R, bud, s, mid, prev){
     '<td class="ln-calc">'+esc(n(F.perHead))+'</td>' +
     inp("unitPrice","yen",F.unit,74) +
     // ── 着地 ──
-    '<td class="ln-calc ln-sep">'+esc(y(bud))+'</td>' +
-    '<td class="ln-land">'+esc(y(R.landing))+'</td>' +
-    '<td class="ln-calc">'+esc(p(rate))+'</td>' +
-    '<td class="'+(diff !== null && diff < 0 ? "ln-down" : "ln-calc")+'">' +
+    '<td class="ln-calc ln-sep ln-fix ln-r4">'+esc(y(bud))+'</td>' +
+    '<td class="ln-land ln-fix ln-r3">'+esc(y(R.landing))+'</td>' +
+    '<td class="ln-calc ln-fix ln-r2">'+esc(p(rate))+'</td>' +
+    '<td class="ln-fix ln-r1 '+(diff !== null && diff < 0 ? "ln-down" : "ln-calc")+'">' +
       (diff === null ? "—" : esc((diff >= 0 ? "+" : "−") + yenShort(Math.abs(diff)))) +
     '</td>' +
   '</tr>';
@@ -7014,23 +7040,27 @@ function renderLanding(members, teams){
   var head =
     '<thead>' +
       '<tr class="ln-head2">' +
-        '<th></th><th colspan="8">実績</th>' +
-        '<th colspan="8">これから</th><th colspan="4">着地</th>' +
+        '<th class="ln-fix ln-l1"></th><th colspan="8">実績</th>' +
+        '<th colspan="8">これから</th><th colspan="4" class="ln-fix ln-rall">着地</th>' +
       '</tr>' +
       '<tr>' +
-        '<th></th>' +
+        '<th class="ln-fix ln-l1"></th>' +
         '<th>工数</th><th>対応数</th><th>1Day</th><th>手配率</th><th>手配数</th>' +
         '<th>手配粗利</th><th>粗利/1人</th><th class="ln-sep">粗利単価</th>' +
         '<th>残日数</th><th>対応数</th><th>1Day</th><th>手配率</th><th>手配数</th>' +
         '<th>手配粗利</th><th>粗利/1人</th><th>粗利単価</th>' +
-        '<th class="ln-sep">予算</th><th>着地</th><th>達成率</th><th>着地見込差</th>' +
+        '<th class="ln-sep ln-fix ln-r4">予算</th><th class="ln-fix ln-r3">着地</th>' +
+        '<th class="ln-fix ln-r2">達成率</th><th class="ln-fix ln-r1">着地見込差</th>' +
       '</tr>' +
     '</thead>';
 
   var saved = state.landingSavedAt ? '<span class="ln-saved">保存しました</span>' : '';
+  var hasSnap = Object.keys(snap).length > 0;
   var snapBtn = '<button class="btn-ghost ln-snap" data-act="land-snap">いまの着地を記録</button>' +
-    (snapAt ? '<span class="ln-snapat">基準: '+esc(snapAt)+'</span>'
-            : '<span class="ln-snapat">基準が未記録です</span>');
+    (hasSnap
+      ? '<span class="ln-snapat">着地見込差の基準: '+esc(snapAt || "記録済み")+'</span>'
+      : '<span class="ln-snapat ln-warn">着地見込差はまだ出せません — ' +
+        '基準が未記録です。ボタンを押すと、いまの着地が基準になります</span>');
 
   return '<div class="side-title">着地シナリオ'+saved+'</div>' +
     '<div class="lnd-note">' +
@@ -7039,8 +7069,11 @@ function renderLanding(members, teams){
       '（＝いまのペースのまま行った場合）。打ち替えるとその場で着地が動きます。' +
       '<br>着地 ＝ 実績の手配粗利 ＋ これからの手配粗利。達成率 ＝ 着地 ÷ 予算。' +
       'チーム行と全体行はメンバーの合計で、入力できません。' +
-      '<br><b>着地見込差</b>は、記録した時点の着地からいくら動いたかです。' +
+      '<br><b>着地見込差</b>は、記録した時点の着地からいくら動いたかです' +
+      '（原本が前回1on1シートの着地と比べているのと同じ考え方）。' +
       '1on1の前に「いまの着地を記録」を押すと、次回そこからの増減が出ます。' +
+      '<br>入力欄が<b>空欄のときは実績と同じ値</b>で計算します。' +
+      'マウスを乗せると、いま何で計算しているかが出ます。' +
       '入力は自動保存され、チームタブを見られる人に共有されます。' +
     '</div>' +
     '<div class="ln-bar">'+snapBtn+'</div>' +
