@@ -6861,7 +6861,11 @@ function landSave(memberId, field, raw){
   }, 700);
 }
 /**
- * いまの着地を「基準」として控える。
+ * いまの着地を、着地見込差の比較の起点として控える。
+ *
+ * ボタン名は「いまの数値を保存」だが、入力値そのものは打った時点で
+ * 自動保存されている（landSave）。ここで保存するのは比較の起点だけ。
+ * 名前と中身がずれるので、画面の説明文でそこを補っている。
  *
  * 原本は前回1on1シートの同じセルを直接参照しているが、アプリには
  * 前回シートが無い。押した時点の着地をメンバーごとに保存して、
@@ -6896,7 +6900,7 @@ function landSnapshot(members){
     updatedAt: serverTimestamp(),
     updatedBy: currentUserId()
   };
-  write("着地の記録", function(){
+  write("着地の基準", function(){
     return setDoc(doc(db, "landingScenario", payload.monthId), payload);
   }, true);
 }
@@ -7103,11 +7107,13 @@ function renderLanding(members, teams){
 
   var saved = state.landingSavedAt ? '<span class="ln-saved">保存しました</span>' : '';
   var hasSnap = Object.keys(snap).length > 0;
-  var snapBtn = '<button class="btn-ghost ln-snap" data-act="land-snap">いまの着地を記録</button>' +
+  var snapBtn = '<button class="btn-ghost ln-snap" data-act="land-snap">いまの数値を保存</button>' +
     (hasSnap
-      ? '<span class="ln-snapat">着地見込差の基準: '+esc(snapAt || "記録済み")+'</span>'
+      ? '<span class="ln-snapat">着地見込差はここからの増減です: '+esc(snapAt || "保存済み")+
+        '<br>入力そのものは打った時点で自動保存されています</span>'
       : '<span class="ln-snapat ln-warn">着地見込差はまだ出せません — ' +
-        '基準が未記録です。ボタンを押すと、いまの着地が基準になります</span>');
+        'ボタンを押すと、いまの着地が比較の起点になります' +
+        '<br>入力そのものは打った時点で自動保存されています</span>');
 
   return '<div class="side-title">着地シナリオ'+saved+'</div>' +
     '<div class="lnd-note">' +
@@ -7118,7 +7124,7 @@ function renderLanding(members, teams){
       'チーム行と全体行はメンバーの合計で、入力できません。' +
       '<br><b>着地見込差</b>は、記録した時点の着地からいくら動いたかです' +
       '（原本が前回1on1シートの着地と比べているのと同じ考え方）。' +
-      '1on1の前に「いまの着地を記録」を押すと、次回そこからの増減が出ます。' +
+      '1on1の前に「いまの数値を保存」を押すと、次回そこからの増減が出ます。' +
       '<br>入力欄が<b>空欄のときは実績と同じ値</b>で計算します。' +
       'マウスを乗せると、いま何で計算しているかが出ます。' +
       '入力は自動保存され、チームタブを見られる人に共有されます。' +
