@@ -1115,13 +1115,12 @@ body.wide .pc-cols:has(.pc-side:empty),
   color:var(--color-text); border-bottom:2px solid var(--color-border-strong);
   padding-bottom:4px;}
 .lnd-tbl.ln-tbl thead th{color:var(--color-text);}
+/* ブロックの境目。地色をやめたぶん、線で見せる */
 .ln-tbl .ln-sep{border-left:2px solid var(--color-border-strong);}
-/* 【これからブロックに地色を敷く】
-   列名（手配粗利・粗利/1人・粗利単価）が実績側とまったく同じなので、
-   横にスクロールすると、いまどちらを見ているか分からなくなる。
-   薄く色を変えて、境目が視界のどこにあっても分かるようにする。 */
-.ln-tbl .ln-fut{background:var(--color-accent-tint);}
-.ln-tbl .ln-group .ln-fut{background:var(--color-accent-tint);}
+/* 【これからブロックは見出しだけ色を敷く】
+   中身まで塗ると画面の半分が水色になり、入力できるマスが埋もれた。
+   「色の付いたマスだけ入力」という手がかりが消えてしまうので、
+   見出しの2行だけ色を付け、境目は罫線で示す。 */
 .ln-tbl thead .ln-fut{background:var(--color-accent-tint);}
 /* チーム行・全体行。--color-bg-sub は存在しないトークンで、指定しても
    無効値になり背景が消えていた（貼り付けた列が透けた）。 */
@@ -1175,11 +1174,10 @@ body.wide .pc-cols:has(.pc-side:empty),
    名前の左に色の帯を出し、チームの先頭行に太い罫線を引く。
    色は teamClass（アバターと同じ配色）を流用しているので、
    チームが増えても自動で付く。 */
-.ln-tbl tr.ln-team .ln-l1{border-left:4px solid currentColor;}
-.ln-tbl tr.ln-team.team-a  .ln-l1{border-left-color:var(--color-accent);}
-.ln-tbl tr.ln-team.team-b  .ln-l1{border-left-color:var(--color-plum);}
-.ln-tbl tr.ln-team.team-mgmt .ln-l1{border-left-color:var(--color-dusk);}
-.ln-tbl tr.ln-team.team-none .ln-l1{border-left-color:var(--color-border-strong);}
+.ln-tbl tr.ln-team .ln-l1{border-left:4px solid var(--color-border-strong);}
+.ln-tbl tr.ln-t-a    .ln-l1{border-left-color:var(--color-accent);}
+.ln-tbl tr.ln-t-b    .ln-l1{border-left-color:var(--color-plum);}
+.ln-tbl tr.ln-t-mgmt .ln-l1{border-left-color:var(--color-dusk);}
 /* チームの1行目。上に太い線を引いて、前のチームと切る */
 .ln-tbl tr.ln-team-head td,.ln-tbl tr.ln-team-head th{
   border-top:2px solid var(--color-border-strong);}
@@ -7135,9 +7133,10 @@ function renderLanding(members, teams){
     if(!list.length) return;
     var cs = list.map(calcOf);
     var tg = landAggregate(cs);
-    // チームごとに色を変える。既存の teamClass（アバターと同じ配色）を
-    // そのまま使い、名前の左に色の帯を出す。チームが増えても勝手に付く。
-    var tc = "ln-team " + teamClass(t.id);
+    // チームごとの色。teamClass() は背景色まで持つクラスなので使わない
+    // （行に付けると1チームぶん丸ごと塗られて、水色だらけになった）。
+    // 線の色だけを変える専用クラスにする。
+    var tc = "ln-team ln-t-" + (t.colorKey || "none");
     body += landRow(t.label, tg, tg.bud, null, null, sumSnap(cs, snap), tc + " ln-team-head");
     body += cs.map(function(r, i){
       return landRow(list[i].displayName, r, r.bud, inputsOf(r.id), r.id,
