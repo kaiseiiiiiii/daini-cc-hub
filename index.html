@@ -1136,7 +1136,13 @@ body.wide .pc-cols:has(.pc-side:empty),
 .ln-snap{font-size:12px; padding:5px 12px;}
 .ln-snapat{font-size:11px; color:var(--color-text-sub);}
 .ln-snapat.ln-warn{color:var(--color-alert-ink);}
+/* 着地見込差。増えた＝緑、減った＝赤、変わらない＝控えめ。
+   色だけに頼らず符号（+ / − / ±）も残す。 */
 .lnd-tbl .ln-down{color:var(--color-alert-ink); font-weight:700;}
+.lnd-tbl .ln-up{color:var(--color-grow-ink); font-weight:700;}
+/* 変化なしは本文色のまま太字にしない。補助テキスト色だとライトで 4.4:1 に
+   なるので、色ではなく太さで増減と区別する。 */
+.lnd-tbl .ln-flat{color:var(--color-text); font-weight:400;}
 
 /* 【左右を貼り付ける】
    21列あって横スクロールが要る。誰の行かと、予算・着地・達成率は
@@ -7019,12 +7025,35 @@ function landRow(label, R, bud, s, mid, prev){
     '<td class="ln-calc ln-sep ln-fix ln-r4">'+esc(y(bud))+'</td>' +
     '<td class="ln-land ln-fix ln-r3">'+esc(y(R.landing))+'</td>' +
     '<td class="ln-calc ln-fix ln-r2">'+esc(p(rate))+'</td>' +
-    '<td class="ln-fix ln-r1 '+(diff !== null && diff < 0 ? "ln-down" : "ln-calc")+'">' +
-      (diff === null ? "—" : esc((diff >= 0 ? "+" : "−") + yenShort(Math.abs(diff)))) +
-    '</td>' +
+    landDiffCell(diff) +
   '</tr>';
 }
 
+/**
+ * 着地見込差のマス。
+ *
+ * 【増えた／減った／変わらない を色で分ける】
+ * 以前はマイナスだけ赤で、プラスは本文色だった。増えたのか減ったのかを
+ * 数字の符号だけで読ませることになり、ぱっと見で分からない。
+ *
+ * 【丸めて 0 になるものは ±0 にする】
+ * 数円のマイナスが「−0」と出ていた。符号だけ残って値が消えるので、
+ * 減ったのに 0、という読みにくい表示になる。丸めた結果が 0 なら
+ * 増減なしとして扱う。
+ */
+function landDiffCell(diff){
+  if(diff === null || diff === undefined)
+    return '<td class="ln-fix ln-r1 ln-calc">—</td>';
+
+  var av  = Math.abs(diff);
+  var txt = yenShort(av);
+  var zero = (av < 1 || txt === "0" || txt === "0円");
+
+  if(zero) return '<td class="ln-fix ln-r1 ln-flat">±0</td>';
+  var up = diff > 0;
+  return '<td class="ln-fix ln-r1 '+(up ? "ln-up" : "ln-down")+'">' +
+    esc((up ? "+" : "−") + txt) + '</td>';
+}
 /**
  * 着地シナリオの表。原本の予実シートと同じ列並び。
  *
