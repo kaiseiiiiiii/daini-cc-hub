@@ -1116,6 +1116,13 @@ body.wide .pc-cols:has(.pc-side:empty),
   padding-bottom:4px;}
 .lnd-tbl.ln-tbl thead th{color:var(--color-text);}
 .ln-tbl .ln-sep{border-left:2px solid var(--color-border-strong);}
+/* 【これからブロックに地色を敷く】
+   列名（手配粗利・粗利/1人・粗利単価）が実績側とまったく同じなので、
+   横にスクロールすると、いまどちらを見ているか分からなくなる。
+   薄く色を変えて、境目が視界のどこにあっても分かるようにする。 */
+.ln-tbl .ln-fut{background:var(--color-accent-tint);}
+.ln-tbl .ln-group .ln-fut{background:var(--color-accent-tint);}
+.ln-tbl thead .ln-fut{background:var(--color-accent-tint);}
 /* チーム行・全体行。--color-bg-sub は存在しないトークンで、指定しても
    無効値になり背景が消えていた（貼り付けた列が透けた）。 */
 .ln-group{background:var(--color-surface); font-weight:700;}
@@ -6981,8 +6988,9 @@ function landRow(label, R, bud, s, mid, prev){
   // 実績から埋めた値を value に入れると、誰かが指定したように見えるし、
   // そのまま保存すると実績が動いても追従しなくなる。
   // 未入力は空欄にして、実際に使う値は placeholder で見せる。
-  function inp(field, kind, eff, w){
-    if(isGroup) return '<td class="ln-calc">'+esc(landFmt(eff, kind) || "—")+'</td>';
+  function inp(field, kind, eff, w, extra){
+    var cls = "ln-fut" + (extra ? " " + extra : "");
+    if(isGroup) return '<td class="ln-calc '+cls+'">'+esc(landFmt(eff, kind) || "—")+'</td>';
     var saved = numOr(s && s[field], null);
     // data-nokeep … render のたびに入力値を引き継ぐ仕組み（captureForms）から
     // 外す。引き継がれると、打った生の文字「45」がそのまま残り、
@@ -6992,7 +7000,7 @@ function landRow(label, R, bud, s, mid, prev){
     // 薄い文字で実績値を出していたが、入っていない欄に数字が見えるので
     // 「入力済み」と読み違える。実際そう指摘された。空欄は空欄のまま見せて、
     // 実際に使う値はマウスを乗せたときだけ出す。
-    return '<td class="ln-in"><input type="text" inputmode="decimal" data-nokeep ' +
+    return '<td class="ln-in '+cls+'"><input type="text" inputmode="decimal" data-nokeep ' +
       'data-land="'+esc(field)+'" data-mid="'+esc(mid)+'" ' +
       'value="'+esc(landFmt(saved, kind))+'" ' +
       'title="'+esc(saved === null
@@ -7004,22 +7012,25 @@ function landRow(label, R, bud, s, mid, prev){
   return '<tr'+(isGroup?' class="ln-group"':'')+'>' +
     '<th class="ln-fix ln-l1">'+esc(label)+'</th>' +
     // ── 実績 ──
-    inp("days","num",A.days,52) +
+    inp("days","num",A.days,52,"ln-past") +
     '<td class="ln-calc">'+esc(n(A.handled))+'</td>' +
     '<td class="ln-calc">'+esc(n(A.perDay))+'</td>' +
     '<td class="ln-calc">'+esc(p(A.rate))+'</td>' +
     '<td class="ln-calc">'+esc(n(A.arranged))+'</td>' +
     '<td class="ln-calc">'+esc(y(A.gross))+'</td>' +
     '<td class="ln-calc">'+esc(n(A.perHead))+'</td>' +
-    '<td class="ln-calc ln-sep">'+esc(n(A.unit))+'</td>' +
+    '<td class="ln-calc">'+esc(n(A.unit))+'</td>' +
     // ── これから ──
-    inp("remain","num",F.remain,52) +
-    '<td class="ln-calc">'+esc(n(F.handled))+'</td>' +
+    // ln-fut … これからブロックの印。地色を少し変えて、実績との境目を出す。
+    // 列名（手配粗利・粗利/1人・粗利単価）が実績側と同じなので、
+    // 横にスクロールすると、いまどちらを見ているのか分からなくなる。
+    inp("remain","num",F.remain,52,"ln-sep") +
+    '<td class="ln-calc ln-fut">'+esc(n(F.handled))+'</td>' +
     inp("perDay","num",F.perDay,58) +
     inp("arrangeRate","rate",F.rate,62) +
-    '<td class="ln-calc">'+esc(n(F.arranged))+'</td>' +
-    '<td class="ln-calc">'+esc(y(F.gross))+'</td>' +
-    '<td class="ln-calc">'+esc(n(F.perHead))+'</td>' +
+    '<td class="ln-calc ln-fut">'+esc(n(F.arranged))+'</td>' +
+    '<td class="ln-calc ln-fut">'+esc(y(F.gross))+'</td>' +
+    '<td class="ln-calc ln-fut">'+esc(n(F.perHead))+'</td>' +
     inp("unitPrice","yen",F.unit,74) +
     // ── 着地 ──
     '<td class="ln-calc ln-sep ln-fix ln-r4">'+esc(y(bud))+'</td>' +
@@ -7121,14 +7132,16 @@ function renderLanding(members, teams){
     '<thead>' +
       '<tr class="ln-head2">' +
         '<th class="ln-fix ln-l1"></th><th colspan="8">実績</th>' +
-        '<th colspan="8">これから</th><th colspan="4" class="ln-fix ln-rall">着地</th>' +
+        '<th colspan="8" class="ln-fut ln-sep">これから</th>' +
+        '<th colspan="4" class="ln-fix ln-rall">着地</th>' +
       '</tr>' +
       '<tr>' +
         '<th class="ln-fix ln-l1"></th>' +
         '<th>工数</th><th>対応数</th><th>1Day</th><th>手配率</th><th>手配数</th>' +
-        '<th>手配粗利</th><th>粗利/1人</th><th class="ln-sep">粗利単価</th>' +
-        '<th>残日数</th><th>対応数</th><th>1Day</th><th>手配率</th><th>手配数</th>' +
         '<th>手配粗利</th><th>粗利/1人</th><th>粗利単価</th>' +
+        '<th class="ln-fut ln-sep">残日数</th><th class="ln-fut">対応数</th>' +
+        '<th class="ln-fut">1Day</th><th class="ln-fut">手配率</th><th class="ln-fut">手配数</th>' +
+        '<th class="ln-fut">手配粗利</th><th class="ln-fut">粗利/1人</th><th class="ln-fut">粗利単価</th>' +
         '<th class="ln-sep ln-fix ln-r4">予算</th><th class="ln-fix ln-r3">着地</th>' +
         '<th class="ln-fix ln-r2">達成率</th><th class="ln-fix ln-r1">着地見込差</th>' +
       '</tr>' +
