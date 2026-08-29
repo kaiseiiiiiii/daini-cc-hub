@@ -1125,7 +1125,8 @@ body.wide .pc-cols:has(.pc-side:empty),
 .ln-tbl thead .ln-fut{background:var(--color-accent-tint);}
 /* チーム行・全体行。--color-bg-sub は存在しないトークンで、指定しても
    無効値になり背景が消えていた（貼り付けた列が透けた）。 */
-.ln-group{background:var(--color-surface); font-weight:700;}
+.ln-group>th,.ln-group>td{background:var(--color-surface); font-weight:700;}
+.ln-group .ln-fut{background:var(--color-accent-tint);}
 .ln-group th{font-weight:700;}
 .ln-calc{color:var(--color-text);}
 /* 入力できるマス。色が付いているところだけ触る、と一目で分かるようにする */
@@ -1168,6 +1169,25 @@ body.wide .pc-cols:has(.pc-side:empty),
 .ln-tbl .ln-group .ln-fix{background:var(--color-surface);}
 .ln-tbl thead .ln-fix{background:var(--color-bg); z-index:3;}
 .ln-tbl tbody .ln-l1{font-weight:700;}
+
+/* 【チームごとに区切る】
+   チームが縦に続くと、どこからどこまでが1チームか分かりにくい。
+   名前の左に色の帯を出し、チームの先頭行に太い罫線を引く。
+   色は teamClass（アバターと同じ配色）を流用しているので、
+   チームが増えても自動で付く。 */
+.ln-tbl tr.ln-team .ln-l1{border-left:4px solid currentColor;}
+.ln-tbl tr.ln-team.team-a  .ln-l1{border-left-color:var(--color-accent);}
+.ln-tbl tr.ln-team.team-b  .ln-l1{border-left-color:var(--color-plum);}
+.ln-tbl tr.ln-team.team-mgmt .ln-l1{border-left-color:var(--color-dusk);}
+.ln-tbl tr.ln-team.team-none .ln-l1{border-left-color:var(--color-border-strong);}
+/* チームの1行目。上に太い線を引いて、前のチームと切る */
+.ln-tbl tr.ln-team-head td,.ln-tbl tr.ln-team-head th{
+  border-top:2px solid var(--color-border-strong);}
+.ln-tbl tr.ln-team-head .ln-l1{font-size:13px;}
+/* メンバー名はチーム名より一段下げる。所属が目で追える */
+.ln-tbl tr.ln-team:not(.ln-team-head) .ln-l1{padding-left:18px; font-weight:400;}
+/* 全体行は一番上で、チームの色は付けない */
+.ln-tbl tr.ln-all th,.ln-tbl tr.ln-all td{border-bottom:2px solid var(--color-border-strong);}
 
 /* 【スマホでは右4列の固定を外す】
    予算〜着地見込差で 304px、名前列で 70px。画面幅が 400px 前後の端末では
@@ -6966,7 +6986,7 @@ function landParse(raw){
  * R は landCalcMember / landAggregate の戻り値。
  * mid が null の行（チーム・全体）は入力欄を出さず、計算値だけ見せる。
  */
-function landRow(label, R, bud, s, mid, prev){
+function landRow(label, R, bud, s, mid, prev, rowCls){
   var isGroup = (mid === null || mid === undefined);
   var A = R.A, F = R.F;
   var rate = lpct(R.landing, bud);
@@ -7009,7 +7029,7 @@ function landRow(label, R, bud, s, mid, prev){
       'style="width:'+(w||58)+'px"></td>';
   }
 
-  return '<tr'+(isGroup?' class="ln-group"':'')+'>' +
+  return '<tr class="'+(isGroup?"ln-group ":"")+esc(rowCls||"")+'">' +
     '<th class="ln-fix ln-l1">'+esc(label)+'</th>' +
     // ── 実績 ──
     inp("days","num",A.days,52,"ln-past") +
@@ -7108,17 +7128,20 @@ function renderLanding(members, teams){
   var body = "";
   var allCalc = members.map(calcOf);
   var g = landAggregate(allCalc);
-  body += landRow("全体", g, g.bud, null, null, sumSnap(allCalc, snap));
+  body += landRow("全体", g, g.bud, null, null, sumSnap(allCalc, snap), "ln-all");
 
   (teams || []).forEach(function(t){
     var list = members.filter(function(m){ return m.team === t.id; });
     if(!list.length) return;
     var cs = list.map(calcOf);
     var tg = landAggregate(cs);
-    body += landRow(t.label, tg, tg.bud, null, null, sumSnap(cs, snap));
+    // チームごとに色を変える。既存の teamClass（アバターと同じ配色）を
+    // そのまま使い、名前の左に色の帯を出す。チームが増えても勝手に付く。
+    var tc = "ln-team " + teamClass(t.id);
+    body += landRow(t.label, tg, tg.bud, null, null, sumSnap(cs, snap), tc + " ln-team-head");
     body += cs.map(function(r, i){
       return landRow(list[i].displayName, r, r.bud, inputsOf(r.id), r.id,
-                     numOr(snap[r.id], null));
+                     numOr(snap[r.id], null), tc);
     }).join("");
   });
 
