@@ -371,6 +371,12 @@ select.input{padding-right:8px;}
 .archive-count{background:var(--color-border); color:var(--color-text-sub);
   border-radius:var(--radius-pill); padding:1px 8px; font-size:12px;}
 .archive-body{margin-top:10px;}
+/* サンクスカードの補足。0件のときに「まだ無い」のか「壊れている」のかを
+   数字の下で言い切るための行。 */
+.side-note{margin-top:6px; font-size:11px; line-height:1.6; color:var(--color-text-sub);}
+/* 月の一覧。件数を右端に寄せて、月の名前だけを縦に読めるようにする。 */
+.side-months .side-link{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+.side-months .side-due{flex:none; margin:0; font-variant-numeric:tabular-nums;}
 .archive-month-head{position:sticky; top:0; z-index:1; padding:8px 2px; margin-bottom:6px;
   background:var(--color-bg); font-size:12px; font-weight:700; color:var(--color-text-sub);
   border-bottom:1px solid var(--color-border);}
@@ -1267,6 +1273,13 @@ body.wide .pc-cols:has(.pc-side:empty),
 .section-label{font-size:12px; font-weight:700; color:var(--text-4); margin-bottom:8px; letter-spacing:0.05em;}
 
 /* ── 目標進捗 ───────────────────────────────────── */
+/* 先月のデータが出ているときの警告。同期は成功しているので
+   renderSyncBar は緑のまま出る。そこに紛れないよう、別の色で強く出す。 */
+.prog-stale{background:color-mix(in srgb, var(--color-alert) 12%, var(--color-surface));
+  border:1px solid color-mix(in srgb, var(--color-alert) 45%, transparent);
+  border-radius:var(--radius-md); padding:11px 14px; margin:0 0 12px;
+  font-size:13px; line-height:1.7; color:var(--color-text);}
+.prog-stale b{color:var(--color-alert-ink);}
 .prog-note{font-size:13px; color:var(--text-3); line-height:1.7; background:var(--input-bg);
   border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin-bottom:10px;}
 .prog-note b{color:var(--text); font-weight:700;}
@@ -1700,6 +1713,12 @@ function isArchivedPost(p){
   return !p.pinned && monthKeyOf(p.createdAtMs) !== currentMonthKey();
 }
 
+/** "2026-8" → "2026年8月"。横に置く一覧用の短い形。 */
+function monthShortLabel(key){
+  var parts = key.split("-");
+  return parseInt(parts[0],10) + "年" + parseInt(parts[1],10) + "月";
+}
+
 /** "2026-8" → "2026年8月（8/1〜8/31）" */
 function monthKeyLabel(key){
   var parts = key.split("-");
@@ -1748,11 +1767,33 @@ function renderArchive(split, openFlagKey, renderOne){
   if(!open) return head;
   var body = split.months.map(function(g){
     return '<div class="archive-month">' +
-      '<div class="archive-month-head">'+esc(g.label)+' · '+g.posts.length+'件</div>' +
+      '<div class="archive-month-head" id="'+esc(openFlagKey)+'-'+esc(g.key)+'">' +
+        esc(g.label)+' · '+g.posts.length+'件</div>' +
       g.posts.map(renderOne).join("") +
     '</div>';
   }).join("");
   return head + '<div class="archive-body">' + body + '</div>';
+}
+
+/**
+ * 月ごとの入口（右サイドバー）。
+ * 中身は持たず、フィード最下部の折りたたみの見出しへ飛ばすだけにしている。
+ * ここに投稿そのものを並べると、同じ投稿が画面に2か所できてしまい、
+ * 「どっちを読めばいいのか」「片方だけ古いのでは」と迷わせる。
+ */
+function renderMonthNav(openFlagKey, list){
+  var split = splitArchive(list.slice().sort(byNewest));
+  if(!split.months.length) return "";
+  return '<div class="card side-card">' +
+    '<div class="side-title">過去の投稿</div>' +
+    '<ul class="side-list side-months">' + split.months.map(function(g){
+      return '<li><button class="side-link" data-act="archive-jump" ' +
+        'data-id="'+esc(openFlagKey)+'" data-key="'+esc(g.key)+'">' +
+        '<span>'+esc(monthShortLabel(g.key))+'</span>' +
+        '<span class="side-due">'+g.posts.length+'件</span>' +
+      '</button></li>';
+    }).join("") + '</ul>' +
+  '</div>';
 }
 
 function getM(id){
@@ -2914,17 +2955,31 @@ function renderInfobar(){
   return '<div class="infobar"><div class="infobar-left">'+left+'</div>'+right+'</div>';
 }
 
-/** 右サイドバー。いまはフィードタブのみ。 */
+/** 右サイドバー。フィードと掲示板だけに出す。 */
 function renderSidebar(){
+  // 掲示板は月ごとの入口だけ。サンクスも未読も、掲示板を読んでいる最中には
+  // 関係がない（読みに来た人の邪魔をしないほうが読まれる）。
+  if(state.tab === "board"){
+    var bNav = renderMonthNav("boardArchiveOpen", state.board);
+    return bNav ? '<aside class="pc-side">'+bNav+'</aside>' : "";
+  }
   if(state.tab !== "feed") return "";
   var t = thanksCounts();
   var ub = unreadBoards().slice(0, 5);
   var ps = pendingSurveys().slice(0, 5);
 
+  // 0件のとき「壊れている」と読まれないように、数えている範囲を必ず添える。
+  // 週は月曜はじまりなので、水曜に見れば対象はまだ3日ぶんしかない。
+  // 「今週まだ無い」と「数え損ねている」は、数字だけでは見分けが付かない。
+  var wkFrom = new Date(weekStartMs(0));
   var thanksCard = '<div class="card side-card">' +
     '<div class="side-title">今週のサンクス</div>' +
     '<div class="side-num"><b>'+t.now+'</b>件' +
       '<span class="side-sub">（先週 '+t.prev+'件）</span></div>' +
+    '<div class="side-note">' +
+      (wkFrom.getMonth()+1)+'/'+wkFrom.getDate()+'（月）〜 いまのところ' +
+      (t.now ? '' : '<br>種別を「Thanks」にした投稿だけを数えます') +
+    '</div>' +
   '</div>';
 
   var boardCard = ub.length ? '<div class="card side-card">' +
@@ -2945,7 +3000,12 @@ function renderSidebar(){
     }).join("") + '</ul>' +
   '</div>' : "";
 
-  return '<aside class="pc-side">'+thanksCard+boardCard+surveyCard+'</aside>';
+  // 月ごとの入口。フィード最下部の折りたたみと同じ中身を指しているだけで、
+  // 投稿の置き場を増やしてはいない（同じ投稿が2か所にあると、どちらが本物か
+  // 分からなくなる）。押すと折りたたみが開き、その月の見出しまで飛ぶ。
+  var monthCard = renderMonthNav("feedArchiveOpen", state.feed);
+
+  return '<aside class="pc-side">'+thanksCard+monthCard+boardCard+surveyCard+'</aside>';
 }
 
 function emptyState(icon, text, sub){
@@ -5685,6 +5745,25 @@ function computeProgress(teamKey){
   // （前月の出勤日数で今月の必要ペースを割るのが一番まずい間違いになる）。
   var monthMatches = !!(sh && sh.dates && state.goals.monthId === currentMonthId());
 
+  // 目標データそのものが何月のものか。
+  //
+  // 【goals.monthId は当てにならない】
+  // あれは同期が走った時点の月を GAS が押しているだけで、
+  // 中身が何月かは見ていない。原本のタブが月をまたいでいなければ、
+  // 「monthId は9月なのに中身は8月」が普通に起きる（実際に起きた）。
+  // 日付ラベル "M/D" の月を数えて、多数派をこのデータの月とする。
+  var monthTally = {};
+  days.forEach(function(d){
+    var m = String(d.date || "").split("/")[0];
+    if(m) monthTally[m] = (monthTally[m] || 0) + 1;
+  });
+  var dataMonth = null, best = 0;
+  Object.keys(monthTally).forEach(function(m){
+    if(monthTally[m] > best){ best = monthTally[m]; dataMonth = parseInt(m, 10); }
+  });
+  var thisMonth = new Date().getMonth() + 1;
+  var staleMonth = (dataMonth !== null && dataMonth !== thisMonth) ? dataMonth : null;
+
   var shiftIdx = {};
   if(sh && sh.dates) sh.dates.forEach(function(d, i){ shiftIdx[d] = i; });
 
@@ -5795,6 +5874,7 @@ function computeProgress(teamKey){
     forecast: forecast,
     gap: forecast !== null ? forecast - monthTarget : null,
     monthMatches: monthMatches,
+    staleMonth: staleMonth,   // 前月のままなら、その月（例 8）。合っていれば null
     hoursUnavailable: hoursUnavailable,
     unknown: unknown
   };
@@ -5845,6 +5925,18 @@ function renderProgress(){
   var confirmNote = p.lastActualDate
     ? '<div class="prog-note">📌 実績は <b>'+esc(p.lastActualDate)+'</b> 分まで。本日分は未集計です。</div>'
     : '<div class="prog-note">📌 今月はまだ実績が入っていません。</div>';
+
+  // 先月のデータを今月として見せない。
+  //
+  // 同期は毎日動くので「最終更新 本日」と出る。それだけ見ると最新に
+  // 見えるが、原本のタブが月をまたいでいないと中身は先月のままになる。
+  // 数字が正しく見えてしまうぶん、黙って出すのが一番危ない。
+  var staleNote = "";
+  if(p.staleMonth){
+    staleNote = '<div class="prog-stale">⚠️ ここに出ているのは <b>'+p.staleMonth+'月</b> の数字です。' +
+      '同期は動いていますが、原本の「全体Daily集計」が'+p.staleMonth+'月のままです。' +
+      '原本のタブを今月に切り替えると、ここも自動で今月になります。</div>';
+  }
 
   function cell(label, value, sub, color){
     return '<div class="card prog-cell">' +
@@ -5932,11 +6024,11 @@ function renderProgress(){
 
   if(isWide()){
     return '<div class="prog-cols">' +
-      '<div class="prog-main">' + renderSyncBar() + confirmNote + main + '</div>' +
+      '<div class="prog-main">' + renderSyncBar() + staleNote + confirmNote + main + '</div>' +
       '<div class="prog-side">' + side + '</div>' +
     '</div>';
   }
-  return '<div class="tab-pad">' + renderSyncBar() + confirmNote + main + side + '</div>';
+  return '<div class="tab-pad">' + renderSyncBar() + staleNote + confirmNote + main + side + '</div>';
 }
 
 /**
@@ -7680,6 +7772,22 @@ function afterRender(keepScroll, keepScrollX){
   observeUnread();
 }
 
+/**
+ * #content の中の要素を、その上端まで寄せる。
+ * 見つからなければ何もしない（描き直しで消えている場合がある）。
+ */
+function scrollContentTo(target){
+  var box = document.getElementById("content");
+  if(!box || !target) return;
+  // 【なめらかスクロールにしない】
+  // scrollTo({behavior:"smooth"}) はこの入れ子の容器では何も起きなかった
+  // （scroll-behavior は auto、上限内の値なのに 0 のまま動かない）。
+  // 効いたり効かなかったりする指定に頼ると、押しても無反応に見える。
+  // scrollTop への代入は必ず効くので、そちらだけを使う。
+  box.scrollTop = box.scrollTop +
+    (target.getBoundingClientRect().top - box.getBoundingClientRect().top);
+}
+
 /** 画像の拡大表示。縮小してあるので、これが原寸 */
 function renderLightbox(){
   if(!state.lightbox) return "";
@@ -8322,6 +8430,20 @@ function bindEvents(){
       submitComment(el.getAttribute("data-kind") || "feed", id, msg);
     }
     else if(act==="archive-toggle"){ state[id] = !state[id]; render(); }
+    // 月の一覧から飛ぶ。折りたたみを開いてから描き直し、その後で見出しへ寄せる。
+    // 開く前にスクロールしようとしても、飛び先はまだ画面上に無い。
+    //
+    // 【scrollIntoView を使わない】
+    // 動くのは window ではなく #content で、見出し自身が position:sticky。
+    // この組み合わせだと scrollIntoView({behavior:"smooth"}) が数十pxで
+    // 止まってしまう（実際そうなった）。上端との差を自分で測って
+    // scrollTop に入れる。sticky でも余白があっても、必ず狙った位置に着く。
+    else if(act==="archive-jump"){
+      var mk = el.getAttribute("data-key");
+      state[id] = true;
+      render();
+      scrollContentTo(document.getElementById(id + "-" + mk));
+    }
     else if(act==="legacy-download"){ downloadLegacy(); }
     else if(act==="legacy-discard"){ discardLegacy(); }
     else if(act==="notice-close"){ state.notice = ""; render(); }
