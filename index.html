@@ -1797,18 +1797,40 @@ function renderMonthNav(openFlagKey, list){
   '</div>';
 }
 
+/** 退職した人の表示。氏名は出さない。 */
+var RETIRED_LABEL = "退職者";
+
 /**
  * memberId から表示用のメンバー。
- * 現役に無ければ退職者も含めた一覧から引く（過去の投稿の名前を守るため）。
- * どちらにも無いのは、ドキュメントごと削除された人。
+ *
+ * 【退職者は氏名を出さない】
+ * 過去の投稿そのものは残すが、名前は「退職者」に置き換える。
+ * membersAll を引くのは名前を出すためではなく、
+ *   ・active:false ＝ 在籍していた人  → 「退職者」
+ *   ・そもそも居ない ＝ IDの取り違えや削除済み → 「?」
+ * の2つを区別するため。どちらも「?」にすると、退職なのか
+ * データの壊れなのかが画面から判断できない。
  */
 function getM(id){
   var i;
   for(i=0;i<session.members.length;i++) if(session.members[i].id===id) return session.members[i];
   var all = session.membersAll || [];
-  for(i=0;i<all.length;i++) if(all[i].id===id) return all[i];
+  for(i=0;i<all.length;i++){
+    if(all[i].id === id){
+      return { id:id, displayName:RETIRED_LABEL, initial:"–", team:null, retired:true };
+    }
+  }
   return { id:id, displayName:"?", initial:"?", team:null };
 }
+/**
+ * 「○○さん」の形。文中で所有格にするときに使う。
+ * 退職者は氏名が無いので「退職者さん」にならないよう、ここで分岐する。
+ */
+function mWho(id){
+  var m = getM(id);
+  return m.retired ? RETIRED_LABEL : (m.displayName + "さん");
+}
+
 function getTeam(teamId){
   for(var i=0;i<session.teams.length;i++) if(session.teams[i].id===teamId) return session.teams[i];
   return null;
@@ -2842,7 +2864,7 @@ function renderTrash(kind){
       return '<div class="trash-row">' +
         '<div class="trash-text">'+esc(String(title||"").slice(0,60))+'</div>' +
         '<div class="trash-meta">' +
-          esc(getM(d.authorId).displayName)+'さんの'+label+' · ' +
+          esc(mWho(d.authorId))+'の'+label+' · ' +
           '<strong>'+esc(who)+'さんが削除</strong>' +
           (d.deletedAtMs ? ' · '+tAgo(d.deletedAtMs) : '') +
         '</div>' +
@@ -6279,7 +6301,7 @@ function renderKpiSection(){
   // どの指標が来ていないのかまで書いて、原本のどこを見ればよいかを示す。
   if(!gridHtml){
     var missing = Object.keys(KPI_DEF).map(function(k){ return KPI_DEF[k].l; }).join("・");
-    var who = state.kpiSel ? esc(getM(state.kpiSel).displayName) + "さんの" : "";
+    var who = state.kpiSel ? esc(mWho(state.kpiSel)) + "の" : "";
     return '<div class="prog-section">' + head +
       scopeNote +
       '<div class="kpi-filter">' + filterHtml + '</div>' +
@@ -8277,7 +8299,7 @@ function askDelete(kind, id, postId){
     body  = "全員の画面からすぐに消えます。データ自体は残ります。";
   }
   var notMine = target.authorId !== currentUserId();
-  if(notMine) body += "\n\nこれは" + getM(target.authorId).displayName + "さんの投稿です。管理者権限で削除します。";
+  if(notMine) body += "\n\nこれは" + mWho(target.authorId) + "の投稿です。管理者権限で削除します。";
 
   state.confirm = {
     kind: kind, targetId: id, postId: postId || null,
