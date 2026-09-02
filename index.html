@@ -1140,10 +1140,8 @@ body.wide .pc-cols:has(.pc-side:empty),
 .ln-land{font-weight:700; color:var(--color-accent-ink);}
 .ln-saved{margin-left:10px; font-size:11px; font-weight:400; color:var(--color-grow-ink);}
 .ln-bar{display:flex; align-items:center; gap:10px; margin:0 0 10px;}
-.ln-snap{font-size:12px; padding:5px 12px;}
-.ln-snapat{font-size:11px; color:var(--color-text-sub);}
-.ln-snapat.ln-warn{color:var(--color-alert-ink);}
-/* 着地見込差。増えた＝緑、減った＝赤、変わらない＝控えめ。
+.ln-savenote{font-size:11px; color:var(--color-text-sub);}
+/* 着地見込差（着地 − 予算）。予算超え＝緑、未達＝赤、ちょうど＝控えめ。
    色だけに頼らず符号（+ / − / ±）も残す。 */
 .lnd-tbl .ln-down{color:var(--color-alert-ink); font-weight:700;}
 .lnd-tbl .ln-up{color:var(--color-grow-ink); font-weight:700;}
@@ -1200,7 +1198,14 @@ body.wide .pc-cols:has(.pc-side:empty),
   .ln-in input{width:52px;}
 }
 /* 着地見込の表 */
-.tbl-wrap{overflow-x:auto; margin:0 0 18px;}
+/* 横に広い表の枠。
+   overflow-x だけ指定すると overflow-y も auto になり、縦横どちらにも
+   スクロールできる箱になる。ノートPCのトラックパッドで表の上を縦に
+   なぞると、ページが動かず表だけ横に流れる。縦は hidden にして、
+   縦の操作はページに渡す。overscroll-behavior-x は、右端まで来たあと
+   ブラウザの「戻る」が誤発火しないように。 */
+.tbl-wrap{overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain;
+  margin:0 0 18px;}
 .lnd-tbl{border-collapse:collapse; width:100%; font-size:13px;
   font-variant-numeric:tabular-nums; white-space:nowrap;}
 .lnd-tbl th,.lnd-tbl td{padding:7px 10px; border-bottom:1px solid var(--color-border);
@@ -2854,14 +2859,22 @@ function renderTopbar(){
 }
 
 /** タブ定義と未読件数。上部タブと下部タブで共有する。 */
+// アンケートを画面に出すか。
+//
+// 【消さずに隠している】
+// 実装も Firestore の surveys コレクションも残したまま、タブだけ出さない。
+// 過去の回答が消えないし、使いたくなったら true に戻すだけで済む。
+// コードごと消すと、回答データだけが宙に浮いて誰も読めなくなる。
+var SHOW_SURVEY = false;
+
 function navTabs(){
   var tabs = [
     { id:"feed",     icon:"📡", l:"フィード" },
-    { id:"board",    icon:"📋", l:"掲示板",     count: unreadBoards().length },
-    { id:"survey",   icon:"📊", l:"アンケート", count: pendingSurveys().length },
-    { id:"shift",    icon:"🕐", l:"シフト" },
-    { id:"progress", icon:"🎯", l:"目標進捗" }
+    { id:"board",    icon:"📋", l:"掲示板",     count: unreadBoards().length }
   ];
+  if(SHOW_SURVEY) tabs.push({ id:"survey", icon:"📊", l:"アンケート", count: pendingSurveys().length });
+  tabs.push({ id:"shift",    icon:"🕐", l:"シフト" });
+  tabs.push({ id:"progress", icon:"🎯", l:"目標進捗" });
   // チーム実績は canSeeTeamKpi を持つ人にだけ出す。
   // 出したうえで中身を空にすると「権限が無い」ことが伝わらず、
   // かつタブの存在自体が「見られない何かがある」という情報になる。
@@ -2890,7 +2903,9 @@ function renderInfobar(){
     left = '<span class="infobar-date">本日 '+(d.getMonth()+1)+'/'+d.getDate()+'（'+wd+'）</span>' +
       '<span class="infobar-total">'+total+'名 シフト予定</span>' + kinds;
   }
-  var ub = unreadBoards().length, ps = pendingSurveys().length;
+  var ub = unreadBoards().length;
+  // 隠しているあいだは未読数にも出さない（開く先が無いため）。
+  var ps = SHOW_SURVEY ? pendingSurveys().length : 0;
   var right = (ub || ps)
     ? '<span class="infobar-unread">未読 ' +
         (ub ? '掲示板'+ub+'件' : '') + (ub && ps ? ' / ' : '') + (ps ? 'アンケート'+ps+'件' : '') +
@@ -2919,7 +2934,9 @@ function renderSidebar(){
     }).join("") + '</ul>' +
   '</div>' : "";
 
-  var surveyCard = ps.length ? '<div class="card side-card side-card-pending">' +
+  // タブを隠しているあいだは、サイドの導線も出さない。
+  // 押しても feed に戻されるだけで、押した人には壊れて見える。
+  var surveyCard = (SHOW_SURVEY && ps.length) ? '<div class="card side-card side-card-pending">' +
     '<div class="side-title">未回答のアンケート '+ps.length+'件</div>' +
     '<ul class="side-list">' + ps.map(function(s){
       return '<li><button class="side-link" data-act="tab" data-id="survey">'+esc(s.title)+
@@ -6875,8 +6892,7 @@ function landSave(memberId, field, raw){
     var payload = {
       monthId: monthOf(0).id,
       byMember: landPending,
-      snapshot: (state.landing && state.landing.snapshot) || {},
-      snapshotLabel: (state.landing && state.landing.snapshotLabel) || "",
+
       updatedAt: serverTimestamp(),
       updatedBy: currentUserId()
     };
@@ -6890,50 +6906,6 @@ function landSave(memberId, field, raw){
       setTimeout(function(){ state.landingSavedAt = 0; render(); }, 2500);
     });
   }, 700);
-}
-/**
- * いまの着地を、着地見込差の比較の起点として控える。
- *
- * ボタン名は「いまの数値を保存」だが、入力値そのものは打った時点で
- * 自動保存されている（landSave）。ここで保存するのは比較の起点だけ。
- * 名前と中身がずれるので、画面の説明文でそこを補っている。
- *
- * 原本は前回1on1シートの同じセルを直接参照しているが、アプリには
- * 前回シートが無い。押した時点の着地をメンバーごとに保存して、
- * 次からそことの差を出す。
- *
- * 上書きなので、押した瞬間から基準が入れ替わる。
- * 1on1 の直前に押す運用を想定している。
- */
-function landSnapshot(members){
-  if(!canSeeTeamKpi()) return;
-  var sc = (state.landing && state.landing.byMember) || {};
-  var wd = (state.memberKpi && state.memberKpi.workdaysByMember) || {};
-  var snap = {};
-  members.forEach(function(m){
-    var s = sc[m.id] || {}, w = wd[m.id] || {};
-    var r = landCalcMember(teamKpiOf(m.id), {
-      days:        numOr(s.days,   numOr(w.days, null)),
-      remain:      numOr(s.remain, numOr(w.remain, null)),
-      perDay:      numOr(s.perDay, null),
-      arrangeRate: numOr(s.arrangeRate, null),
-      unitPrice:   numOr(s.unitPrice, null)
-    });
-    if(typeof r.landing === "number") snap[m.id] = Math.round(r.landing);
-  });
-  var payload = {
-    monthId: monthOf(0).id,
-    byMember: sc,
-    snapshot: snap,
-    snapshotLabel: (function(){ var d = new Date();
-      return (d.getMonth()+1)+"月"+d.getDate()+"日 "+d.getHours()+"時"+
-             ("0"+d.getMinutes()).slice(-2)+"分"; })(),
-    updatedAt: serverTimestamp(),
-    updatedBy: currentUserId()
-  };
-  write("着地の基準", function(){
-    return setDoc(doc(db, "landingScenario", payload.monthId), payload);
-  }, true);
 }
 /**
  * KPIの測定対象か。
@@ -6984,12 +6956,15 @@ function landParse(raw){
  * R は landCalcMember / landAggregate の戻り値。
  * mid が null の行（チーム・全体）は入力欄を出さず、計算値だけ見せる。
  */
-function landRow(label, R, bud, s, mid, prev, rowCls){
+function landRow(label, R, bud, s, mid, rowCls){
   var isGroup = (mid === null || mid === undefined);
   var A = R.A, F = R.F;
   var rate = lpct(R.landing, bud);
-  var diff = (typeof R.landing === "number" && typeof prev === "number")
-    ? R.landing - prev : null;
+  // 着地見込差 ＝ 着地 − 予算。予算に届けばプラス、足りなければマイナス。
+  // 達成率と同じ関係を「率」ではなく「金額」で見せる列。
+  // あと何万足りないのか、が打ち手を決めるときに要る。
+  var diff = (typeof R.landing === "number" && typeof bud === "number")
+    ? R.landing - bud : null;
 
   function n(x){ return (typeof x === "number") ? Math.round(x).toLocaleString("ja-JP") : "—"; }
   function p(x){ return (typeof x === "number") ? (Math.round(x*10)/10)+"%" : "—"; }
@@ -7088,15 +7063,14 @@ function landDiffCell(diff){
  *
  * 【着地見込差】
  * 原本は 'リユース1ON1 8/3'!V16 との差、つまり前回1on1シートの着地との差。
- * アプリには前回シートが無いので、「今の着地を記録」で snapshot に控え、
- * それとの差を出す。記録が無ければ空欄にする（0 と書くと
- * 「動いていない」と読めてしまう）。
+ * ただしアプリでは「着地 − 予算」に変えてある。予算に対して
+ * あと何万足りないのかが、打ち手を決めるときに要るため。
+ * 前週との比較が要るようになったら、月ごとの landingScenario を
+ * 読み比べれば出せる。
  */
 function renderLanding(members, teams){
   var sc = (state.landing && state.landing.byMember) || {};
   var wd = (state.memberKpi && state.memberKpi.workdaysByMember) || {};
-  var snap = (state.landing && state.landing.snapshot) || {};
-  var snapAt = state.landing && state.landing.snapshotLabel;
 
   function inputsOf(id){
     var s = sc[id] || {}, w = wd[id] || {};
@@ -7126,7 +7100,7 @@ function renderLanding(members, teams){
   var body = "";
   var allCalc = members.map(calcOf);
   var g = landAggregate(allCalc);
-  body += landRow("全体", g, g.bud, null, null, sumSnap(allCalc, snap), "ln-all");
+  body += landRow("全体", g, g.bud, null, null, "ln-all");
 
   (teams || []).forEach(function(t){
     var list = members.filter(function(m){ return m.team === t.id; });
@@ -7137,18 +7111,12 @@ function renderLanding(members, teams){
     // （行に付けると1チームぶん丸ごと塗られて、水色だらけになった）。
     // 線の色だけを変える専用クラスにする。
     var tc = "ln-team ln-t-" + (t.colorKey || "none");
-    body += landRow(t.label, tg, tg.bud, null, null, sumSnap(cs, snap), tc + " ln-team-head");
+    body += landRow(t.label, tg, tg.bud, null, null, tc + " ln-team-head");
     body += cs.map(function(r, i){
-      return landRow(list[i].displayName, r, r.bud, inputsOf(r.id), r.id,
-                     numOr(snap[r.id], null), tc);
+      return landRow(list[i].displayName, r, r.bud, inputsOf(r.id), r.id, tc);
     }).join("");
   });
 
-  function sumSnap(list, sn){
-    var t = null;
-    list.forEach(function(r){ var x = sn[r.id]; if(typeof x === "number") t = (t||0) + x; });
-    return t;
-  }
 
   var head =
     '<thead>' +
@@ -7170,14 +7138,10 @@ function renderLanding(members, teams){
     '</thead>';
 
   var saved = state.landingSavedAt ? '<span class="ln-saved">保存しました</span>' : '';
-  var hasSnap = Object.keys(snap).length > 0;
-  var snapBtn = '<button class="btn-ghost ln-snap" data-act="land-snap">いまの数値を保存</button>' +
-    (hasSnap
-      ? '<span class="ln-snapat">着地見込差はここからの増減です: '+esc(snapAt || "保存済み")+
-        '<br>入力そのものは打った時点で自動保存されています</span>'
-      : '<span class="ln-snapat ln-warn">着地見込差はまだ出せません — ' +
-        'ボタンを押すと、いまの着地が比較の起点になります' +
-        '<br>入力そのものは打った時点で自動保存されています</span>');
+  // 着地見込差が「着地 − 予算」になったので、比較の起点を控えるボタンは
+  // 役目が無くなった。押しても何も変わらないボタンは置かない。
+  var saveNote = '<span class="ln-savenote">入力は打った時点で自動保存され、' +
+    'チームタブを見られる人に共有されます</span>';
 
   return '<div class="side-title">着地シナリオ'+saved+'</div>' +
     '<div class="lnd-note">' +
@@ -7186,14 +7150,12 @@ function renderLanding(members, teams){
       '（＝いまのペースのまま行った場合）。打ち替えるとその場で着地が動きます。' +
       '<br>着地 ＝ 実績の手配粗利 ＋ これからの手配粗利。達成率 ＝ 着地 ÷ 予算。' +
       'チーム行と全体行はメンバーの合計で、入力できません。' +
-      '<br><b>着地見込差</b>は、記録した時点の着地からいくら動いたかです' +
-      '（原本が前回1on1シートの着地と比べているのと同じ考え方）。' +
-      '1on1の前に「いまの数値を保存」を押すと、次回そこからの増減が出ます。' +
+      '<br><b>着地見込差</b>は<b>着地 − 予算</b>です。予算に届けばプラス（緑）、' +
+      '足りなければマイナス（赤）。達成率と同じ関係を、率ではなく金額で見ます。' +
       '<br>入力欄が<b>空欄のときは実績と同じ値</b>で計算します。' +
       'マウスを乗せると、いま何で計算しているかが出ます。' +
-      '入力は自動保存され、チームタブを見られる人に共有されます。' +
     '</div>' +
-    '<div class="ln-bar">'+snapBtn+'</div>' +
+    '<div class="ln-bar">'+saveNote+'</div>' +
     '<div class="tbl-wrap"><table class="lnd-tbl ln-tbl">'+head+'<tbody>'+body+'</tbody></table></div>';
 }
 /** 予算比の1マス。達成率とバーを出す。
@@ -7658,6 +7620,8 @@ function render(){
   // 中身は firestore.rules 側で読めなくなっているが、空の画面に
   // 取り残されるより、既定のタブに戻すほうが親切。
   if(state.tab === "teamkpi" && !canSeeTeamKpi()) state.tab = "feed";
+  // アンケートを隠したあと、そのタブを開いたままの人が空白に取り残されないように
+  if(state.tab === "survey" && !SHOW_SURVEY) state.tab = "feed";
 
   var body =
     state.tab==="feed"    ? renderFeed() :
@@ -8438,7 +8402,6 @@ function bindEvents(){
     else if(act==="tkpi-team"){ state.teamKpiTeam = id; render(); }
     else if(act==="tkpi-grp"){ state.teamKpiGroup = id; render(); }
     else if(act==="tkpi-mode"){ state.teamKpiMode = id; render(); }
-    else if(act==="land-snap"){ landSnapshot(teamKpiMembers().filter(isKpiTarget)); }
     else if(act==="daily-day"){ state.dailyDay = parseInt(id, 10) || 0; render(); }
     else if(act==="kpi-clear"){ state.kpiSel = null; render(); }
     else if(act==="kpi-toggle"){ state.kpiSel = state.kpiSel===id ? null : id; render(); }
