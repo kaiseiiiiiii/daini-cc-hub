@@ -1746,7 +1746,40 @@ body{
    サイドの「INNE」も、白ではなく page 色の上に乗るぶん
    4.41:1 だった。11px なので本文色にする。 */
 .pctab-on{color:var(--color-accent-ink);}
-.side-vignette span{color:var(--color-text);}</style>
+.side-vignette span{color:var(--color-text);}
+/* ── ブランドのアイコンを顔の切り抜きにする ──────────────────
+   in-normal-sm.webp は全身のイラスト（169×192）で、
+   34pxの丸に object-fit:cover で入れると縦の中央＝胴のあたりが
+   切り出され、顔が枠の外に出ていた。解像度は足りていて、
+   切り取る位置の問題だった。
+
+   apple-touch-icon.png は同じINさんの頭部だけを180×180で
+   切り出したもの（ファビコン用に既にリポジトリにある）。
+   36px表示に対して5倍あるので、高精細な画面でもぼやけない。
+   ファビコン用の名前のまま使っているのは、画像を1枚増やすと
+   GitHubへの反映が貼り付けだけでは済まなくなるため。 */
+.brand-in{width:36px; height:36px;}
+.header-title .brand-in{width:32px; height:32px;}
+
+/* ── 右サイドの絵は全身なので、丸く切らずに全部見せる ──────────
+   こちらも cover で丸にすると胴だけが出る。
+   角丸の枠に contain で収めて、絵を切らない。 */
+.side-vignette img{
+  width:96px; height:104px; border-radius:14px;
+  object-fit:contain; padding:4px;
+  box-shadow:0 0 0 4px var(--color-surface), 0 0 0 5px var(--sb-gold-faint);
+}
+/* ── 狭い画面の指定を最後に置き直す ──────────────────────────
+   顔の切り抜きに替えたときに .header-title .brand-in を32pxで
+   上書きしてしまい、420px以下の26px指定が効かなくなって
+   「第二CC Hub」の末尾が右のアバターに隠れていた。
+   顔だけの絵は小さくても分かるので、28pxで収める。 */
+@media (max-width:420px){
+  .header-title{font-size:15px;}
+  .header-title .brand-in{width:28px; height:28px;}
+  .header{gap:7px; padding-left:12px; padding-right:12px;}
+  .header-me{gap:6px;}
+}</style>
 </head>
 <body>
 
@@ -3120,7 +3153,7 @@ function renderHeader(){
     '<div class="header">' +
       '<div class="header-info">' +
         '<div class="header-title">' +
-          '<img class="brand-in" src="assets/in-normal-sm.webp" alt="" width="30" height="30">' +
+          '<img class="brand-in" src="assets/apple-touch-icon.png" alt="" width="32" height="32">' +
           '<span>第二CC Hub</span>' +
         '</div>' +
         (scheduled !== null ? '<div class="header-online">● 本日 '+scheduled+'名 シフト予定</div>' : '') +
@@ -3279,7 +3312,7 @@ function renderTopbar(){
     '<div class="pc-brand">' +
       // INさんは飾りなので alt は空にして読み上げから外す。
       // 隣に「第二CC Hub」の文字が必ず並ぶので、読み上げが二重にならない。
-      '<img class="brand-in" src="assets/in-normal-sm.webp" alt="" width="34" height="34">' +
+      '<img class="brand-in" src="assets/apple-touch-icon.png" alt="" width="36" height="36">' +
       '<span>第二CC Hub</span>' +
     '</div>' +
     '<nav class="pc-tabs">'+tabs+'</nav>' +
