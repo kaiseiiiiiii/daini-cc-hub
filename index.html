@@ -7194,8 +7194,18 @@ function renderLanding(members, teams){
   var g = landAggregate(allCalc);
   body += landRow("全体", g, g.bud, null, null, "ln-all");
 
+  // チームごとに並べたあと、どのチームにも入らなかった人を拾う。
+  //
+  // 【なぜ受け皿が要るか】
+  // 「全体」の行は members 全員を足している。一方この下はチームを回って
+  // 出すので、team が空の人はどの塊にも入らず行が出ない。放っておくと
+  // 「全体」と、下に並ぶチーム合計の和が合わなくなる。数字が合わない表は
+  // それだけで信用されなくなるし、原因も追いにくい。
+  // シフト表も同じ理由で「その他」を出している（そちらに合わせてある）。
+  var placed = {};
   (teams || []).forEach(function(t){
     var list = members.filter(function(m){ return m.team === t.id; });
+    list.forEach(function(m){ placed[m.id] = true; });
     if(!list.length) return;
     var cs = list.map(calcOf);
     var tg = landAggregate(cs);
@@ -7208,6 +7218,17 @@ function renderLanding(members, teams){
       return landRow(list[i].displayName, r, r.bud, inputsOf(r.id), r.id, tc);
     }).join("");
   });
+
+  var orphans = members.filter(function(m){ return !placed[m.id]; });
+  if(orphans.length){
+    var ocs = orphans.map(calcOf);
+    var og = landAggregate(ocs);
+    var otc = "ln-team ln-t-none";
+    body += landRow("その他", og, og.bud, null, null, otc + " ln-team-head");
+    body += ocs.map(function(r, i){
+      return landRow(orphans[i].displayName, r, r.bud, inputsOf(r.id), r.id, otc);
+    }).join("");
+  }
 
 
   var head =
