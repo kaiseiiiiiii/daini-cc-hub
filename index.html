@@ -1405,7 +1405,348 @@ body.wide .pc-cols:has(.pc-side:empty),
 .trash-row:first-of-type{border-top:none;}
 .trash-text{font-size:12px; color:var(--text-3); text-decoration:line-through; word-break:break-word;}
 .trash-meta{font-size:10px; color:var(--text-4); margin-top:3px;}
-</style>
+
+/* ══════════════════════════════════════════════════════════════════
+   ストーリーブック（イッツアスモールワールド × 不思議の国のアリス）
+
+   【方針】飾るのは「枠」だけ。数字の後ろには何も敷かない。
+   毎日KPIを読む道具なので、表・数値・シフトの可読性を落とすと
+   道具として使えなくなる。だから装飾は
+     ・ヘッダー／タブ／カードの縁
+     ・区切り線
+   に限り、表のセルと本文の背景は今までどおり無地のままにしている。
+
+   【2つの世界から借りたもの】
+     スモールワールド … 金の細線、連なるアーチ（スカラップ）、
+                         左右対称の飾り、パステルの重ね
+     アリス           … 市松模様、トランプのスート、
+                         少しだけ狂ったスケール感
+   ══════════════════════════════════════════════════════════════════ */
+
+:root{
+  /* 金の細線。彩度を落とした真鍮寄りにして、文字より前に出ないようにする */
+  --sb-gold:        #C9A227;
+  --sb-gold-soft:   #E8D9A0;
+  --sb-gold-faint:  rgba(201,162,39,.28);
+  /* アリス側のローズ。既存の alert とは別に、飾り専用で持つ */
+  --sb-rose:        #D98CA6;
+  --sb-rose-faint:  rgba(217,140,166,.20);
+  /* スカラップ1山の幅。ここを変えるとアーチの密度が変わる */
+  --sb-arch:        22px;
+}
+:root[data-theme="dark"]{
+  --sb-gold:        #D9B84A;
+  --sb-gold-soft:   #6B5A22;
+  --sb-gold-faint:  rgba(217,184,74,.30);
+  --sb-rose:        #C97F99;
+  --sb-rose-faint:  rgba(201,127,153,.22);
+}
+
+/* ── 紙の地。ごく淡い放射のにじみを1枚だけ敷く ────────────────
+   繰り返し模様にすると文字の裏でざわつくので、
+   中心から外へ向かう単調なグラデーションだけにしてある。 */
+body{
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, var(--sb-rose-faint) 0%, transparent 55%),
+    radial-gradient(90% 60% at 50% 110%, var(--color-accent-tint) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+/* ── INさんのアイコン。金の輪で囲う ──────────────────────────
+   丸く切り抜いて、内側に白、外に金の二重線。
+   スモールワールドの時計盤まわりの縁取りのつもり。 */
+.brand-in{
+  flex:none; width:34px; height:34px; border-radius:50%;
+  background:#fff;
+  border:1.5px solid var(--sb-gold);
+  box-shadow:0 0 0 2px var(--color-surface), 0 0 0 3.5px var(--sb-gold-faint);
+  object-fit:cover;
+}
+.pc-brand{display:flex; align-items:center; gap:11px;}
+.header-title{display:flex; align-items:center; gap:9px;}
+.header-title .brand-in{width:30px; height:30px;}
+
+/* ブランド名は少しだけ字間を開けて、看板らしく */
+.pc-brand span, .header-title span{letter-spacing:.02em;}
+
+/* ── ヘッダー下の連なるアーチ ────────────────────────────────
+   ファサードの軒。高さ7pxの帯を position:relative の擬似要素で出す。
+   mask を使わず、円のグラデーションを敷き詰めるだけにしているのは
+   古いブラウザでも崩れず、印刷時にも消えないため。 */
+.pc-topbar, .header{position:relative;}
+.pc-topbar::after, .header::after{
+  content:""; position:absolute; left:0; right:0; bottom:-7px; height:7px;
+  pointer-events:none; z-index:2;
+  background:
+    radial-gradient(var(--sb-arch) var(--sb-arch) at 50% 100%,
+      var(--sb-gold-soft) 0 96%, transparent 97%) 0 0 / var(--sb-arch) 7px repeat-x;
+}
+/* 軒の下に金の細線を1本。アーチだけだと輪郭が甘い */
+.pc-topbar, .header{border-bottom-color:var(--sb-gold-faint);}
+
+/* ── 選択中のタブは小さなアーチの旗 ──────────────────────────
+   下線1本だった見た目を、上が丸い旗に替える。
+   色は今までと同じ accent なので、どれが選択中かの読み取りは変わらない。 */
+.pctab-on{
+  box-shadow:none;
+  background:
+    linear-gradient(var(--color-accent-tint), var(--color-accent-tint))
+      no-repeat center bottom / 100% calc(100% - 8px);
+  border-radius:14px 14px 0 0;
+  position:relative;
+}
+.pctab-on::after{
+  content:""; position:absolute; left:10px; right:10px; bottom:0; height:3px;
+  background:var(--color-accent); border-radius:2px;
+}
+
+/* ── カード。上の角だけアーチにして、内側に金の細線 ──────────
+   ::before で内側に1本入れるのは、border を二重にすると
+   レイアウトの計算（padding とスクロール幅）に影響するため。 */
+.card{
+  border-radius:16px 16px 12px 12px;
+  border-color:var(--color-border);
+  position:relative;
+}
+.card::before{
+  content:""; position:absolute; inset:3px;
+  border:1px solid var(--sb-gold-faint);
+  border-radius:13px 13px 9px 9px;
+  pointer-events:none;
+}
+/* 中身が絶対配置を使っているカードでは飾り線を出さない
+   （重なって二重線に見えるため） */
+.composer::before, .modal::before{display:none;}
+
+/* ── 市松の区切り ────────────────────────────────────────────
+   アリス側の担当。インフォバーの下に3pxだけ。
+   4pxごとの白黒ではなく、金と紙色の薄い市松にして主張を抑える。 */
+.infobar{position:relative; border-bottom-color:var(--sb-gold-faint);}
+.infobar::after{
+  content:""; position:absolute; left:0; right:0; bottom:-3px; height:3px;
+  pointer-events:none;
+  background:
+    repeating-linear-gradient(90deg,
+      var(--sb-gold-faint) 0 6px, transparent 6px 12px);
+}
+
+/* ── セクションの見出しにスート ──────────────────────────────
+   右サイドのカード見出しの前に小さな菱形（ダイヤ）を置く。
+   文字ではなく CSS の図形なので、読み上げには入らない。 */
+.side-title{display:flex; align-items:center; gap:7px;}
+.side-title::before{
+  content:""; flex:none; width:7px; height:7px;
+  background:var(--sb-rose); transform:rotate(45deg);
+  border-radius:1px;
+}
+
+/* ── 並べ替えチップ。丸薬型の縁に金を1本 ────────────────────── */
+.chip-active{box-shadow:inset 0 0 0 1px var(--sb-gold-faint);}
+
+/* ── 投稿ボタンは看板風に ──────────────────────────────────── */
+.btn-post{
+  border-radius:12px;
+  box-shadow:0 1px 0 var(--color-accent-deep), 0 0 0 1px var(--sb-gold-faint);
+}
+
+/* ── アーカイブの月見出しは巻物の帯 ────────────────────────── */
+.archive-month-head{
+  background:linear-gradient(var(--color-surface), var(--color-surface)) padding-box;
+  border-left:3px solid var(--sb-gold-soft);
+  padding-left:9px; border-radius:0 8px 8px 0;
+}
+
+/* ── 表の中は飾らない ────────────────────────────────────────
+   ここが一番大事。着地シナリオ・シフト表・KPIの表は
+   sticky 列と横スクロールで成り立っているので、
+   擬似要素も背景画像も足さない。上の .card::before も打ち消す。 */
+.tbl-wrap, .lnd-tbl, .shift-days{background-image:none;}
+.card:has(.tbl-wrap)::before{display:none;}
+
+/* ── 動きを抑える設定を尊重する ──────────────────────────────
+   飾りに動きは入れていないが、背景の固定はスクロールが
+   重くなる環境があるので外す。 */
+@media (prefers-reduced-motion: reduce){
+  body{background-attachment:scroll;}
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ストーリーブック・第2層（飾りを強める）
+
+   第1層は控えめすぎたので、こちらで「見て分かる」ところまで足す。
+   足す場所は変えない ── ヘッダーの軒、カードの角、区切り、余白。
+   表と数字の後ろは引き続き無地。
+   ══════════════════════════════════════════════════════════════════ */
+
+:root{
+  --sb-sky:  #BFE3F5;   /* パステルの空 */
+  --sb-mint: #C6E9DC;
+  --sb-blush:#F6D3DF;
+  --sb-cream:#FBEFCF;
+}
+:root[data-theme="dark"]{
+  --sb-sky:  #24455A;
+  --sb-mint: #1F4740;
+  --sb-blush:#4A2A36;
+  --sb-cream:#4A3D1C;
+}
+
+/* ── ヘッダーの軒を3枚重ねのアーチにする ────────────────────
+   1枚目（前）… 金の縁取りが付いたクリーム
+   2枚目      … ブラッシュ、半山ずらす
+   3枚目（奥）… スカイ、さらにずらす
+   ずらすことで、奥行きのある連続アーチに見える。
+   高さは合計16px。数字にも本文にも重ならない位置。 */
+.pc-topbar::after, .header::after{
+  bottom:-16px; height:16px;
+  background:
+    /* 前列：クリーム＋金の輪郭 */
+    radial-gradient(11px 13px at 50% 100%,
+      var(--sb-cream) 0 82%, var(--sb-gold-soft) 83% 100%, transparent 101%)
+      0 0 / 22px 16px repeat-x,
+    /* 中列：ブラッシュ。半山ずらす */
+    radial-gradient(11px 11px at 50% 100%,
+      var(--sb-blush) 0 100%, transparent 101%)
+      11px 0 / 22px 13px repeat-x,
+    /* 奥列：スカイ */
+    radial-gradient(13px 9px at 50% 100%,
+      var(--sb-sky) 0 100%, transparent 101%)
+      0 0 / 26px 10px repeat-x;
+  background-repeat:repeat-x;
+}
+
+/* 軒の下に、地の色で細い帯を置いて足元を締める */
+.pc-topbar, .header{
+  box-shadow:0 16px 0 -15px var(--sb-gold-faint);
+}
+
+/* 軒のぶん、下の要素を押し下げる（重ならないように） */
+.infobar{margin-top:10px;}
+
+/* ── カードの角に金の飾り ────────────────────────────────────
+   上の左右だけ、四分円の細線を出す。額縁の隅金物のつもり。 */
+.card::after{
+  content:""; position:absolute; top:6px; left:6px; right:6px; height:14px;
+  pointer-events:none;
+  border-top:1px solid var(--sb-gold-faint);
+  border-left:1px solid var(--sb-gold-faint);
+  border-right:1px solid var(--sb-gold-faint);
+  border-radius:12px 12px 0 0;
+  /* 上辺の中央は消して、左右の隅だけを残す */
+  mask-image:linear-gradient(90deg, #000 0 18px, transparent 34px,
+             transparent calc(100% - 34px), #000 calc(100% - 18px) 100%);
+  -webkit-mask-image:linear-gradient(90deg, #000 0 18px, transparent 34px,
+             transparent calc(100% - 34px), #000 calc(100% - 18px) 100%);
+}
+.composer::after, .modal::after, .side-card::after{display:none;}
+.card:has(.tbl-wrap)::after{display:none;}
+
+/* ── インフォバー下を本物の市松に ──────────────────────────── */
+.infobar::after{
+  bottom:-5px; height:5px;
+  background:
+    repeating-conic-gradient(from 90deg at 50% 50%,
+      var(--sb-gold-faint) 0 25%, transparent 0 50%) 0 0 / 10px 10px;
+}
+
+/* ── スートを散らす ──────────────────────────────────────────
+   見出しの菱形はそのまま。ここでは種類を変えて単調さを消す。
+   ::before は CSS の図形なので読み上げには入らない。 */
+.side-card:nth-of-type(2) .side-title::before{
+  background:var(--color-accent); border-radius:50% 50% 50% 0;
+}
+.side-card:nth-of-type(3) .side-title::before{
+  background:var(--color-plum); border-radius:2px; transform:rotate(0deg);
+}
+
+/* ── 「選択中」の旗にリボンの切れ込み ────────────────────────── */
+.pctab-on::before{
+  content:""; position:absolute; left:50%; top:4px;
+  width:5px; height:5px; margin-left:-2.5px;
+  background:var(--sb-gold); border-radius:50%;
+  opacity:.55;
+}
+
+/* ── 投稿フォームは便箋に ────────────────────────────────────
+   罫線は入れない（入力文字と干渉する）。
+   縁だけを二重にして、便箋の耳のように見せる。 */
+.composer{
+  border-radius:16px;
+  box-shadow:0 0 0 1px var(--sb-gold-faint) inset,
+             0 0 0 4px var(--color-surface),
+             0 0 0 5px var(--sb-blush);
+}
+
+/* ── サイドバーの足元にINさん ────────────────────────────────
+   右の列は下が空きがちなので、そこに小さく置く。
+   飾りなので alt は空、クリックも取らない。 */
+.side-vignette{
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:4px 0 0; opacity:.9;
+}
+.side-vignette img{
+  width:82px; height:82px; border-radius:50%;
+  background:#fff; border:1.5px solid var(--sb-gold-soft);
+  box-shadow:0 0 0 4px var(--color-surface), 0 0 0 5px var(--sb-gold-faint);
+}
+.side-vignette span{
+  font-size:11px; color:var(--color-text-sub); letter-spacing:.04em;
+}
+
+/* ── 表の中は飾らない（第1層の方針を再確認）────────────────── */
+.tbl-wrap .card::before, .tbl-wrap .card::after{display:none;}
+
+/* ══════════════════════════════════════════════════════════════════
+   ストーリーブック・第3層（軒の置き場所を直す）
+
+   【なぜ直すか】
+   軒（アーチの帯）をヘッダーの外側（bottom:-16px）に出していたが、
+   .app が overflow:hidden なので丸ごと切り取られて見えていなかった。
+   ヘッダー自身を16px高くして、その内側の下端に敷く形に変える。
+   これなら親のはみ出し設定に関係なく必ず出る。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* 軒のぶんだけヘッダーを高くする。
+   中身は padding-box の中央に並ぶので、見た目の重心は変わらない。 */
+.pc-topbar{height:76px; padding-bottom:16px;}
+.header{padding-bottom:30px;}   /* 元の 14px + 軒 16px */
+
+.pc-topbar::after, .header::after{
+  bottom:0; height:16px;
+}
+
+/* 外側に出していたぶんの調整を戻す */
+.pc-topbar, .header{box-shadow:none;}
+.infobar{margin-top:0;}
+
+/* 軒の足元に金の細線。アーチの輪郭を締める */
+.pc-topbar, .header{border-bottom:1px solid var(--sb-gold-faint);}
+
+/* 市松も内側へ。インフォバーを5px高くして下端に敷く */
+.infobar{padding-bottom:5px; min-height:45px;}
+.infobar::after{bottom:0;}
+
+/* ── 狭い画面でタイトルが2行に折れないようにする ──────────────
+   アイコンを添えたぶん（絵文字より20px以上広い）横幅が足りなくなり、
+   「第二CC / Hub」で折れていた。アイコンを一段小さくして、
+   タイトルは折り返さない指定にする。あふれる側は右のサインアウト
+   （文字ボタン）が縮むので、名前が消えることはない。 */
+.header-title{white-space:nowrap;}
+@media (max-width:420px){
+  .header-title{font-size:16px;}
+  .header-title .brand-in{width:26px; height:26px;}
+  .header{gap:8px;}
+}
+/* ── 飾りで落ちたコントラストを戻す ──────────────────────────
+   選択中タブの後ろに accent-tint を敷いたので、文字が
+   accent-deep のままだと 3.98:1 まで落ちていた（15pxの太字は
+   WCAG の「大きい文字」に入らないので 4.5:1 が必要）。
+   1段濃い accent-ink にして 5.4:1 に戻す。
+
+   サイドの「INNE」も、白ではなく page 色の上に乗るぶん
+   4.41:1 だった。11px なので本文色にする。 */
+.pctab-on{color:var(--color-accent-ink);}
+.side-vignette span{color:var(--color-text);}</style>
 </head>
 <body>
 
@@ -2778,7 +3119,10 @@ function renderHeader(){
   return '' +
     '<div class="header">' +
       '<div class="header-info">' +
-        '<div class="header-title">🚀 第二CC Hub</div>' +
+        '<div class="header-title">' +
+          '<img class="brand-in" src="assets/in-normal-sm.webp" alt="" width="30" height="30">' +
+          '<span>第二CC Hub</span>' +
+        '</div>' +
         (scheduled !== null ? '<div class="header-online">● 本日 '+scheduled+'名 シフト予定</div>' : '') +
       '</div>' +
       '<div class="header-me">' +
@@ -2932,7 +3276,12 @@ function renderTopbar(){
     '</button>';
   }).join("");
   return '<div class="pc-topbar">' +
-    '<div class="pc-brand">第二CC Hub</div>' +
+    '<div class="pc-brand">' +
+      // INさんは飾りなので alt は空にして読み上げから外す。
+      // 隣に「第二CC Hub」の文字が必ず並ぶので、読み上げが二重にならない。
+      '<img class="brand-in" src="assets/in-normal-sm.webp" alt="" width="34" height="34">' +
+      '<span>第二CC Hub</span>' +
+    '</div>' +
     '<nav class="pc-tabs">'+tabs+'</nav>' +
     '<div class="pc-me">' +
       '<button class="avatar-btn" data-act="avatar-open" data-id="'+esc(me.id)+'" aria-label="アイコンを変更">'+avatar(me.id, 32)+'</button>' +
@@ -2955,7 +3304,7 @@ var SHOW_SURVEY = false;
 
 function navTabs(){
   var tabs = [
-    { id:"feed",     icon:"📡", l:"フィード" },
+    { id:"feed",     icon:"📡", l:"INNE" },
     { id:"board",    icon:"📋", l:"掲示板",     count: unreadBoards().length }
   ];
   if(SHOW_SURVEY) tabs.push({ id:"survey", icon:"📊", l:"アンケート", count: pendingSurveys().length });
@@ -3050,7 +3399,14 @@ function renderSidebar(){
   // 分からなくなる）。押すと折りたたみが開き、その月の見出しまで飛ぶ。
   var monthCard = renderMonthNav("feedArchiveOpen", state.feed);
 
-  return '<aside class="pc-side">'+thanksCard+monthCard+boardCard+surveyCard+'</aside>';
+  // 右の列は下が空きやすいので、足元にINさんを置いて締める。
+  // 飾りなので alt は空、押しても何も起きない。
+  var vignette = '<div class="side-vignette">' +
+    '<img src="assets/in-happy.webp" alt="" width="82" height="82">' +
+    '<span>INNE</span>' +
+  '</div>';
+
+  return '<aside class="pc-side">'+thanksCard+monthCard+boardCard+surveyCard+vignette+'</aside>';
 }
 
 function emptyState(icon, text, sub){
