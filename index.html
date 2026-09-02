@@ -1596,7 +1596,8 @@ var session = {
   status: "loading",   // config | loading | signedOut | denied | error | ready
   authUser: null,      // Firebase Auth のユーザー
   member: null,        // メンバーマスタ上の自分
-  members: [],         // メンバー一覧（表示名の解決用）
+  members: [],         // 現役メンバー。宛先の候補・シフト・KPIはこれを見る
+  membersAll: [],      // 退職者も含む全員。過去の投稿の名前を引くためだけに使う
   avatars: {},         // memberId → 画像の data URL
   teams: [],           // チーム一覧
   deniedEmail: "",
@@ -1796,8 +1797,16 @@ function renderMonthNav(openFlagKey, list){
   '</div>';
 }
 
+/**
+ * memberId から表示用のメンバー。
+ * 現役に無ければ退職者も含めた一覧から引く（過去の投稿の名前を守るため）。
+ * どちらにも無いのは、ドキュメントごと削除された人。
+ */
 function getM(id){
-  for(var i=0;i<session.members.length;i++) if(session.members[i].id===id) return session.members[i];
+  var i;
+  for(i=0;i<session.members.length;i++) if(session.members[i].id===id) return session.members[i];
+  var all = session.membersAll || [];
+  for(i=0;i<all.length;i++) if(all[i].id===id) return all[i];
   return { id:id, displayName:"?", initial:"?", team:null };
 }
 function getTeam(teamId){
@@ -2312,6 +2321,7 @@ async function onAuthChanged(user){
     session.authUser = null;
     session.member = null;
     session.members = [];
+    session.membersAll = [];
     session.teams = [];
     state.feed = []; state.board = []; state.surveys = [];
     // 「利用権限がありません」を表示した直後はサインアウトが走るが、
@@ -2401,7 +2411,7 @@ async function loadMasters(){
   });
 
   var msnap = await getDocs(query(collection(db, "members"), orderBy("order")));
-  session.members = msnap.docs.map(function(d){
+  var everyone = msnap.docs.map(function(d){
     var v = d.data();
     return {
       id: v.memberId,
@@ -2425,7 +2435,20 @@ async function loadMasters(){
       // 独立に判定している。ここを書き換えても data は取れない。
       canSeeTeamKpi: v.canSeeTeamKpi === true
     };
-  }).filter(function(m){ return m.active; });
+  });
+
+  // 現役だけを session.members に入れる。宛先の候補・シフト表・KPIの集計は
+  // すべてここを見るので、退職者が混ざると選べてしまう。
+  session.members = everyone.filter(function(m){ return m.active; });
+
+  // 退職者も名前だけは引けるように、全員ぶんを別に持つ。
+  //
+  // 【なぜ要るか】
+  // getM() が見つけられないと投稿者名が「?」になる。退職した人の過去の
+  // 投稿・コメント・サンクスが軒並み「?」になってしまい、誰の発言だったのか
+  // 分からなくなる（active:false にしただけでこうなっていた）。
+  // 名前を引く用と、選択肢に出す用は別の話なので、持ち方を分ける。
+  session.membersAll = everyone;
 }
 
 /**
